@@ -28,6 +28,17 @@ const SearchBody = z.object({
  * - 若有 sourceId，搜尋完同時 push LINE 訊息
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  try {
+    return await handlePost(req);
+  } catch (err) {
+    // 最後一道保險：任何沒被內層 catch 接到的錯誤，都回 JSON
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[api/search] uncaught error:', err);
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+  }
+}
+
+async function handlePost(req: NextRequest): Promise<NextResponse> {
   let body: z.infer<typeof SearchBody>;
   try {
     const raw = await req.json();
@@ -48,20 +59,28 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const supabase = getSupabase();
   const startedAt = new Date();
-  const { data: runRow } = await supabase
-    .from('search_runs')
-    .insert({
-      triggered_by: body.sourceId ? 'line' : 'manual',
-      source_id: body.sourceId ?? null,
-      origin: body.origin,
-      destination: body.destination,
-      outbound_date: body.outboundDate,
-      return_date: body.returnDate,
-      status: 'success',
-      started_at: startedAt.toISOString()
-    })
-    .select()
-    .single();
+
+  // 整支 route 包在大 try/catch，確保任何錯誤都回 JSON
+  let runRow: { id?: number } | null = null;
+  try {
+    const { data } = await supabase
+      .from('search_runs')
+      .insert({
+        triggered_by: body.sourceId ? 'line' : 'manual',
+        source_id: body.sourceId ?? null,
+        origin: body.origin,
+        destination: body.destination,
+        outbound_date: body.outboundDate,
+        return_date: body.returnDate,
+        status: 'success',
+        started_at: startedAt.toISOString()
+      })
+      .select()
+      .single();
+    runRow = data;
+  } catch (err) {
+    console.warn('[api/search] failed to log search_run (continuing):', err);
+  }
 
   try {
     const result = await searchFlights({
