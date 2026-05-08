@@ -84,14 +84,19 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
 
   // 我的訂閱
   if (text === '我的訂閱' || text === '訂閱' || text === '/subs') {
+    const isGroup = sourceId.startsWith('C') || sourceId.startsWith('R');
+    const url = isGroup
+      ? `${getSubscriptionsUrl()}?ctx=${encodeURIComponent(sourceId)}`
+      : getSubscriptionsUrl();
     await replyText(
       replyToken,
       [
-        '🔔 點下面連結查看你的降價提醒清單',
+        '🔔 點下面連結查看訂閱',
+        isGroup
+          ? '會看到「個人訂閱 + 此群組訂閱」'
+          : '可以在這裡查看、改金額、取消',
         '',
-        getSubscriptionsUrl(),
-        '',
-        '可以在這裡查看、取消訂閱'
+        url
       ].join('\n')
     );
     return;

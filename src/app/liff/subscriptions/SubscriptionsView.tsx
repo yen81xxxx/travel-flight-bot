@@ -9,14 +9,28 @@ interface Props {
   liffId: string;
 }
 
+// 為了區分來源
+type ItemWithSource = Subscription & { _source: 'personal' | 'group' };
+
 export default function SubscriptionsView({ liffId }: Props) {
   const [ready, setReady] = useState(false);
   const [canLogin, setCanLogin] = useState(false);
   const [sourceId, setSourceId] = useState<string | null>(null);
   const [profileName, setProfileName] = useState<string | null>(null);
-  const [items, setItems] = useState<Subscription[]>([]);
+  const [groupCtxId, setGroupCtxId] = useState<string | null>(null);
+  const [items, setItems] = useState<ItemWithSource[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 從 URL 讀 ctx（群組 ID）
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const ctx = params.get('ctx');
+    if (ctx && (ctx.startsWith('C') || ctx.startsWith('R'))) {
+      setGroupCtxId(ctx);
+    }
+  }, []);
 
   useEffect(() => {
     if (!liffId) {
@@ -62,30 +76,48 @@ export default function SubscriptionsView({ liffId }: Props) {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/subscriptions?sourceId=${encodeURIComponent(sourceId)}`);
-        const data = await res.json();
-        if (!data.ok) throw new Error(data.error);
-        setItems(data.subscriptions ?? []);
+        // 同時抓「個人訂閱」與（如果有 ctx）「該群組訂閱」
+        const promises: Promise<{ subs: Subscription[]; source: 'personal' | 'group' }>[] = [
+          fetch(`/api/subscriptions?sourceId=${encodeURIComponent(sourceId)}`)
+            .then(r => r.json())
+            .then(d => ({ subs: d.ok ? (d.subscriptions ?? []) : [], source: 'personal' as const }))
+        ];
+        if (groupCtxId) {
+          promises.push(
+            fetch(`/api/subscriptions?sourceId=${encodeURIComponent(groupCtxId)}`)
+              .then(r => r.json())
+              .then(d => ({ subs: d.ok ? (d.subscriptions ?? []) : [], source: 'group' as const }))
+          );
+        }
+        const results = await Promise.all(promises);
+        const merged: ItemWithSource[] = [];
+        for (const { subs, source } of results) {
+          for (const s of subs) {
+            merged.push({ ...s, _source: source });
+          }
+        }
+        setItems(merged);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         setLoading(false);
       }
     })();
-  }, [sourceId]);
+  }, [sourceId, groupCtxId]);
 
-  const handleDelete = async (id: number) => {
-    if (!sourceId) return;
-    if (!confirm('確定要取消這個訂閱嗎？')) return;
+  const handleDelete = async (sub: ItemWithSource) => {
+    if (!sub.id) return;
+    const label = sub._source === 'group' ? '群組訂閱' : '個人訂閱';
+    if (!confirm(`確定取消這筆${label}嗎？`)) return;
 
     try {
       const res = await fetch(
-        `/api/subscriptions?id=${id}&sourceId=${encodeURIComponent(sourceId)}`,
+        `/api/subscriptions?id=${sub.id}&sourceId=${encodeURIComponent(sub.source_id)}`,
         { method: 'DELETE' }
       );
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
-      setItems(items.filter(i => i.id !== id));
+      setItems(items.filter(i => i.id !== sub.id));
     } catch (err) {
       alert(`刪除失敗：${err instanceof Error ? err.message : String(err)}`);
     }
@@ -95,22 +127,6 @@ export default function SubscriptionsView({ liffId }: Props) {
   const [editPrice, setEditPrice] = useState<string>('');
   const [savingEdit, setSavingEdit] = useState(false);
 
-  const handleTest = async (id: number) => {
-    if (!sourceId) return;
-    try {
-      const res = await fetch('/api/subscriptions/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscriptionId: id, sourceId })
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error);
-      alert('✅ 測試通知已發送，請看你的 LINE 聊天室');
-    } catch (err) {
-      alert(`測試失敗：${err instanceof Error ? err.message : String(err)}`);
-    }
-  };
-
   const startEdit = (sub: Subscription) => {
     setEditingId(sub.id ?? null);
     setEditPrice(String(sub.max_price));
@@ -119,8 +135,7 @@ export default function SubscriptionsView({ liffId }: Props) {
     setEditingId(null);
     setEditPrice('');
   };
-  const saveEdit = async (sub: Subscription) => {
-    if (!sourceId) return;
+  const saveEdit = async (sub: ItemWithSource) => {
     const newPrice = parseFloat(editPrice);
     if (isNaN(newPrice) || newPrice <= 0) {
       alert('請輸入有效的金額');
@@ -128,12 +143,12 @@ export default function SubscriptionsView({ liffId }: Props) {
     }
     setSavingEdit(true);
     try {
-      // POST 已經是 upsert：相同 source/origin/destination 會更新
+      // 用每筆訂閱自身的 source_id 更新（群組訂閱 sourceId = groupId）
       const res = await fetch('/api/subscriptions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sourceId,
+          sourceId: sub.source_id,
           origin: sub.origin,
           destination: sub.destination,
           maxPrice: newPrice,
@@ -143,13 +158,29 @@ export default function SubscriptionsView({ liffId }: Props) {
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || '更新失敗');
-      // 更新本地 state
       setItems(items.map(i => i.id === sub.id ? { ...i, max_price: newPrice } : i));
       cancelEdit();
     } catch (err) {
       alert(`更新失敗：${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  const handleTest = async (sub: ItemWithSource) => {
+    if (!sub.id) return;
+    try {
+      const res = await fetch('/api/subscriptions/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscriptionId: sub.id, sourceId: sub.source_id })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      const where = sub._source === 'group' ? '群組' : '你的';
+      alert(`✅ 測試通知已發送，請看${where}聊天室`);
+    } catch (err) {
+      alert(`測試失敗：${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
@@ -182,10 +213,14 @@ export default function SubscriptionsView({ liffId }: Props) {
         <div className="brand">
           <span className="logo">🔔</span>
           <div className="brand-text">
-            <h1>我的訂閱</h1>
-            <p>{profileName ? `${profileName} 的降價提醒` : '降價提醒'}</p>
+            <h1>{groupCtxId ? '訂閱清單' : '我的訂閱'}</h1>
+            <p>
+              {groupCtxId
+                ? `個人訂閱 + 此群組訂閱（共 ${items.length} 筆）`
+                : (profileName ? `${profileName} 的降價提醒` : '降價提醒')}
+            </p>
           </div>
-          <a className="nav-btn" href={liffId ? `https://liff.line.me/${liffId}` : '/liff/search'}>
+          <a className="nav-btn" href={liffId ? `https://liff.line.me/${liffId}${groupCtxId ? `?ctx=${encodeURIComponent(groupCtxId)}` : ''}` : '/liff/search'}>
             🔍 查航班
           </a>
         </div>
@@ -222,11 +257,16 @@ export default function SubscriptionsView({ liffId }: Props) {
       ) : sourceId ? (
         <div className="list">
           {items.map(sub => (
-            <div key={sub.id} className="card">
-              <div className="route">
-                <span className="city">{formatAirport(sub.origin)}</span>
-                <span className="arrow">→</span>
-                <span className="city">{formatAirport(sub.destination)}</span>
+            <div key={`${sub._source}-${sub.id}`} className={`card ${sub._source}`}>
+              <div className="card-header">
+                <div className="route">
+                  <span className="city">{formatAirport(sub.origin)}</span>
+                  <span className="arrow">→</span>
+                  <span className="city">{formatAirport(sub.destination)}</span>
+                </div>
+                <span className={`source-chip ${sub._source}`}>
+                  {sub._source === 'group' ? '👥 群組' : '👤 個人'}
+                </span>
               </div>
               {sub.outbound_date && sub.return_date && (
                 <div className="dates">
@@ -266,10 +306,10 @@ export default function SubscriptionsView({ liffId }: Props) {
                     <button className="btn-edit" onClick={() => startEdit(sub)}>
                       ✏️ 改金額
                     </button>
-                    <button className="btn-test" onClick={() => sub.id && handleTest(sub.id)}>
+                    <button className="btn-test" onClick={() => handleTest(sub)}>
                       📤 試發
                     </button>
-                    <button className="del" onClick={() => sub.id && handleDelete(sub.id)}>
+                    <button className="del" onClick={() => handleDelete(sub)}>
                       ✕ 取消
                     </button>
                   </div>
@@ -364,13 +404,42 @@ export default function SubscriptionsView({ liffId }: Props) {
           border-radius: 14px;
           padding: 16px;
         }
+        .card.group {
+          border-left: 4px solid #60a5fa;
+        }
+        .card.personal {
+          border-left: 4px solid #ff7a45;
+        }
+        .card-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 6px;
+          flex-wrap: wrap;
+        }
+        .source-chip {
+          padding: 3px 10px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.04em;
+          white-space: nowrap;
+        }
+        .source-chip.personal {
+          background: rgba(255, 122, 69, 0.15);
+          color: #ff7a45;
+        }
+        .source-chip.group {
+          background: rgba(96, 165, 250, 0.15);
+          color: #60a5fa;
+        }
         .route {
           display: flex;
           align-items: center;
           gap: 8px;
-          font-size: 17px;
+          font-size: 16px;
           font-weight: 700;
-          margin-bottom: 6px;
         }
         .arrow { color: #ff7a45; }
         .dates {
