@@ -6,7 +6,7 @@ echo  Vercel will auto-redeploy after push.
 echo ============================================
 echo.
 git add .
-git commit -m "Subscriptions page: edit price inline + nav to search"
+git commit -m "Fix subscription dedup: include dates in uniqueness check"
 git push origin main
 echo.
 echo ============================================

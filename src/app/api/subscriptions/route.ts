@@ -60,14 +60,28 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const supabase = getSupabase();
 
   // 同樣的訂閱已存在就更新 max_price
-  const { data: existing } = await supabase
+  // dedup key = source + origin + destination + outbound_date + return_date
+  // 不同日期視為不同訂閱（讓使用者能追蹤多個日期區間）
+  let dedupQuery = supabase
     .from('subscriptions')
     .select('id, max_price')
     .eq('source_id', body.sourceId)
     .eq('origin', body.origin)
     .eq('destination', body.destination)
-    .eq('active', true)
-    .maybeSingle();
+    .eq('active', true);
+
+  if (body.outboundDate) {
+    dedupQuery = dedupQuery.eq('outbound_date', body.outboundDate);
+  } else {
+    dedupQuery = dedupQuery.is('outbound_date', null);
+  }
+  if (body.returnDate) {
+    dedupQuery = dedupQuery.eq('return_date', body.returnDate);
+  } else {
+    dedupQuery = dedupQuery.is('return_date', null);
+  }
+
+  const { data: existing } = await dedupQuery.maybeSingle();
 
   if (existing) {
     const { error } = await supabase
