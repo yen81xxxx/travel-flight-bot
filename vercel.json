@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/daily-search",
+      "schedule": "0 1 * * *"
+    }
+  ],
+  "functions": {
+    "src/app/api/line/webhook/route.ts": {
+      "maxDuration": 30
+    },
+    "src/app/api/cron/daily-search/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}
