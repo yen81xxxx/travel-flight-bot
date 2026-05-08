@@ -34,6 +34,7 @@ interface SearchResponse {
 export default function SearchForm({ liffId, origins, destinations }: Props) {
   const [liffReady, setLiffReady] = useState(false);
   const [insideLine, setInsideLine] = useState(false);
+  const [canLogin, setCanLogin] = useState(false);  // LIFF 已載入且可登入（電腦版場景）
   const [sourceId, setSourceId] = useState<string | null>(null);
   const [profileName, setProfileName] = useState<string | null>(null);
 
@@ -67,7 +68,10 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
       try {
         const liff = (await import('@line/liff')).default;
         await liff.init({ liffId });
-        setInsideLine(liff.isInClient());
+        const isInClient = liff.isInClient();
+        setInsideLine(isInClient);
+        setCanLogin(true);  // LIFF 已可用，無論是否在 LINE 內
+
         if (liff.isLoggedIn()) {
           try {
             const profile = await liff.getProfile();
@@ -76,10 +80,12 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
           } catch (e) {
             console.warn('getProfile failed:', e);
           }
-        } else if (liff.isInClient()) {
+        } else if (isInClient) {
+          // 在 LINE App 內但沒 token，直接 login（不需要使用者點按鈕）
           liff.login();
           return;
         }
+        // 在外部瀏覽器且沒登入 → 不自動 login，等使用者按按鈕
         setLiffReady(true);
       } catch (err) {
         console.error('LIFF init failed:', err);
@@ -88,6 +94,20 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
       }
     })();
   }, [liffId]);
+
+  const handleLineLogin = async () => {
+    if (!liffId) return;
+    try {
+      const liff = (await import('@line/liff')).default;
+      // 帶 redirectUri 讓登入後回到原本頁面（含搜尋條件保留）
+      liff.login({
+        redirectUri: typeof window !== 'undefined' ? window.location.href : undefined
+      });
+    } catch (err) {
+      console.error('login failed:', err);
+      setError('登入失敗，請稍後再試');
+    }
+  };
 
   const destByRegion = useMemo(() => {
     const groups: Record<string, Airport[]> = {};
@@ -329,6 +349,13 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
             </button>
           )}
 
+          {!sourceId && canLogin && result.analysis.cheapestRoundTripPrice && (
+            <button onClick={handleLineLogin} className="btn-line-login">
+              <span className="line-icon">L</span>
+              <span>用 LINE 登入以訂閱降價提醒</span>
+            </button>
+          )}
+
           {sourceId && (
             <div className="alert alert-success">
               ✅ 結果已同步推到 LINE 聊天室
@@ -547,6 +574,38 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
         .btn-subscribe:disabled {
           opacity: 0.6;
           cursor: not-allowed;
+        }
+
+        .btn-line-login {
+          margin-top: 12px;
+          width: 100%;
+          padding: 14px;
+          border-radius: 12px;
+          border: none;
+          background: #06c755;
+          color: white;
+          font-size: 15px;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          transition: background 0.15s, transform 0.1s;
+        }
+        .btn-line-login:hover { background: #05b14d; }
+        .btn-line-login:active { transform: scale(0.98); }
+        .line-icon {
+          background: white;
+          color: #06c755;
+          width: 22px;
+          height: 22px;
+          border-radius: 5px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 900;
+          font-family: Arial, sans-serif;
         }
 
         .hint {

@@ -6,7 +6,7 @@ echo  Vercel will auto-redeploy after push.
 echo ============================================
 echo.
 git add .
-git commit -m "Add subscription system, group support, UI redesign"
+git commit -m "Add LINE Login button for desktop browser users"
 git push origin main
 echo.
 echo ============================================

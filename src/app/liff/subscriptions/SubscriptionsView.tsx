@@ -10,6 +10,7 @@ interface Props {
 
 export default function SubscriptionsView({ liffId }: Props) {
   const [ready, setReady] = useState(false);
+  const [canLogin, setCanLogin] = useState(false);
   const [sourceId, setSourceId] = useState<string | null>(null);
   const [profileName, setProfileName] = useState<string | null>(null);
   const [items, setItems] = useState<Subscription[]>([]);
@@ -18,7 +19,7 @@ export default function SubscriptionsView({ liffId }: Props) {
 
   useEffect(() => {
     if (!liffId) {
-      setError('需要在 LINE 內開啟此頁');
+      setError('需要設定 LIFF ID 才能使用此頁');
       setReady(true);
       return;
     }
@@ -26,6 +27,7 @@ export default function SubscriptionsView({ liffId }: Props) {
       try {
         const liff = (await import('@line/liff')).default;
         await liff.init({ liffId });
+        setCanLogin(true);
         if (liff.isLoggedIn()) {
           const profile = await liff.getProfile();
           setSourceId(profile.userId);
@@ -41,6 +43,18 @@ export default function SubscriptionsView({ liffId }: Props) {
       }
     })();
   }, [liffId]);
+
+  const handleLogin = async () => {
+    if (!liffId) return;
+    try {
+      const liff = (await import('@line/liff')).default;
+      liff.login({
+        redirectUri: typeof window !== 'undefined' ? window.location.href : undefined
+      });
+    } catch (err) {
+      setError('登入失敗，請稍後再試');
+    }
+  };
 
   useEffect(() => {
     if (!sourceId) return;
@@ -113,12 +127,24 @@ export default function SubscriptionsView({ liffId }: Props) {
 
       {error && <div className="alert">⚠️ {error}</div>}
 
-      {loading ? (
+      {!sourceId && canLogin && !error && (
+        <div className="login-card">
+          <div className="big">🔐</div>
+          <h2>需要登入才能看訂閱</h2>
+          <p>用 LINE 登入後就能看到你訂閱的航線、降價提醒設定。</p>
+          <button onClick={handleLogin} className="btn-line">
+            <span className="line-icon">L</span>
+            <span>用 LINE 登入</span>
+          </button>
+        </div>
+      )}
+
+      {sourceId && loading ? (
         <div className="empty">
           <div className="spinner" />
           <p>載入訂閱中…</p>
         </div>
-      ) : items.length === 0 ? (
+      ) : sourceId && items.length === 0 ? (
         <div className="empty">
           <div className="big">💤</div>
           <h2>還沒有訂閱</h2>
@@ -127,7 +153,7 @@ export default function SubscriptionsView({ liffId }: Props) {
             🔍 開始查詢
           </a>
         </div>
-      ) : (
+      ) : sourceId ? (
         <div className="list">
           {items.map(sub => (
             <div key={sub.id} className="card">
@@ -290,6 +316,47 @@ export default function SubscriptionsView({ liffId }: Props) {
           font-weight: 600;
           border-radius: 10px;
           text-decoration: none;
+        }
+
+        .login-card {
+          background: #1a2238;
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          border-radius: 16px;
+          padding: 40px 24px;
+          text-align: center;
+        }
+        .login-card .big { font-size: 56px; margin-bottom: 12px; }
+        .login-card h2 { font-size: 18px; margin-bottom: 6px; }
+        .login-card p {
+          color: #7e88a8;
+          font-size: 14px;
+          margin-bottom: 20px;
+        }
+        .btn-line {
+          padding: 14px 24px;
+          border: none;
+          border-radius: 10px;
+          background: #06c755;
+          color: white;
+          font-size: 15px;
+          font-weight: 600;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .btn-line:hover { background: #05b14d; }
+        .line-icon {
+          background: white;
+          color: #06c755;
+          width: 22px;
+          height: 22px;
+          border-radius: 5px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 900;
+          font-family: Arial, sans-serif;
         }
       `}</style>
     </div>
