@@ -183,7 +183,7 @@ export default function SubscriptionsView({ liffId }: Props) {
             </div>
           ))}
         </div>
-      )}
+      ) : null}
 
       <style jsx>{`
         .wrap {
