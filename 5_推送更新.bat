@@ -6,7 +6,7 @@ echo  Vercel will auto-redeploy after push.
 echo ============================================
 echo.
 git add .
-git commit -m "Customizable subscription threshold with quick discount presets"
+git commit -m "Subscriptions page: edit price inline + nav to search"
 git push origin main
 echo.
 echo ============================================

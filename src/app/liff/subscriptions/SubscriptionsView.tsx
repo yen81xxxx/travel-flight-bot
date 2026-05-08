@@ -90,6 +90,52 @@ export default function SubscriptionsView({ liffId }: Props) {
     }
   };
 
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editPrice, setEditPrice] = useState<string>('');
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const startEdit = (sub: Subscription) => {
+    setEditingId(sub.id ?? null);
+    setEditPrice(String(sub.max_price));
+  };
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditPrice('');
+  };
+  const saveEdit = async (sub: Subscription) => {
+    if (!sourceId) return;
+    const newPrice = parseFloat(editPrice);
+    if (isNaN(newPrice) || newPrice <= 0) {
+      alert('請輸入有效的金額');
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      // POST 已經是 upsert：相同 source/origin/destination 會更新
+      const res = await fetch('/api/subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceId,
+          origin: sub.origin,
+          destination: sub.destination,
+          maxPrice: newPrice,
+          outboundDate: sub.outbound_date ?? undefined,
+          returnDate: sub.return_date ?? undefined
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || '更新失敗');
+      // 更新本地 state
+      setItems(items.map(i => i.id === sub.id ? { ...i, max_price: newPrice } : i));
+      cancelEdit();
+    } catch (err) {
+      alert(`更新失敗：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   if (!ready) {
     return (
       <div className="loading">
@@ -118,10 +164,13 @@ export default function SubscriptionsView({ liffId }: Props) {
       <header className="hero">
         <div className="brand">
           <span className="logo">🔔</span>
-          <div>
+          <div className="brand-text">
             <h1>我的訂閱</h1>
             <p>{profileName ? `${profileName} 的降價提醒` : '降價提醒'}</p>
           </div>
+          <a className="nav-btn" href={liffId ? `https://liff.line.me/${liffId}` : '/liff/search'}>
+            🔍 查航班
+          </a>
         </div>
       </header>
 
@@ -167,14 +216,45 @@ export default function SubscriptionsView({ liffId }: Props) {
                   📅 {sub.outbound_date} ~ {sub.return_date}
                 </div>
               )}
-              <div className="price-row">
-                <span className="threshold">
-                  跌破 <strong>NT$ {Number(sub.max_price).toLocaleString()}</strong> 通知我
-                </span>
-                <button className="del" onClick={() => sub.id && handleDelete(sub.id)}>
-                  ✕ 取消
-                </button>
-              </div>
+              {editingId === sub.id ? (
+                <div className="edit-row">
+                  <div className="edit-input-wrap">
+                    <span className="edit-prefix">NT$</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={editPrice}
+                      onChange={e => setEditPrice(e.target.value)}
+                      disabled={savingEdit}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="edit-actions">
+                    <button className="btn-save" onClick={() => saveEdit(sub)} disabled={savingEdit}>
+                      {savingEdit ? '儲存中…' : '✓ 儲存'}
+                    </button>
+                    <button className="btn-cancel-edit" onClick={cancelEdit} disabled={savingEdit}>
+                      取消
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="price-row">
+                    <span className="threshold">
+                      跌破 <strong>NT$ {Number(sub.max_price).toLocaleString()}</strong> 通知我
+                    </span>
+                  </div>
+                  <div className="actions-row">
+                    <button className="btn-edit" onClick={() => startEdit(sub)}>
+                      ✏️ 改金額
+                    </button>
+                    <button className="del" onClick={() => sub.id && handleDelete(sub.id)}>
+                      ✕ 取消訂閱
+                    </button>
+                  </div>
+                </>
+              )}
               {sub.last_notified_at && (
                 <div className="last">
                   上次通知：{new Date(sub.last_notified_at).toLocaleString('zh-TW')}
@@ -205,6 +285,25 @@ export default function SubscriptionsView({ liffId }: Props) {
           display: flex;
           align-items: center;
           gap: 14px;
+        }
+        .brand-text {
+          flex: 1;
+        }
+        .nav-btn {
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          color: #f0f4ff;
+          padding: 8px 14px;
+          border-radius: 999px;
+          font-size: 13px;
+          font-weight: 600;
+          text-decoration: none;
+          transition: background 0.15s;
+          white-space: nowrap;
+        }
+        .nav-btn:hover {
+          background: rgba(255, 122, 69, 0.15);
+          border-color: rgba(255, 122, 69, 0.4);
         }
         .logo {
           font-size: 32px;
@@ -267,13 +366,99 @@ export default function SubscriptionsView({ liffId }: Props) {
           background: transparent;
           border: 1px solid rgba(248, 113, 113, 0.4);
           color: #f87171;
-          padding: 6px 12px;
+          padding: 8px 14px;
           border-radius: 8px;
           font-size: 13px;
           cursor: pointer;
+          font-family: inherit;
         }
         .del:hover {
           background: rgba(248, 113, 113, 0.12);
+        }
+        .actions-row {
+          display: flex;
+          gap: 8px;
+          margin-top: 12px;
+        }
+        .btn-edit {
+          flex: 1;
+          background: rgba(255, 122, 69, 0.10);
+          border: 1px solid rgba(255, 122, 69, 0.4);
+          color: #ff7a45;
+          padding: 8px 14px;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          font-family: inherit;
+        }
+        .btn-edit:hover {
+          background: rgba(255, 122, 69, 0.18);
+        }
+        .edit-row {
+          margin-top: 10px;
+        }
+        .edit-input-wrap {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          background: #0a0e1a;
+          border: 1px solid #ff7a45;
+          border-radius: 10px;
+          padding: 4px 12px;
+        }
+        .edit-prefix {
+          color: #7e88a8;
+          font-size: 13px;
+          font-weight: 600;
+        }
+        .edit-input-wrap input {
+          flex: 1;
+          padding: 10px 0;
+          border: none;
+          background: transparent;
+          color: #f0f4ff;
+          font-size: 16px;
+          font-weight: 700;
+          font-family: inherit;
+          outline: none;
+          -moz-appearance: textfield;
+        }
+        .edit-input-wrap input::-webkit-outer-spin-button,
+        .edit-input-wrap input::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        .edit-actions {
+          display: flex;
+          gap: 8px;
+          margin-top: 10px;
+        }
+        .btn-save {
+          flex: 1;
+          padding: 10px;
+          border: none;
+          border-radius: 8px;
+          background: linear-gradient(135deg, #ff7a45, #ff6020);
+          color: white;
+          font-size: 14px;
+          font-weight: 700;
+          cursor: pointer;
+          font-family: inherit;
+        }
+        .btn-save:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+        .btn-cancel-edit {
+          padding: 10px 16px;
+          border: 1px solid #2a3454;
+          background: transparent;
+          color: #cdd5f0;
+          border-radius: 8px;
+          font-size: 14px;
+          cursor: pointer;
+          font-family: inherit;
         }
         .last {
           font-size: 11px;
