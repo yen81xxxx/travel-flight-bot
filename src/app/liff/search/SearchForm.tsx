@@ -144,7 +144,8 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           origin, destination, outboundDate, returnDate,
-          sourceId: sourceId ?? undefined
+          // 群組情境下不要 push 每次查詢結果到群組（會吵），只要訂閱才 push 通知
+          sourceId: groupCtxId ? undefined : (sourceId ?? undefined)
         })
       });
       const data: SearchResponse = await res.json();
@@ -444,9 +445,25 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
             </button>
           )}
 
-          {sourceId && (
-            <div className="alert alert-success">
-              ✅ 結果已同步推到 LINE 聊天室
+          {sourceId && !groupCtxId && (
+            <div className="alert alert-info">
+              💬 查詢結果已同步推到你和 Bot 的 1:1 聊天室
+            </div>
+          )}
+
+          {subscribeStatus === 'saved' && (
+            <div className="success-banner">
+              <div className="big">🎉</div>
+              <div className="text">
+                <strong>訂閱完成！</strong>
+                <p>
+                  跌破 NT$ {Number(customMaxPrice).toLocaleString()}{' '}
+                  時會自動 LINE 通知{subscribeAs === 'group' ? '整個群組' : '你'}。
+                </p>
+                <p>
+                  確認訊息已發到{subscribeAs === 'group' ? '群組' : '你的'}聊天室，去看一下。
+                </p>
+              </div>
             </div>
           )}
 
@@ -852,6 +869,36 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
         .alert-success {
           background: rgba(74, 222, 128, 0.1);
           color: #4ade80;
+        }
+
+        .success-banner {
+          margin-top: 16px;
+          padding: 20px;
+          border-radius: 14px;
+          background: linear-gradient(135deg, rgba(74, 222, 128, 0.18), rgba(74, 222, 128, 0.06));
+          border: 1px solid rgba(74, 222, 128, 0.4);
+          display: flex;
+          gap: 16px;
+          align-items: flex-start;
+        }
+        .success-banner .big {
+          font-size: 36px;
+          line-height: 1;
+        }
+        .success-banner .text {
+          flex: 1;
+        }
+        .success-banner strong {
+          color: #4ade80;
+          font-size: 16px;
+          display: block;
+          margin-bottom: 6px;
+        }
+        .success-banner p {
+          font-size: 13px;
+          color: #cdd5f0;
+          margin: 4px 0;
+          line-height: 1.5;
         }
 
         /* Results */

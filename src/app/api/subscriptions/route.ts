@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSupabase } from '@/lib/supabase';
-import { TW_ORIGINS, JP_DESTINATIONS } from '@/config/airports';
+import { TW_ORIGINS, JP_DESTINATIONS, formatAirport } from '@/config/airports';
+import { pushText } from '@/lib/line';
 import type { SourceType } from '@/types';
 
 export const runtime = 'nodejs';
@@ -96,6 +97,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (error) {
       return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     }
+    // 推確認訊息（更新門檻）
+    await safePush(body.sourceId, formatConfirm({
+      action: 'updated',
+      origin: body.origin,
+      destination: body.destination,
+      outboundDate: body.outboundDate,
+      returnDate: body.returnDate,
+      maxPrice: body.maxPrice,
+      isGroup: sourceType !== 'user',
+      previousMaxPrice: Number(existing.max_price)
+    }));
     return NextResponse.json({
       ok: true,
       action: 'updated',
@@ -122,7 +134,56 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
+  // 推確認訊息（新建）
+  await safePush(body.sourceId, formatConfirm({
+    action: 'created',
+    origin: body.origin,
+    destination: body.destination,
+    outboundDate: body.outboundDate,
+    returnDate: body.returnDate,
+    maxPrice: body.maxPrice,
+    isGroup: sourceType !== 'user'
+  }));
   return NextResponse.json({ ok: true, action: 'created', subscription: data });
+}
+
+interface ConfirmProps {
+  action: 'created' | 'updated';
+  origin: string;
+  destination: string;
+  outboundDate?: string;
+  returnDate?: string;
+  maxPrice: number;
+  isGroup: boolean;
+  previousMaxPrice?: number;
+}
+
+function formatConfirm(p: ConfirmProps): string {
+  const lines: string[] = [];
+  lines.push(p.action === 'created' ? '✅ 訂閱建立成功' : '✅ 訂閱已更新');
+  lines.push('');
+  lines.push(`✈️ ${formatAirport(p.origin)} → ${formatAirport(p.destination)}`);
+  if (p.outboundDate && p.returnDate) {
+    lines.push(`📅 ${p.outboundDate} ~ ${p.returnDate}`);
+  } else {
+    lines.push('📅 不限定日期（任何時段都監控）');
+  }
+  if (p.action === 'updated' && p.previousMaxPrice != null) {
+    lines.push(`🎯 門檻：NT$ ${p.previousMaxPrice.toLocaleString()} → NT$ ${p.maxPrice.toLocaleString()}`);
+  } else {
+    lines.push(`🎯 跌破 NT$ ${p.maxPrice.toLocaleString()} 通知${p.isGroup ? '整個群組' : '你'}`);
+  }
+  lines.push('');
+  lines.push(`輸入「我的訂閱」可管理${p.isGroup ? '群組' : ''}訂閱`);
+  return lines.join('\n');
+}
+
+async function safePush(sourceId: string, text: string): Promise<void> {
+  try {
+    await pushText(sourceId, text);
+  } catch (e) {
+    console.warn('[subscriptions] push confirm failed:', e);
+  }
 }
 
 /** 取消訂閱（軟刪除） */

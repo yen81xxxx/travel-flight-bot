@@ -6,7 +6,7 @@ echo  Vercel will auto-redeploy after push.
 echo ============================================
 echo.
 git add .
-git commit -m "P2 P3: history chart, homepage QR, group ctx, admin dashboard, logger"
+git commit -m "Subscribe confirmation push + clearer success banner + suppress noisy group search push"
 git push origin main
 echo.
 echo ============================================
