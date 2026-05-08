@@ -48,6 +48,7 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const [subscribeStatus, setSubscribeStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [customMaxPrice, setCustomMaxPrice] = useState<string>('');
 
   // 預設日期：30 天後出發、停 4 晚
   useEffect(() => {
@@ -137,6 +138,10 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
       const data: SearchResponse = await res.json();
       if (!data.ok) throw new Error(data.error || '搜尋失敗');
       setResult(data);
+      // 預設訂閱門檻 = 當下最便宜價格
+      if (data.analysis?.cheapestRoundTripPrice) {
+        setCustomMaxPrice(String(data.analysis.cheapestRoundTripPrice));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -151,9 +156,15 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
     }
     if (!result?.analysis?.cheapestRoundTripPrice) return;
 
+    const userInputPrice = parseFloat(customMaxPrice);
+    if (isNaN(userInputPrice) || userInputPrice <= 0) {
+      setError('請輸入有效的金額');
+      return;
+    }
+
     setSubscribeStatus('saving');
     try {
-      const maxPrice = result.analysis.cheapestRoundTripPrice;
+      const maxPrice = userInputPrice;
       const res = await fetch('/api/subscriptions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -334,19 +345,62 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
           </div>
 
           {sourceId && result.analysis.cheapestRoundTripPrice && (
-            <button
-              onClick={handleSubscribe}
-              disabled={subscribeStatus === 'saving' || subscribeStatus === 'saved'}
-              className="btn-subscribe"
-            >
-              {subscribeStatus === 'saved' ? (
-                <>✅ 已訂閱降價提醒</>
-              ) : subscribeStatus === 'saving' ? (
-                <>⏳ 訂閱中…</>
-              ) : (
-                <>🔔 訂閱降價提醒（低於 {fmt(result.analysis.cheapestRoundTripPrice)} 通知我）</>
-              )}
-            </button>
+            <div className="sub-card">
+              <div className="sub-title">🔔 訂閱降價提醒</div>
+              <div className="sub-desc">
+                當這條航線最便宜往返跌破下面金額時，自動 LINE 通知你
+              </div>
+
+              <div className="sub-input-row">
+                <span className="sub-prefix">NT$</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={customMaxPrice}
+                  onChange={e => setCustomMaxPrice(e.target.value)}
+                  placeholder="輸入金額"
+                  disabled={subscribeStatus === 'saving' || subscribeStatus === 'saved'}
+                />
+              </div>
+
+              <div className="preset-row">
+                {[
+                  { label: '當下價', mult: 1 },
+                  { label: '-10%', mult: 0.9 },
+                  { label: '-20%', mult: 0.8 },
+                  { label: '-30%', mult: 0.7 }
+                ].map(p => {
+                  const cheapest = result.analysis!.cheapestRoundTripPrice!;
+                  const value = Math.round(cheapest * p.mult);
+                  return (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => setCustomMaxPrice(String(value))}
+                      className="preset-btn"
+                      disabled={subscribeStatus === 'saving' || subscribeStatus === 'saved'}
+                    >
+                      <span className="preset-label">{p.label}</span>
+                      <span className="preset-value">{value.toLocaleString()}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={handleSubscribe}
+                disabled={subscribeStatus === 'saving' || subscribeStatus === 'saved' || !customMaxPrice}
+                className="btn-subscribe"
+              >
+                {subscribeStatus === 'saved' ? (
+                  <>✅ 已訂閱（低於 NT$ {Number(customMaxPrice).toLocaleString()} 會通知）</>
+                ) : subscribeStatus === 'saving' ? (
+                  <>⏳ 訂閱中…</>
+                ) : (
+                  <>確認訂閱（低於 NT$ {customMaxPrice ? Number(customMaxPrice).toLocaleString() : '—'}）</>
+                )}
+              </button>
+            </div>
           )}
 
           {!sourceId && canLogin && result.analysis.cheapestRoundTripPrice && (
@@ -556,24 +610,119 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
         .btn-secondary:hover { background: rgba(255, 255, 255, 0.04); }
 
         .btn-subscribe {
-          margin-top: 12px;
+          margin-top: 14px;
           width: 100%;
           padding: 14px;
           border-radius: 12px;
-          border: 1px solid rgba(255, 122, 69, 0.4);
-          background: rgba(255, 122, 69, 0.08);
-          color: #ff7a45;
-          font-size: 14px;
-          font-weight: 600;
+          border: none;
+          background: linear-gradient(135deg, #ff7a45, #ff6020);
+          color: white;
+          font-size: 15px;
+          font-weight: 700;
           cursor: pointer;
           transition: all 0.15s;
+          box-shadow: 0 4px 12px rgba(255, 122, 69, 0.3);
         }
-        .btn-subscribe:hover:not(:disabled) {
-          background: rgba(255, 122, 69, 0.15);
-        }
+        .btn-subscribe:active { transform: scale(0.98); }
         .btn-subscribe:disabled {
           opacity: 0.6;
           cursor: not-allowed;
+          background: #2a3454;
+          box-shadow: none;
+          color: #cdd5f0;
+        }
+
+        .sub-card {
+          margin-top: 16px;
+          background: linear-gradient(135deg, rgba(255, 122, 69, 0.10), rgba(255, 122, 69, 0.04));
+          border: 1px solid rgba(255, 122, 69, 0.25);
+          border-radius: 14px;
+          padding: 18px;
+        }
+        .sub-title {
+          font-size: 16px;
+          font-weight: 700;
+          margin-bottom: 4px;
+        }
+        .sub-desc {
+          font-size: 12px;
+          color: #cdd5f0;
+          margin-bottom: 14px;
+          line-height: 1.5;
+        }
+        .sub-input-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          background: #0a0e1a;
+          border: 1px solid #2a3454;
+          border-radius: 10px;
+          padding: 6px 14px;
+        }
+        .sub-input-row:focus-within {
+          border-color: #ff7a45;
+        }
+        .sub-prefix {
+          color: #7e88a8;
+          font-size: 14px;
+          font-weight: 600;
+          font-family: inherit;
+        }
+        .sub-input-row input {
+          flex: 1;
+          padding: 12px 0;
+          border: none;
+          background: transparent;
+          color: #f0f4ff;
+          font-size: 18px;
+          font-weight: 700;
+          font-family: inherit;
+          outline: none;
+          -moz-appearance: textfield;
+        }
+        .sub-input-row input::-webkit-outer-spin-button,
+        .sub-input-row input::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+
+        .preset-row {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 8px;
+          margin-top: 10px;
+        }
+        .preset-btn {
+          padding: 8px 4px;
+          border: 1px solid #2a3454;
+          background: rgba(255, 255, 255, 0.04);
+          color: #cdd5f0;
+          border-radius: 8px;
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 2px;
+          transition: all 0.15s;
+          font-family: inherit;
+        }
+        .preset-btn:hover:not(:disabled) {
+          border-color: #ff7a45;
+          background: rgba(255, 122, 69, 0.08);
+        }
+        .preset-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .preset-label {
+          font-size: 11px;
+          color: #7e88a8;
+          font-weight: 600;
+        }
+        .preset-value {
+          font-size: 13px;
+          font-weight: 700;
+          color: #f0f4ff;
         }
 
         .btn-line-login {

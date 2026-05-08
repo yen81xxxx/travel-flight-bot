@@ -6,7 +6,7 @@ echo  Vercel will auto-redeploy after push.
 echo ============================================
 echo.
 git add .
-git commit -m "Fix ternary syntax in SubscriptionsView"
+git commit -m "Customizable subscription threshold with quick discount presets"
 git push origin main
 echo.
 echo ============================================
