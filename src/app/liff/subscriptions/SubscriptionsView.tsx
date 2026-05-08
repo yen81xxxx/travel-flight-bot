@@ -94,6 +94,22 @@ export default function SubscriptionsView({ liffId }: Props) {
   const [editPrice, setEditPrice] = useState<string>('');
   const [savingEdit, setSavingEdit] = useState(false);
 
+  const handleTest = async (id: number) => {
+    if (!sourceId) return;
+    try {
+      const res = await fetch('/api/subscriptions/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscriptionId: id, sourceId })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      alert('✅ 測試通知已發送，請看你的 LINE 聊天室');
+    } catch (err) {
+      alert(`測試失敗：${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
   const startEdit = (sub: Subscription) => {
     setEditingId(sub.id ?? null);
     setEditPrice(String(sub.max_price));
@@ -249,8 +265,11 @@ export default function SubscriptionsView({ liffId }: Props) {
                     <button className="btn-edit" onClick={() => startEdit(sub)}>
                       ✏️ 改金額
                     </button>
+                    <button className="btn-test" onClick={() => sub.id && handleTest(sub.id)}>
+                      📤 試發
+                    </button>
                     <button className="del" onClick={() => sub.id && handleDelete(sub.id)}>
-                      ✕ 取消訂閱
+                      ✕ 取消
                     </button>
                   </div>
                 </>
@@ -385,7 +404,7 @@ export default function SubscriptionsView({ liffId }: Props) {
           background: rgba(255, 122, 69, 0.10);
           border: 1px solid rgba(255, 122, 69, 0.4);
           color: #ff7a45;
-          padding: 8px 14px;
+          padding: 8px 12px;
           border-radius: 8px;
           font-size: 13px;
           font-weight: 600;
@@ -394,6 +413,21 @@ export default function SubscriptionsView({ liffId }: Props) {
         }
         .btn-edit:hover {
           background: rgba(255, 122, 69, 0.18);
+        }
+        .btn-test {
+          flex: 1;
+          background: rgba(96, 165, 250, 0.08);
+          border: 1px solid rgba(96, 165, 250, 0.4);
+          color: #60a5fa;
+          padding: 8px 12px;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          font-family: inherit;
+        }
+        .btn-test:hover {
+          background: rgba(96, 165, 250, 0.16);
         }
         .edit-row {
           margin-top: 10px;
