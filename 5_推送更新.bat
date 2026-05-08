@@ -6,7 +6,7 @@ echo  Vercel will auto-redeploy after push.
 echo ============================================
 echo.
 git add .
-git commit -m "Wrap search route in robust try/catch (always returns JSON)"
+git commit -m "SerpApi: per-call 10s timeout + reduce retries to avoid Vercel function timeout"
 git push origin main
 echo.
 echo ============================================

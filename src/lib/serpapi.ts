@@ -127,26 +127,41 @@ async function callSerpApi(query: Record<string, string | undefined>): Promise<S
 
   const url = `${SERPAPI_BASE}?${params.toString()}`;
 
-  // 簡單的 retry：失敗最多重試 2 次
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  // 每次 fetch 最多 10 秒（避免一次卡很久 → 整個 Vercel function 被殺）
+  // 最多重試 1 次（總共 2 次嘗試），整體上限 ~22s（含 backoff）
+  const TIMEOUT_MS = 10_000;
+  const MAX_ATTEMPTS = 2;
+
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
       const resp = await fetch(url, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
-        // 避免 Vercel 邊緣快取
-        cache: 'no-store'
+        cache: 'no-store',
+        signal: controller.signal
       });
+      clearTimeout(timer);
       if (!resp.ok) {
         const body = await resp.text().catch(() => '');
         throw new Error(`SerpApi ${resp.status}: ${body.slice(0, 200)}`);
       }
       return (await resp.json()) as SerpApiFlightsResponse;
     } catch (err) {
-      if (attempt === 3) throw err;
-      await new Promise(r => setTimeout(r, attempt * 1500));
+      clearTimeout(timer);
+      lastErr = err;
+      const isTimeout = err instanceof Error && err.name === 'AbortError';
+      console.warn(`[serpapi] attempt ${attempt}/${MAX_ATTEMPTS} failed${isTimeout ? ' (timeout)' : ''}:`, err);
+      if (attempt < MAX_ATTEMPTS) {
+        await new Promise(r => setTimeout(r, 1500));
+      }
     }
   }
-  throw new Error('SerpApi: unreachable');
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error('SerpApi unreachable');
 }
 
 function extractQuotes(
