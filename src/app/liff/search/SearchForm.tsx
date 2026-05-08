@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { Airport } from '@/config/airports';
+import { isTaiwanAirport, isJapanAirport } from '@/config/airports';
 
 interface Props {
   liffId: string;
-  origins: Airport[];
-  destinations: Airport[];
+  twAirports: Airport[];
+  jpAirports: Airport[];
 }
 
 interface FlightRow {
@@ -31,7 +32,7 @@ interface SearchResponse {
   error?: string;
 }
 
-export default function SearchForm({ liffId, origins, destinations }: Props) {
+export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
   const [liffReady, setLiffReady] = useState(false);
   const [insideLine, setInsideLine] = useState(false);
   const [canLogin, setCanLogin] = useState(false);  // LIFF 已載入且可登入（電腦版場景）
@@ -122,17 +123,59 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
     }
   };
 
-  const destByRegion = useMemo(() => {
+  // 把日本機場依地區分組（給下拉選單）
+  const jpByRegion = useMemo(() => {
     const groups: Record<string, Airport[]> = {};
-    for (const d of destinations) {
+    for (const d of jpAirports) {
       const r = d.region ?? '其他';
       (groups[r] = groups[r] ?? []).push(d);
     }
     return groups;
-  }, [destinations]);
+  }, [jpAirports]);
+
+  // 對調出發地與目的地
+  const swapDirections = () => {
+    setOrigin(destination);
+    setDestination(origin);
+    setResult(null);
+    setError(null);
+    setSubscribeStatus('idle');
+  };
+
+  // 渲染統一的機場下拉（包含台灣 + 日本，依國家分組）
+  const renderAirportOptions = () => (
+    <>
+      <optgroup label="🇹🇼 台灣">
+        {twAirports.map(a => (
+          <option key={a.iata} value={a.iata}>
+            {a.city} {a.iata}
+          </option>
+        ))}
+      </optgroup>
+      {Object.entries(jpByRegion).map(([region, list]) => (
+        <optgroup key={region} label={`🇯🇵 ${region}`}>
+          {list.map(a => (
+            <option key={a.iata} value={a.iata}>
+              {a.city} {a.iata}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </>
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 方向驗證：必須一個台灣、一個日本
+    const tw1 = isTaiwanAirport(origin);
+    const jp1 = isJapanAirport(origin);
+    const tw2 = isTaiwanAirport(destination);
+    const jp2 = isJapanAirport(destination);
+    if (!((tw1 && jp2) || (jp1 && tw2))) {
+      setError('出發地與目的地必須一個在台灣、一個在日本');
+      return;
+    }
 
     // 前端驗證日期
     const today = new Date();
@@ -299,15 +342,19 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
               disabled={loading}
               className="picker"
             >
-              {origins.map(a => (
-                <option key={a.iata} value={a.iata}>
-                  {a.city} {a.iata}
-                </option>
-              ))}
+              {renderAirportOptions()}
             </select>
           </div>
 
-          <div className="arrow-icon">→</div>
+          <button
+            type="button"
+            className="swap-btn"
+            onClick={swapDirections}
+            disabled={loading}
+            title="對調出發地與目的地"
+          >
+            ⇄
+          </button>
 
           <div className="airport-pick">
             <span className="role">TO</span>
@@ -317,15 +364,7 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
               disabled={loading}
               className="picker"
             >
-              {Object.entries(destByRegion).map(([region, list]) => (
-                <optgroup key={region} label={region}>
-                  {list.map(a => (
-                    <option key={a.iata} value={a.iata}>
-                      {a.city} {a.iata}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
+              {renderAirportOptions()}
             </select>
           </div>
         </div>
@@ -639,6 +678,29 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
           color: #ff7a45;
           padding-bottom: 12px;
           font-weight: 700;
+        }
+        .swap-btn {
+          margin-top: 18px;
+          padding: 10px 12px;
+          border: 1px solid rgba(255, 122, 69, 0.4);
+          background: rgba(255, 122, 69, 0.08);
+          color: #ff7a45;
+          border-radius: 999px;
+          font-size: 18px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s;
+          align-self: end;
+          height: 48px;
+          width: 48px;
+        }
+        .swap-btn:hover:not(:disabled) {
+          background: rgba(255, 122, 69, 0.18);
+          transform: rotate(180deg);
+        }
+        .swap-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
 
         .picker, .date-input input {

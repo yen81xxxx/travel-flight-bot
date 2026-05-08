@@ -4,23 +4,31 @@ import { searchFlights } from '@/lib/serpapi';
 import { analyzeFlights, formatAnalysisForLine } from '@/lib/flights';
 import { pushText } from '@/lib/line';
 import { getSupabase } from '@/lib/supabase';
-import { TW_ORIGINS, JP_DESTINATIONS } from '@/config/airports';
+import { TW_ORIGINS, JP_DESTINATIONS, ALL_AIRPORTS, isTaiwanAirport, isJapanAirport } from '@/config/airports';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;  // 含 2 次 SerpApi（round-trip）+ DB + push
 
-const VALID_ORIGINS = TW_ORIGINS.map(a => a.iata);
-const VALID_DESTINATIONS = JP_DESTINATIONS.map(a => a.iata);
+const VALID_IATA = ALL_AIRPORTS.map(a => a.iata);
 
 const SearchBody = z.object({
-  origin: z.enum(VALID_ORIGINS as [string, ...string[]]),
-  destination: z.enum(VALID_DESTINATIONS as [string, ...string[]]),
+  origin: z.enum(VALID_IATA as [string, ...string[]]),
+  destination: z.enum(VALID_IATA as [string, ...string[]]),
   outboundDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  // 若使用者從 LIFF 開來，會帶 sourceId（要把結果同時推到聊天室）
   sourceId: z.string().optional()
-});
+}).refine(
+  (data) => {
+    // 出發地與目的地必須一個在台灣、一個在日本
+    const tw1 = isTaiwanAirport(data.origin);
+    const jp1 = isJapanAirport(data.origin);
+    const tw2 = isTaiwanAirport(data.destination);
+    const jp2 = isJapanAirport(data.destination);
+    return (tw1 && jp2) || (jp1 && tw2);
+  },
+  { message: '出發地與目的地必須一個在台灣、一個在日本' }
+);
 
 /**
  * 任意人都可呼叫的搜尋 API（給 LIFF / 網站表單用）。

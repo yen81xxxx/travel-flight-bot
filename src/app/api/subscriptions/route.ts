@@ -1,25 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSupabase } from '@/lib/supabase';
-import { TW_ORIGINS, JP_DESTINATIONS, formatAirport } from '@/config/airports';
+import { TW_ORIGINS, JP_DESTINATIONS, ALL_AIRPORTS, isTaiwanAirport, isJapanAirport, formatAirport } from '@/config/airports';
 import { pushText } from '@/lib/line';
 import type { SourceType } from '@/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const VALID_ORIGINS = TW_ORIGINS.map(a => a.iata);
-const VALID_DESTINATIONS = JP_DESTINATIONS.map(a => a.iata);
+const VALID_IATA = ALL_AIRPORTS.map(a => a.iata);
 
 const PostBody = z.object({
   sourceId: z.string().min(1),
-  origin: z.enum(VALID_ORIGINS as [string, ...string[]]),
-  destination: z.enum(VALID_DESTINATIONS as [string, ...string[]]),
+  origin: z.enum(VALID_IATA as [string, ...string[]]),
+  destination: z.enum(VALID_IATA as [string, ...string[]]),
   maxPrice: z.number().positive(),
   outboundDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   label: z.string().optional()
-});
+}).refine(
+  (data) => {
+    const tw1 = isTaiwanAirport(data.origin);
+    const jp1 = isJapanAirport(data.origin);
+    const tw2 = isTaiwanAirport(data.destination);
+    const jp2 = isJapanAirport(data.destination);
+    return (tw1 && jp2) || (jp1 && tw2);
+  },
+  { message: '出發地與目的地必須一個在台灣、一個在日本' }
+);
 
 /** 列出某個 sourceId 的訂閱 */
 export async function GET(req: NextRequest): Promise<NextResponse> {

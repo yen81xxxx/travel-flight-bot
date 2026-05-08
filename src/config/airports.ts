@@ -76,6 +76,19 @@ export function groupJpByRegion(): Record<string, Airport[]> {
   return groups;
 }
 
+/** 判斷機場是否在台灣 */
+export function isTaiwanAirport(iata: string): boolean {
+  return TW_ORIGINS.some(a => a.iata === iata);
+}
+
+/** 判斷機場是否在日本 */
+export function isJapanAirport(iata: string): boolean {
+  return JP_DESTINATIONS.some(a => a.iata === iata);
+}
+
+/** 全部支援的機場（台灣 + 日本） */
+export const ALL_AIRPORTS: Airport[] = [...TW_ORIGINS, ...JP_DESTINATIONS];
+
 /**
  * 用 IATA 代碼找機場資訊
  */

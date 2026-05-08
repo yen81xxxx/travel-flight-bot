@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: '機票查詢',
-  description: '台灣 → 日本 機票即時查詢 | LIFF'
+  description: '台灣 ⇄ 日本 機票即時查詢 | LIFF'
 };
 
 export default function LiffSearchPage() {
@@ -14,8 +14,8 @@ export default function LiffSearchPage() {
   return (
     <SearchForm
       liffId={liffId}
-      origins={TW_ORIGINS}
-      destinations={JP_DESTINATIONS}
+      twAirports={TW_ORIGINS}
+      jpAirports={JP_DESTINATIONS}
     />
   );
 }

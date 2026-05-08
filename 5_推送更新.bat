@@ -6,7 +6,7 @@ echo  Vercel will auto-redeploy after push.
 echo ============================================
 echo.
 git add .
-git commit -m "Bump SerpApi timeout to 25s, search maxDuration to 60s, friendlier error msg"
+git commit -m "Bidirectional search (TW <-> JP) with swap button"
 git push origin main
 echo.
 echo ============================================
