@@ -6,15 +6,10 @@ import { analyzeFlights, formatAnalysisForLine } from './flights';
 import { getSupabase } from './supabase';
 
 const HELP_TEXT = [
-  '✈️ 航班查詢機器人',
+  '✈️ 機票查詢機器人',
   '',
-  '指令：',
-  '  「查航班」→ 開始查詢',
-  '  「取消」→ 取消目前查詢',
-  '',
-  '查詢時請輸入日期，格式：',
-  '  YYYY-MM-DD YYYY-MM-DD',
-  '  範例：2027-02-15 2027-02-18'
+  '輸入「查航班」開始搜尋',
+  '可選擇出發地、目的地、日期'
 ].join('\n');
 
 const ASK_DATE_TEXT = [
@@ -28,6 +23,12 @@ const ASK_DATE_TEXT = [
   '',
   '輸入「取消」可中止查詢'
 ].join('\n');
+
+function buildLiffUrl(): string | null {
+  const liffId = process.env.NEXT_PUBLIC_LIFF_ID?.trim();
+  if (!liffId) return null;
+  return `https://liff.line.me/${liffId}`;
+}
 
 const DATE_FORMAT = /^(\d{4}-\d{2}-\d{2})\s+(\d{4}-\d{2}-\d{2})$/;
 
@@ -54,8 +55,23 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
 
   // 進入查詢流程
   if (text === '查航班' || text === '查機票' || text === '/search') {
-    await setState({ source_id: sourceId, state: 'waiting_date', context: {} });
-    await replyText(replyToken, ASK_DATE_TEXT);
+    const liffUrl = buildLiffUrl();
+    if (liffUrl) {
+      // 有 LIFF：直接給連結，可選擇地點 + 日期
+      await replyText(
+        replyToken,
+        [
+          '✈️ 點下面連結開啟查詢頁',
+          '可選擇出發地、目的地、日期',
+          '',
+          liffUrl
+        ].join('\n')
+      );
+    } else {
+      // 沒設定 LIFF：fall back 到純文字日期輸入
+      await setState({ source_id: sourceId, state: 'waiting_date', context: {} });
+      await replyText(replyToken, ASK_DATE_TEXT);
+    }
     return;
   }
 
