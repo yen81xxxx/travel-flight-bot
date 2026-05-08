@@ -6,7 +6,7 @@ echo  Vercel will auto-redeploy after push.
 echo ============================================
 echo.
 git add .
-git commit -m "Subscribe confirmation push + clearer success banner + suppress noisy group search push"
+git commit -m "Date validation + clear empty results message"
 git push origin main
 echo.
 echo ============================================

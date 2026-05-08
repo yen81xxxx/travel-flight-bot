@@ -133,6 +133,36 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 前端驗證日期
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const out = new Date(outboundDate);
+    const ret = new Date(returnDate);
+
+    if (isNaN(out.getTime()) || isNaN(ret.getTime())) {
+      setError('日期格式錯誤');
+      return;
+    }
+    if (out < today) {
+      setError('去程日期不能在過去（請確認年份是否為今年或之後）');
+      return;
+    }
+    if (ret <= out) {
+      setError('回程日期必須晚於去程日期');
+      return;
+    }
+    const tripDays = Math.round((ret.getTime() - out.getTime()) / 86400_000);
+    if (tripDays > 60) {
+      const ok = confirm(`旅程長度 ${tripDays} 天，超過 60 天 SerpApi 可能查無資料。確定要查嗎？`);
+      if (!ok) return;
+    }
+    const aheadDays = Math.round((out.getTime() - today.getTime()) / 86400_000);
+    if (aheadDays > 330) {
+      setError('出發日期離今天超過 11 個月，太遠通常還沒開放訂位');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setResult(null);
@@ -309,6 +339,7 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
               onChange={e => setOutboundDate(e.target.value)}
               required
               disabled={loading}
+              min={new Date().toISOString().slice(0, 10)}
             />
           </label>
           <label className="date-input">
@@ -319,6 +350,7 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
               onChange={e => setReturnDate(e.target.value)}
               required
               disabled={loading}
+              min={outboundDate || new Date().toISOString().slice(0, 10)}
             />
           </label>
         </div>
@@ -338,7 +370,22 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
 
       {error && <div className="alert alert-error">⚠️ {error}</div>}
 
-      {result && result.ok && result.analysis && (
+      {result && result.ok && result.analysis && result.analysis.outboundCount === 0 && (
+        <div className="empty-result">
+          <div className="big">🔍</div>
+          <h3>找不到符合條件的航班</h3>
+          <p>可能的原因：</p>
+          <ul>
+            <li>📅 日期太久之前或太久之後（SerpApi 通常只有未來 11 個月內的票）</li>
+            <li>✈️ 這條航線沒有星宇 / 長榮 / 虎航 / 捷星 / 酷航直飛或合理轉機</li>
+            <li>🗓️ 旅程長度太長（&gt; 60 天 Google Flights 可能不顯示）</li>
+            <li>🏝️ 冷門目的地（例如石垣島）+ 冷門日期 = 無班機</li>
+          </ul>
+          <p>建議改個日期再試。</p>
+        </div>
+      )}
+
+      {result && result.ok && result.analysis && result.analysis.outboundCount > 0 && (
         <div className="results">
           {result.fromCache && (
             <div className="alert alert-info">📦 來自快取（6 小時內查過）</div>
@@ -869,6 +916,39 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
         .alert-success {
           background: rgba(74, 222, 128, 0.1);
           color: #4ade80;
+        }
+
+        .empty-result {
+          margin-top: 16px;
+          padding: 24px;
+          border-radius: 14px;
+          background: #1a2238;
+          border: 1px dashed #2a3454;
+          text-align: center;
+        }
+        .empty-result .big {
+          font-size: 48px;
+          margin-bottom: 12px;
+        }
+        .empty-result h3 {
+          font-size: 17px;
+          font-weight: 700;
+          margin-bottom: 12px;
+        }
+        .empty-result p {
+          font-size: 14px;
+          color: #cdd5f0;
+          margin: 8px 0;
+        }
+        .empty-result ul {
+          text-align: left;
+          margin: 12px 0;
+          padding-left: 20px;
+          color: #cdd5f0;
+          font-size: 13px;
+        }
+        .empty-result ul li {
+          margin: 6px 0;
         }
 
         .success-banner {
