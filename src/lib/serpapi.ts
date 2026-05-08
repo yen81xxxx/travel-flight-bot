@@ -127,41 +127,34 @@ async function callSerpApi(query: Record<string, string | undefined>): Promise<S
 
   const url = `${SERPAPI_BASE}?${params.toString()}`;
 
-  // 每次 fetch 最多 10 秒（避免一次卡很久 → 整個 Vercel function 被殺）
-  // 最多重試 1 次（總共 2 次嘗試），整體上限 ~22s（含 backoff）
-  const TIMEOUT_MS = 10_000;
-  const MAX_ATTEMPTS = 2;
+  // 每次 fetch 最多 25 秒（SerpApi 對冷門路線可能需要久一點）
+  // 不 retry（timeout 通常代表 SerpApi 真的慢，重試只會更慢）
+  const TIMEOUT_MS = 25_000;
 
-  let lastErr: unknown;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    try {
-      const resp = await fetch(url, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' },
-        cache: 'no-store',
-        signal: controller.signal
-      });
-      clearTimeout(timer);
-      if (!resp.ok) {
-        const body = await resp.text().catch(() => '');
-        throw new Error(`SerpApi ${resp.status}: ${body.slice(0, 200)}`);
-      }
-      return (await resp.json()) as SerpApiFlightsResponse;
-    } catch (err) {
-      clearTimeout(timer);
-      lastErr = err;
-      const isTimeout = err instanceof Error && err.name === 'AbortError';
-      console.warn(`[serpapi] attempt ${attempt}/${MAX_ATTEMPTS} failed${isTimeout ? ' (timeout)' : ''}:`, err);
-      if (attempt < MAX_ATTEMPTS) {
-        await new Promise(r => setTimeout(r, 1500));
-      }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const resp = await fetch(url, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      cache: 'no-store',
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      throw new Error(`SerpApi ${resp.status}: ${body.slice(0, 200)}`);
     }
+    return (await resp.json()) as SerpApiFlightsResponse;
+  } catch (err) {
+    clearTimeout(timer);
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
+    console.warn(`[serpapi] failed${isTimeout ? ' (timeout 25s)' : ''}:`, err);
+    if (isTimeout) {
+      throw new Error('SerpApi 查詢超時（這條航線太冷門或暫時擁塞），稍後再試');
+    }
+    throw err;
   }
-  throw lastErr instanceof Error
-    ? lastErr
-    : new Error('SerpApi unreachable');
 }
 
 function extractQuotes(

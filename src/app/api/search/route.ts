@@ -8,7 +8,7 @@ import { TW_ORIGINS, JP_DESTINATIONS } from '@/config/airports';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 30;
+export const maxDuration = 60;  // 含 2 次 SerpApi（round-trip）+ DB + push
 
 const VALID_ORIGINS = TW_ORIGINS.map(a => a.iata);
 const VALID_DESTINATIONS = JP_DESTINATIONS.map(a => a.iata);
