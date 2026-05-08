@@ -37,6 +37,25 @@ export interface ConversationState {
   updated_at?: string;
 }
 
+export type SourceType = 'user' | 'group' | 'room';
+
+export interface Subscription {
+  id?: number;
+  source_id: string;
+  source_type: SourceType;
+  origin: string;
+  destination: string;
+  outbound_date: string | null;
+  return_date: string | null;
+  max_price: number;
+  currency: string;
+  active: boolean;
+  last_notified_at?: string | null;
+  last_notified_price?: number | null;
+  label?: string | null;
+  created_at?: string;
+}
+
 // ============================================
 // SerpApi response (subset of fields we use)
 // ============================================

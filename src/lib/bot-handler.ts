@@ -5,11 +5,17 @@ import { searchFlights } from './serpapi';
 import { analyzeFlights, formatAnalysisForLine } from './flights';
 import { getSupabase } from './supabase';
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://travel-flight-bot.vercel.app';
+
 const HELP_TEXT = [
   '✈️ 機票查詢機器人',
   '',
-  '輸入「查航班」開始搜尋',
-  '可選擇出發地、目的地、日期'
+  '指令：',
+  '・「查航班」→ 開新查詢（選地點、日期）',
+  '・「我的訂閱」→ 看降價提醒清單',
+  '・「說明」→ 顯示這份說明',
+  '',
+  '💡 提示：在搜尋結果頁可以「訂閱降價提醒」'
 ].join('\n');
 
 const ASK_DATE_TEXT = [
@@ -18,11 +24,10 @@ const ASK_DATE_TEXT = [
   '格式：YYYY-MM-DD YYYY-MM-DD',
   '範例：2027-02-15 2027-02-18',
   '',
-  '搜尋條件：',
-  '・星宇 / 長榮 / 虎航 / 捷星 / 酷航',
-  '',
   '輸入「取消」可中止查詢'
 ].join('\n');
+
+const DATE_FORMAT = /^(\d{4}-\d{2}-\d{2})\s+(\d{4}-\d{2}-\d{2})$/;
 
 function buildLiffUrl(): string | null {
   const liffId = process.env.NEXT_PUBLIC_LIFF_ID?.trim();
@@ -30,12 +35,30 @@ function buildLiffUrl(): string | null {
   return `https://liff.line.me/${liffId}`;
 }
 
-const DATE_FORMAT = /^(\d{4}-\d{2}-\d{2})\s+(\d{4}-\d{2}-\d{2})$/;
+function getSubscriptionsUrl(): string {
+  // 訂閱頁是普通網頁；在 LINE 內會用 in-app browser 開啟，仍可取得 LIFF profile
+  return `${APP_URL}/liff/subscriptions`;
+}
 
-/**
- * 主入口：處理單一 LINE webhook event
- */
 export async function handleEvent(event: WebhookEvent): Promise<void> {
+  // 群組/聊天室加入時打招呼
+  if (event.type === 'join') {
+    const replyToken = (event as any).replyToken;
+    if (replyToken) {
+      await replyText(
+        replyToken,
+        [
+          '👋 哈囉，我是機票小助手！',
+          '',
+          '在群組裡可以一起追蹤同一條航線、共享降價提醒。',
+          '',
+          '輸入「查航班」開始'
+        ].join('\n')
+      );
+    }
+    return;
+  }
+
   if (event.type !== 'message') return;
   if (event.message.type !== 'text') return;
 
@@ -46,10 +69,31 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
   const replyToken = event.replyToken;
   const state = await getState(sourceId);
 
-  // 共通：取消
+  // 取消查詢
   if (text === '取消' || text.toLowerCase() === 'cancel') {
     await resetState(sourceId);
     await replyText(replyToken, '已取消查詢。輸入「查航班」可重新開始。');
+    return;
+  }
+
+  // 說明 / 幫助
+  if (text === '說明' || text === '幫助' || text === 'help' || text === '/help') {
+    await replyText(replyToken, HELP_TEXT);
+    return;
+  }
+
+  // 我的訂閱
+  if (text === '我的訂閱' || text === '訂閱' || text === '/subs') {
+    await replyText(
+      replyToken,
+      [
+        '🔔 點下面連結查看你的降價提醒清單',
+        '',
+        getSubscriptionsUrl(),
+        '',
+        '可以在這裡查看、取消訂閱'
+      ].join('\n')
+    );
     return;
   }
 
@@ -57,18 +101,16 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
   if (text === '查航班' || text === '查機票' || text === '/search') {
     const liffUrl = buildLiffUrl();
     if (liffUrl) {
-      // 有 LIFF：直接給連結，可選擇地點 + 日期
       await replyText(
         replyToken,
         [
           '✈️ 點下面連結開啟查詢頁',
-          '可選擇出發地、目的地、日期',
+          '可選擇出發地、目的地、日期，並訂閱降價提醒',
           '',
           liffUrl
         ].join('\n')
       );
     } else {
-      // 沒設定 LIFF：fall back 到純文字日期輸入
       await setState({ source_id: sourceId, state: 'waiting_date', context: {} });
       await replyText(replyToken, ASK_DATE_TEXT);
     }
@@ -94,22 +136,19 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
       return;
     }
 
-    // 重置狀態 — 接下來開始查詢，回應一個「處理中」訊息，背景再去 push 結果
     await resetState(sourceId);
     await replyText(replyToken, `🔍 正在查詢 ${outboundDate} ~ ${returnDate} 的航班，稍候...`);
-
-    // 用 await 但不擋 reply（reply 已先發出）
     await runSearchAndPush(sourceId, outboundDate, returnDate, 'line');
     return;
   }
 
-  // 預設：show help
-  await replyText(replyToken, HELP_TEXT);
+  // 預設：在群組裡不亂回應，僅 user 1:1 才送 help
+  const isGroup = sourceId.startsWith('C') || sourceId.startsWith('R');
+  if (!isGroup) {
+    await replyText(replyToken, HELP_TEXT);
+  }
 }
 
-/**
- * 執行搜尋並推 push 訊息給觸發者
- */
 async function runSearchAndPush(
   sourceId: string,
   outboundDate: string,
@@ -153,7 +192,6 @@ async function runSearchAndPush(
       destination
     );
 
-    // push 給觸發者（reply token 已用過，所以走 push）
     await pushText(sourceId, text);
 
     if (runRow?.id) {
@@ -182,8 +220,6 @@ async function runSearchAndPush(
     }
     try {
       await pushText(sourceId, '❌ 查詢失敗，請稍後再試。');
-    } catch (_e) {
-      // ignore push error
-    }
+    } catch (_e) {}
   }
 }

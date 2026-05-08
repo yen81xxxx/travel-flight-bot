@@ -3,6 +3,7 @@ import { searchFlights } from '@/lib/serpapi';
 import { analyzeFlights, formatAnalysisForLine } from '@/lib/flights';
 import { dailyPush } from '@/lib/line';
 import { getSupabase } from '@/lib/supabase';
+import { checkAllSubscriptions } from '@/lib/subscription-checker';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -88,6 +89,14 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
         .eq('id', runRow.id);
     }
 
+    // 跑完每日廣播後，順便檢查所有訂閱
+    let subResult = { total: 0, notified: 0, skipped: 0, errors: 0 };
+    try {
+      subResult = await checkAllSubscriptions();
+    } catch (err) {
+      console.error('[cron] subscription check failed:', err);
+    }
+
     return NextResponse.json({
       ok: true,
       origin,
@@ -98,7 +107,8 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
       serpapiCalls: result.serpapiCalls,
       outboundFound: result.outbound.length,
       returnFound: result.return.length,
-      analysis
+      analysis,
+      subscriptions: subResult
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

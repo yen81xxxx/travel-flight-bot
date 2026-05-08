@@ -6,7 +6,7 @@ echo  Vercel will auto-redeploy after push.
 echo ============================================
 echo.
 git add .
-git commit -m "Trigger redeploy with LIFF_ID env var"
+git commit -m "Add subscription system, group support, UI redesign"
 git push origin main
 echo.
 echo ============================================

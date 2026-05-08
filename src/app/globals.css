@@ -5,30 +5,69 @@
 }
 
 :root {
-  --bg: #0f1419;
-  --panel: #1a2129;
-  --border: #2a3542;
-  --text: #e8eef5;
-  --muted: #8a9aab;
+  /* 配色：溫暖夜空感 */
+  --bg: #0a0e1a;
+  --bg-elevated: #131a2c;
+  --panel: #1a2238;
+  --panel-hover: #232c44;
+  --border: #2a3454;
+  --border-soft: rgba(255, 255, 255, 0.06);
+
+  --text: #f0f4ff;
+  --text-soft: #cdd5f0;
+  --muted: #7e88a8;
+  --muted-soft: #5a6280;
+
   --accent: #ff7a45;
+  --accent-soft: rgba(255, 122, 69, 0.12);
+  --accent-hover: #ff6020;
+
   --good: #4ade80;
+  --good-soft: rgba(74, 222, 128, 0.12);
   --bad: #f87171;
+  --bad-soft: rgba(248, 113, 113, 0.12);
+  --warn: #fbbf24;
+  --warn-soft: rgba(251, 191, 36, 0.12);
   --link: #60a5fa;
+
+  /* 間距 */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 24px;
+
+  /* 陰影 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
 }
 
 html, body {
-  background: var(--bg);
+  background:
+    radial-gradient(1200px 600px at 20% -20%, rgba(255, 122, 69, 0.08), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(96, 165, 250, 0.06), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang TC',
-               'Microsoft JhengHei', sans-serif;
+    'Microsoft JhengHei', 'Helvetica Neue', sans-serif;
   font-size: 15px;
-  line-height: 1.5;
+  line-height: 1.55;
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 a {
   color: var(--link);
   text-decoration: none;
+  transition: opacity 0.15s;
+}
+a:hover { opacity: 0.8; }
+
+button {
+  font-family: inherit;
+  cursor: pointer;
 }
 
 main {
@@ -37,113 +76,234 @@ main {
   padding: 32px 20px 80px;
 }
 
-header {
+/* ===== Hero ===== */
+.hero {
+  background: linear-gradient(135deg, rgba(255, 122, 69, 0.15), rgba(96, 165, 250, 0.05));
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-xl);
+  padding: 32px;
   margin-bottom: 24px;
+  position: relative;
+  overflow: hidden;
 }
 
-h1 {
-  font-size: 28px;
-  font-weight: 700;
-  margin-bottom: 6px;
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -10%;
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(255, 122, 69, 0.18), transparent 70%);
+  pointer-events: none;
 }
 
-.sub {
+.hero h1 {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hero .route {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.hero .route .arrow { color: var(--accent); }
+
+.hero .meta {
   color: var(--muted);
   font-size: 14px;
+  margin-top: 8px;
 }
 
+/* ===== 數據卡片 ===== */
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin: 24px 0;
+  gap: 14px;
+  margin: 20px 0 28px;
 }
 
 .card {
   background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 18px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  transition: transform 0.2s, border-color 0.2s;
 }
 
-.card h3 {
-  font-size: 12px;
+.card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border);
+}
+
+.card .label {
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: var(--muted);
+  font-weight: 600;
   margin-bottom: 8px;
-  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .card .value {
-  font-size: 24px;
-  font-weight: 700;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
 }
 
-.card .accent { color: var(--accent); }
+.card .value.accent { color: var(--accent); }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  overflow: hidden;
-  margin-top: 16px;
+.card .sub {
+  font-size: 13px;
+  color: var(--muted-soft);
+  margin-top: 4px;
 }
 
-th, td {
-  padding: 12px 14px;
-  text-align: left;
-  border-bottom: 1px solid var(--border);
-  font-size: 14px;
-}
-
-th {
-  background: rgba(255, 255, 255, 0.03);
-  font-weight: 600;
-  color: var(--muted);
-  font-size: 12px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-tr:last-child td { border-bottom: none; }
-
+/* ===== Table / Flight rows ===== */
 .section-title {
   font-size: 18px;
+  font-weight: 700;
+  margin: 28px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-title .badge {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
   font-weight: 600;
-  margin: 32px 0 12px;
-}
-
-.empty {
-  background: var(--panel);
-  border: 1px dashed var(--border);
-  border-radius: 12px;
-  padding: 40px;
-  text-align: center;
-  color: var(--muted);
-}
-
-.tag {
-  display: inline-block;
   padding: 2px 8px;
   border-radius: 999px;
-  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.flight-list {
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+.flight-row {
+  display: grid;
+  grid-template-columns: 200px 1fr auto auto auto;
+  gap: 16px;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-soft);
+  transition: background 0.15s;
+}
+
+.flight-row:last-child { border-bottom: none; }
+.flight-row:hover { background: var(--panel-hover); }
+
+.flight-row .airline {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.flight-row .price {
+  font-weight: 800;
+  font-size: 18px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.flight-row .duration,
+.flight-row .stops {
+  color: var(--muted);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.flight-row .stops.direct {
+  color: var(--good);
   font-weight: 500;
+}
+
+/* ===== Tags ===== */
+.tag {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   background: rgba(255, 255, 255, 0.06);
   color: var(--muted);
 }
 
-.tag.cheapest {
-  background: rgba(74, 222, 128, 0.15);
-  color: var(--good);
+.tag.cheapest { background: var(--good-soft); color: var(--good); }
+.tag.recommended { background: var(--accent-soft); color: var(--accent); }
+.tag.cached { background: var(--warn-soft); color: var(--warn); }
+
+/* ===== Empty state ===== */
+.empty {
+  background: var(--panel);
+  border: 1px dashed var(--border);
+  border-radius: var(--r-xl);
+  padding: 60px 40px;
+  text-align: center;
 }
 
+.empty .icon { font-size: 48px; margin-bottom: 16px; }
+.empty .title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.empty .desc { color: var(--muted); font-size: 14px; }
+.empty code {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+/* ===== Footer ===== */
 footer {
-  margin-top: 48px;
+  margin-top: 60px;
   padding-top: 24px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-soft);
   color: var(--muted);
   font-size: 13px;
+  text-align: center;
+}
+
+/* ===== Mobile ===== */
+@media (max-width: 640px) {
+  main { padding: 16px 12px 40px; }
+  .hero { padding: 24px 20px; border-radius: var(--r-lg); }
+  .hero h1 { font-size: 26px; }
+  .flight-row {
+    grid-template-columns: 1fr auto;
+    gap: 6px 12px;
+  }
+  .flight-row .duration,
+  .flight-row .stops,
+  .flight-row .tag {
+    grid-column: 1 / -1;
+    font-size: 12px;
+  }
+  .flight-row .airline { grid-column: 1; }
+  .flight-row .price { grid-column: 2; }
 }
