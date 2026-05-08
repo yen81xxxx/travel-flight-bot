@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { formatAirport } from '@/config/airports';
 import type { Subscription } from '@/types';
+import Sparkline from './Sparkline';
 
 interface Props {
   liffId: string;
@@ -279,6 +280,13 @@ export default function SubscriptionsView({ liffId }: Props) {
                   上次通知：{new Date(sub.last_notified_at).toLocaleString('zh-TW')}
                 </div>
               )}
+              <Sparkline
+                origin={sub.origin}
+                destination={sub.destination}
+                outboundDate={sub.outbound_date}
+                returnDate={sub.return_date}
+                threshold={Number(sub.max_price)}
+              />
             </div>
           ))}
         </div>

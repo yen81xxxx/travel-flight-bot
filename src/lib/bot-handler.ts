@@ -101,13 +101,20 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
   if (text === '查航班' || text === '查機票' || text === '/search') {
     const liffUrl = buildLiffUrl();
     if (liffUrl) {
+      // 在群組裡點 LIFF 連結時，附帶 ctx=<sourceId>，讓 LIFF 可以提供「訂閱給群組」選項
+      const isGroup = sourceId.startsWith('C') || sourceId.startsWith('R');
+      const urlWithCtx = isGroup
+        ? `${liffUrl}?ctx=${encodeURIComponent(sourceId)}`
+        : liffUrl;
       await replyText(
         replyToken,
         [
           '✈️ 點下面連結開啟查詢頁',
-          '可選擇出發地、目的地、日期，並訂閱降價提醒',
+          isGroup
+            ? '可選擇訂閱給「我自己」或「整個群組」'
+            : '可選擇出發地、目的地、日期，並訂閱降價提醒',
           '',
-          liffUrl
+          urlWithCtx
         ].join('\n')
       );
     } else {

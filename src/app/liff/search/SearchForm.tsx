@@ -49,6 +49,8 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
 
   const [subscribeStatus, setSubscribeStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [customMaxPrice, setCustomMaxPrice] = useState<string>('');
+  const [groupCtxId, setGroupCtxId] = useState<string | null>(null);
+  const [subscribeAs, setSubscribeAs] = useState<'self' | 'group'>('self');
 
   // 預設日期：30 天後出發、停 4 晚
   useEffect(() => {
@@ -57,6 +59,16 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
     const ret = new Date(out.getTime() + 4 * 86400_000);
     setOutboundDate(out.toISOString().slice(0, 10));
     setReturnDate(ret.toISOString().slice(0, 10));
+  }, []);
+
+  // 從 URL 讀 ctx (群組 ID)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const ctx = params.get('ctx');
+    if (ctx && (ctx.startsWith('C') || ctx.startsWith('R'))) {
+      setGroupCtxId(ctx);
+    }
   }, []);
 
   // LIFF 初始化
@@ -165,11 +177,13 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
     setSubscribeStatus('saving');
     try {
       const maxPrice = userInputPrice;
+      // 訂給群組或個人
+      const targetSourceId = subscribeAs === 'group' && groupCtxId ? groupCtxId : sourceId;
       const res = await fetch('/api/subscriptions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sourceId,
+          sourceId: targetSourceId,
           origin,
           destination,
           maxPrice,
@@ -348,8 +362,28 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
             <div className="sub-card">
               <div className="sub-title">🔔 訂閱降價提醒</div>
               <div className="sub-desc">
-                當這條航線最便宜往返跌破下面金額時，自動 LINE 通知你
+                當這條航線最便宜往返跌破下面金額時，自動 LINE 通知
+                {groupCtxId ? '（你選擇的對象）' : '你'}
               </div>
+
+              {groupCtxId && (
+                <div className="target-toggle">
+                  <button
+                    type="button"
+                    className={subscribeAs === 'self' ? 'tg active' : 'tg'}
+                    onClick={() => setSubscribeAs('self')}
+                  >
+                    👤 通知我自己
+                  </button>
+                  <button
+                    type="button"
+                    className={subscribeAs === 'group' ? 'tg active' : 'tg'}
+                    onClick={() => setSubscribeAs('group')}
+                  >
+                    👥 通知整個群組
+                  </button>
+                </div>
+              )}
 
               <div className="sub-input-row">
                 <span className="sub-prefix">NT$</span>
@@ -649,6 +683,29 @@ export default function SearchForm({ liffId, origins, destinations }: Props) {
           color: #cdd5f0;
           margin-bottom: 14px;
           line-height: 1.5;
+        }
+        .target-toggle {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+        .tg {
+          padding: 10px;
+          border-radius: 10px;
+          border: 1px solid #2a3454;
+          background: rgba(255, 255, 255, 0.04);
+          color: #cdd5f0;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          font-family: inherit;
+          transition: all 0.15s;
+        }
+        .tg.active {
+          border-color: #ff7a45;
+          background: rgba(255, 122, 69, 0.15);
+          color: #ff7a45;
         }
         .sub-input-row {
           display: flex;

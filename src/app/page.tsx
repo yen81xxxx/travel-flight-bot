@@ -157,9 +157,40 @@ export default async function HomePage() {
         </>
       )}
 
+      <section className="bot-cta">
+        <div className="cta-grid">
+          <div>
+            <div className="cta-eyebrow">🤖 LINE Bot</div>
+            <h2 className="cta-title">陽明小助手</h2>
+            <p className="cta-desc">
+              加為好友 → 對它說「<strong>查航班</strong>」就能：
+            </p>
+            <ul className="cta-list">
+              <li>✈️ 即時查任意航線票價（4 個台灣機場 → 28 個日本機場）</li>
+              <li>🔔 訂閱降價提醒，跌破門檻自動 LINE 通知</li>
+              <li>📅 多組日期同時追蹤</li>
+              <li>📊 看歷史價格走勢、找最划算時段</li>
+            </ul>
+            <a className="cta-button" href={`https://line.me/R/ti/p/@${process.env.LINE_BASIC_ID ?? '024fxtan'}`}>
+              ➕ 加好友
+            </a>
+            <a className="cta-button secondary" href="/liff/search" style={{ marginLeft: 8 }}>
+              🔍 直接查機票
+            </a>
+          </div>
+          <div className="qr-wrap">
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&bgcolor=1a2238&color=ffffff&qzone=2&data=${encodeURIComponent('https://line.me/R/ti/p/@' + (process.env.LINE_BASIC_ID ?? '024fxtan'))}`}
+              alt="LINE 加好友 QR Code"
+              className="qr"
+            />
+            <div className="qr-caption">手機掃描加好友</div>
+          </div>
+        </div>
+      </section>
+
       <footer>
-        資料來源 SerpApi (Google Flights) ・ 每日自動更新<br />
-        透過 LINE Bot「陽明小助手」輸入「查航班」可即時查詢自訂日期 / 航線
+        資料來源 SerpApi (Google Flights) ・ 每日自動更新
       </footer>
     </main>
   );
