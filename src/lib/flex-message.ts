@@ -144,8 +144,8 @@ export function buildAlertFlex(props: AlertFlexProps) {
             height: 'sm',
             action: {
               type: 'uri',
-              label: '🔍 用 Google Flights 訂',
-              uri: googleFlightsUrl(props)
+              label: '🔍 用 Skyscanner 訂（已帶條件）',
+              uri: flightSearchUrl(props)
             }
           },
           {
@@ -280,7 +280,11 @@ export function buildDailyFlex(props: DailyFlexProps) {
   };
 }
 
-function googleFlightsUrl(p: AlertFlexProps): string {
-  const q = encodeURIComponent(`${p.origin} to ${p.destination} ${p.outboundDate} returning ${p.returnDate}`);
-  return `https://www.google.com/travel/flights?q=${q}`;
+/**
+ * Skyscanner 的 deep link 比 Google Flights 可靠 —— 直接帶機場碼 + 日期到 URL path，
+ * 不需要 NLP parse 就能 pre-fill 搜尋條件。日期格式是 YYMMDD。
+ */
+function flightSearchUrl(p: AlertFlexProps): string {
+  const ymd = (d: string) => d.replace(/-/g, '').slice(2); // 2026-06-08 -> 260608
+  return `https://www.skyscanner.com.tw/transport/flights/${p.origin}/${p.destination}/${ymd(p.outboundDate)}/${ymd(p.returnDate)}/?adultsv2=1`;
 }

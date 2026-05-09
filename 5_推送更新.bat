@@ -6,7 +6,7 @@ echo  Vercel will auto-redeploy after push.
 echo ============================================
 echo.
 git add .
-git commit -m "Fix: make subscription card styles global (renderCard JSX wasn't being scoped)"
+git commit -m "Switch booking link to Skyscanner deep link (pre-fills airport+dates reliably)"
 git push origin main
 echo.
 echo ============================================
