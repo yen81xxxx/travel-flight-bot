@@ -52,6 +52,7 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
   const [customMaxPrice, setCustomMaxPrice] = useState<string>('');
   const [groupCtxId, setGroupCtxId] = useState<string | null>(null);
   const [subscribeAs, setSubscribeAs] = useState<'self' | 'group'>('self');
+  const [subLabel, setSubLabel] = useState<string>('');
 
   // 預設日期：30 天後出發、停 4 晚
   useEffect(() => {
@@ -262,7 +263,8 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
           destination,
           maxPrice,
           outboundDate,
-          returnDate
+          returnDate,
+          label: subLabel.trim() || undefined
         })
       });
       const data = await res.json();
@@ -483,6 +485,16 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
                   disabled={subscribeStatus === 'saving' || subscribeStatus === 'saved'}
                 />
               </div>
+
+              <input
+                type="text"
+                value={subLabel}
+                onChange={e => setSubLabel(e.target.value)}
+                placeholder="📝 備註（選填，例如「老婆生日旅行」）"
+                disabled={subscribeStatus === 'saving' || subscribeStatus === 'saved'}
+                className="sub-label-input"
+                maxLength={50}
+              />
 
               <div className="preset-row">
                 {[
@@ -867,6 +879,22 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
         .sub-input-row input::-webkit-inner-spin-button {
           -webkit-appearance: none;
           margin: 0;
+        }
+
+        .sub-label-input {
+          margin-top: 10px;
+          width: 100%;
+          padding: 12px 14px;
+          border-radius: 10px;
+          border: 1px solid #2a3454;
+          background: #0a0e1a;
+          color: #f0f4ff;
+          font-size: 14px;
+          font-family: inherit;
+        }
+        .sub-label-input:focus {
+          outline: 1px solid #ff7a45;
+          border-color: #ff7a45;
         }
 
         .preset-row {

@@ -184,6 +184,45 @@ export default function SubscriptionsView({ liffId }: Props) {
     }
   };
 
+  const handleTogglePause = async (sub: ItemWithSource) => {
+    if (!sub.id) return;
+    const newPaused = !sub.paused;
+    try {
+      const res = await fetch('/api/subscriptions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: sub.id, sourceId: sub.source_id, paused: newPaused })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      setItems(items.map(i => i.id === sub.id ? { ...i, paused: newPaused } : i));
+    } catch (err) {
+      alert(`操作失敗：${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  const handleEditLabel = async (sub: ItemWithSource) => {
+    if (!sub.id) return;
+    const newLabel = prompt('輸入備註（留空則清除）', sub.label ?? '');
+    if (newLabel === null) return; // 使用者按取消
+    try {
+      const res = await fetch('/api/subscriptions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: sub.id,
+          sourceId: sub.source_id,
+          label: newLabel.trim() || null
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      setItems(items.map(i => i.id === sub.id ? { ...i, label: newLabel.trim() || null } : i));
+    } catch (err) {
+      alert(`操作失敗：${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
   if (!ready) {
     return (
       <div className="loading">
@@ -257,17 +296,23 @@ export default function SubscriptionsView({ liffId }: Props) {
       ) : sourceId ? (
         <div className="list">
           {items.map(sub => (
-            <div key={`${sub._source}-${sub.id}`} className={`card ${sub._source}`}>
+            <div key={`${sub._source}-${sub.id}`} className={`card ${sub._source} ${sub.paused ? 'paused' : ''}`}>
               <div className="card-header">
                 <div className="route">
                   <span className="city">{formatAirport(sub.origin)}</span>
                   <span className="arrow">→</span>
                   <span className="city">{formatAirport(sub.destination)}</span>
                 </div>
-                <span className={`source-chip ${sub._source}`}>
-                  {sub._source === 'group' ? '👥 群組' : '👤 個人'}
-                </span>
+                <div className="chips">
+                  {sub.paused && <span className="chip-paused">⏸️ 暫停中</span>}
+                  <span className={`source-chip ${sub._source}`}>
+                    {sub._source === 'group' ? '👥 群組' : '👤 個人'}
+                  </span>
+                </div>
               </div>
+              {sub.label && (
+                <div className="label-line">📝 {sub.label}</div>
+              )}
               {sub.outbound_date && sub.return_date && (
                 <div className="dates">
                   📅 {sub.outbound_date} ~ {sub.return_date}
@@ -304,7 +349,16 @@ export default function SubscriptionsView({ liffId }: Props) {
                   </div>
                   <div className="actions-row">
                     <button className="btn-edit" onClick={() => startEdit(sub)}>
-                      ✏️ 改金額
+                      💰 改金額
+                    </button>
+                    <button className="btn-label" onClick={() => handleEditLabel(sub)}>
+                      📝 備註
+                    </button>
+                    <button
+                      className={sub.paused ? 'btn-resume' : 'btn-pause'}
+                      onClick={() => handleTogglePause(sub)}
+                    >
+                      {sub.paused ? '▶️ 繼續' : '⏸️ 暫停'}
                     </button>
                     <button className="btn-test" onClick={() => handleTest(sub)}>
                       📤 試發
@@ -434,6 +488,72 @@ export default function SubscriptionsView({ liffId }: Props) {
           background: rgba(96, 165, 250, 0.15);
           color: #60a5fa;
         }
+        .chips {
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+        .chip-paused {
+          padding: 3px 10px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 700;
+          background: rgba(251, 191, 36, 0.18);
+          color: #fbbf24;
+          white-space: nowrap;
+        }
+        .card.paused {
+          opacity: 0.6;
+        }
+        .label-line {
+          font-size: 13px;
+          color: #cdd5f0;
+          background: rgba(255, 255, 255, 0.04);
+          padding: 6px 10px;
+          border-radius: 8px;
+          margin-top: 8px;
+          margin-bottom: 4px;
+        }
+        .btn-label {
+          flex: 1;
+          background: rgba(96, 165, 250, 0.08);
+          border: 1px solid rgba(96, 165, 250, 0.4);
+          color: #60a5fa;
+          padding: 8px 12px;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          font-family: inherit;
+        }
+        .btn-label:hover { background: rgba(96, 165, 250, 0.16); }
+        .btn-pause {
+          flex: 1;
+          background: rgba(251, 191, 36, 0.10);
+          border: 1px solid rgba(251, 191, 36, 0.4);
+          color: #fbbf24;
+          padding: 8px 12px;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          font-family: inherit;
+        }
+        .btn-pause:hover { background: rgba(251, 191, 36, 0.18); }
+        .btn-resume {
+          flex: 1;
+          background: rgba(74, 222, 128, 0.10);
+          border: 1px solid rgba(74, 222, 128, 0.4);
+          color: #4ade80;
+          padding: 8px 12px;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          font-family: inherit;
+        }
+        .btn-resume:hover { background: rgba(74, 222, 128, 0.18); }
         .route {
           display: flex;
           align-items: center;

@@ -30,7 +30,8 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
   const { data: subs, error } = await supabase
     .from('subscriptions')
     .select('*')
-    .eq('active', true);
+    .eq('active', true)
+    .eq('paused', false);
 
   if (error) {
     console.error('[sub-checker] read subs failed:', error);
@@ -39,6 +40,23 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
 
   const allSubs = (subs ?? []) as Subscription[];
   result.total = allSubs.length;
+
+  // 抓所有 source 的通知設定（靜音時段）
+  const sourceIds = Array.from(new Set(allSubs.map(s => s.source_id)));
+  const settingsMap = new Map<string, { quietStart: string | null; quietEnd: string | null; timezone: string }>();
+  if (sourceIds.length > 0) {
+    const { data: settings } = await supabase
+      .from('notification_settings')
+      .select('*')
+      .in('source_id', sourceIds);
+    for (const s of (settings ?? [])) {
+      settingsMap.set(s.source_id, {
+        quietStart: s.quiet_start,
+        quietEnd: s.quiet_end,
+        timezone: s.timezone ?? 'Asia/Taipei'
+      });
+    }
+  }
 
   // 依 (origin, destination, outbound_date, return_date) 分組合併查詢
   const groups = new Map<string, Subscription[]>();
@@ -94,6 +112,16 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
           ) {
             result.skipped++;
             continue;
+          }
+
+          // 靜音時段檢查
+          const setting = settingsMap.get(sub.source_id);
+          if (setting && setting.quietStart && setting.quietEnd) {
+            if (isWithinQuietHours(setting.quietStart, setting.quietEnd, setting.timezone)) {
+              console.log('[sub-checker] in quiet hours, skip:', sub.id);
+              result.skipped++;
+              continue;
+            }
           }
 
           await sendAlert(sub, analysis, outboundDate, returnDate);
@@ -182,4 +210,41 @@ function defaultDate(daysAhead: number): string {
   const d = new Date();
   d.setDate(d.getDate() + daysAhead);
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * 判斷現在（依指定時區）是否落在靜音時段
+ * 支援跨午夜時段（例如 22:00 ~ 08:00）
+ */
+function isWithinQuietHours(quietStart: string, quietEnd: string, timezone: string): boolean {
+  try {
+    const now = new Date();
+    const fmt = new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    const parts = fmt.formatToParts(now);
+    const hour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+    const minute = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
+    const nowMin = hour * 60 + minute;
+
+    const [sh, sm] = quietStart.split(':').map(Number);
+    const [eh, em] = quietEnd.split(':').map(Number);
+    const startMin = sh * 60 + sm;
+    const endMin = eh * 60 + em;
+
+    if (startMin === endMin) return false;
+    if (startMin < endMin) {
+      // 同一天：startMin <= now < endMin
+      return nowMin >= startMin && nowMin < endMin;
+    } else {
+      // 跨午夜：now >= start OR now < end
+      return nowMin >= startMin || nowMin < endMin;
+    }
+  } catch (e) {
+    console.warn('[sub-checker] quiet hours parse failed:', e);
+    return false;
+  }
 }

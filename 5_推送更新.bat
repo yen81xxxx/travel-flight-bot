@@ -6,7 +6,7 @@ echo  Vercel will auto-redeploy after push.
 echo ============================================
 echo.
 git add .
-git commit -m "Bidirectional search (TW <-> JP) with swap button"
+git commit -m "Pause/resume, quiet hours, label, backup endpoint"
 git push origin main
 echo.
 echo ============================================

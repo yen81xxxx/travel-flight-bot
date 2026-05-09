@@ -50,10 +50,19 @@ export interface Subscription {
   max_price: number;
   currency: string;
   active: boolean;
+  paused?: boolean;
   last_notified_at?: string | null;
   last_notified_price?: number | null;
   label?: string | null;
   created_at?: string;
+}
+
+export interface NotificationSettings {
+  source_id: string;
+  quiet_start: string | null;  // HH:MM
+  quiet_end: string | null;    // HH:MM
+  timezone: string;
+  updated_at?: string;
 }
 
 // ============================================

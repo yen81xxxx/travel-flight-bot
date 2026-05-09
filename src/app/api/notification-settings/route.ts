@@ -1,0 +1,60 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { getSupabase } from '@/lib/supabase';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+const PostBody = z.object({
+  sourceId: z.string().min(1),
+  quietStart: z.string().regex(TIME_RE).nullable(),
+  quietEnd: z.string().regex(TIME_RE).nullable(),
+  timezone: z.string().default('Asia/Taipei')
+});
+
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  const sourceId = req.nextUrl.searchParams.get('sourceId');
+  if (!sourceId) {
+    return NextResponse.json({ ok: false, error: 'sourceId required' }, { status: 400 });
+  }
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('notification_settings')
+    .select('*')
+    .eq('source_id', sourceId)
+    .maybeSingle();
+  if (error) {
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ ok: true, settings: data });
+}
+
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  let body: z.infer<typeof PostBody>;
+  try {
+    body = PostBody.parse(await req.json());
+  } catch (err) {
+    return NextResponse.json({ ok: false, error: 'Invalid body' }, { status: 400 });
+  }
+
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from('notification_settings')
+    .upsert(
+      {
+        source_id: body.sourceId,
+        quiet_start: body.quietStart,
+        quiet_end: body.quietEnd,
+        timezone: body.timezone,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: 'source_id' }
+    );
+
+  if (error) {
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ ok: true });
+}

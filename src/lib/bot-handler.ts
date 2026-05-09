@@ -13,6 +13,7 @@ const HELP_TEXT = [
   '指令：',
   '・「查航班」→ 開新查詢（選地點、日期）',
   '・「我的訂閱」→ 看降價提醒清單',
+  '・「設定」→ 通知靜音時段等',
   '・「說明」→ 顯示這份說明',
   '',
   '💡 提示：在搜尋結果頁可以「訂閱降價提醒」'
@@ -79,6 +80,19 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
   // 說明 / 幫助
   if (text === '說明' || text === '幫助' || text === 'help' || text === '/help') {
     await replyText(replyToken, HELP_TEXT);
+    return;
+  }
+
+  // 通知設定
+  if (text === '設定' || text === '通知設定' || text === '/settings') {
+    await replyText(
+      replyToken,
+      [
+        '⚙️ 通知設定（靜音時段等）',
+        '',
+        `${APP_URL}/liff/settings`
+      ].join('\n')
+    );
     return;
   }
 

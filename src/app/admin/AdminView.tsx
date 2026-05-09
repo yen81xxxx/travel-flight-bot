@@ -38,6 +38,24 @@ export default function AdminView() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const downloadBackup = async (pwd: string) => {
+    try {
+      const res = await fetch('/api/admin/backup', {
+        headers: { 'Authorization': `Bearer ${pwd}` }
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `travel-flight-bot-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(`備份失敗：${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
   const load = async (pwd: string) => {
     setLoading(true);
     setError(null);
@@ -146,7 +164,12 @@ export default function AdminView() {
     <main>
       <header>
         <h1>📊 系統健康度</h1>
-        <button onClick={() => load(password)} className="refresh">🔄 重新整理</button>
+        <div className="header-btns">
+          <button onClick={() => downloadBackup(password)} className="backup">
+            💾 下載備份
+          </button>
+          <button onClick={() => load(password)} className="refresh">🔄 重新整理</button>
+        </div>
       </header>
 
       <div className="grid">
@@ -243,14 +266,24 @@ export default function AdminView() {
           font-weight: 700;
           margin: 32px 0 12px;
         }
-        .refresh {
+        .header-btns {
+          display: flex;
+          gap: 8px;
+        }
+        .refresh, .backup {
           background: transparent;
           border: 1px solid #2a3454;
           color: #cdd5f0;
           padding: 8px 16px;
           border-radius: 8px;
           cursor: pointer;
+          font-family: inherit;
         }
+        .backup {
+          border-color: rgba(74, 222, 128, 0.4);
+          color: #4ade80;
+        }
+        .backup:hover { background: rgba(74, 222, 128, 0.1); }
         .grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));

@@ -134,7 +134,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       outbound_date: body.outboundDate ?? null,
       return_date: body.returnDate ?? null,
       max_price: body.maxPrice,
-      label: body.label ?? null
+      label: body.label ?? null,
+      paused: false
     })
     .select()
     .single();
@@ -192,6 +193,47 @@ async function safePush(sourceId: string, text: string): Promise<void> {
   } catch (e) {
     console.warn('[subscriptions] push confirm failed:', e);
   }
+}
+
+/**
+ * 部分更新訂閱（暫停、備註）
+ * body: { id, sourceId, paused?, label?, maxPrice? }
+ */
+const PatchBody = z.object({
+  id: z.number(),
+  sourceId: z.string(),
+  paused: z.boolean().optional(),
+  label: z.string().nullable().optional(),
+  maxPrice: z.number().positive().optional()
+});
+export async function PATCH(req: NextRequest): Promise<NextResponse> {
+  let body: z.infer<typeof PatchBody>;
+  try {
+    body = PatchBody.parse(await req.json());
+  } catch (err) {
+    return NextResponse.json({ ok: false, error: 'Invalid body' }, { status: 400 });
+  }
+
+  const supabase = getSupabase();
+  const update: Record<string, unknown> = {};
+  if (body.paused !== undefined) update.paused = body.paused;
+  if (body.label !== undefined) update.label = body.label;
+  if (body.maxPrice !== undefined) update.max_price = body.maxPrice;
+
+  if (Object.keys(update).length === 0) {
+    return NextResponse.json({ ok: false, error: 'no fields to update' }, { status: 400 });
+  }
+
+  const { error } = await supabase
+    .from('subscriptions')
+    .update(update)
+    .eq('id', body.id)
+    .eq('source_id', body.sourceId);
+
+  if (error) {
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ ok: true });
 }
 
 /** 取消訂閱（軟刪除） */
