@@ -349,22 +349,22 @@ export default function SubscriptionsView({ liffId }: Props) {
                   </div>
                   <div className="actions-row">
                     <button className="btn-edit" onClick={() => startEdit(sub)}>
-                      💰 改金額
+                      改金額
                     </button>
                     <button className="btn-label" onClick={() => handleEditLabel(sub)}>
-                      📝 備註
+                      備註
                     </button>
                     <button
                       className={sub.paused ? 'btn-resume' : 'btn-pause'}
                       onClick={() => handleTogglePause(sub)}
                     >
-                      {sub.paused ? '▶️ 繼續' : '⏸️ 暫停'}
+                      {sub.paused ? '繼續' : '暫停'}
                     </button>
                     <button className="btn-test" onClick={() => handleTest(sub)}>
-                      📤 試發
+                      試發
                     </button>
                     <button className="del" onClick={() => handleDelete(sub)}>
-                      ✕ 取消
+                      取消
                     </button>
                   </div>
                 </>
@@ -520,12 +520,13 @@ export default function SubscriptionsView({ liffId }: Props) {
           background: rgba(96, 165, 250, 0.08);
           border: 1px solid rgba(96, 165, 250, 0.4);
           color: #60a5fa;
-          padding: 8px 12px;
+          padding: 8px 6px;
           border-radius: 8px;
           font-size: 13px;
           font-weight: 600;
           cursor: pointer;
           font-family: inherit;
+          white-space: nowrap;
         }
         .btn-label:hover { background: rgba(96, 165, 250, 0.16); }
         .btn-pause {
@@ -533,12 +534,13 @@ export default function SubscriptionsView({ liffId }: Props) {
           background: rgba(251, 191, 36, 0.10);
           border: 1px solid rgba(251, 191, 36, 0.4);
           color: #fbbf24;
-          padding: 8px 12px;
+          padding: 8px 6px;
           border-radius: 8px;
           font-size: 13px;
           font-weight: 600;
           cursor: pointer;
           font-family: inherit;
+          white-space: nowrap;
         }
         .btn-pause:hover { background: rgba(251, 191, 36, 0.18); }
         .btn-resume {
@@ -546,12 +548,13 @@ export default function SubscriptionsView({ liffId }: Props) {
           background: rgba(74, 222, 128, 0.10);
           border: 1px solid rgba(74, 222, 128, 0.4);
           color: #4ade80;
-          padding: 8px 12px;
+          padding: 8px 6px;
           border-radius: 8px;
           font-size: 13px;
           font-weight: 600;
           cursor: pointer;
           font-family: inherit;
+          white-space: nowrap;
         }
         .btn-resume:hover { background: rgba(74, 222, 128, 0.18); }
         .route {
@@ -582,31 +585,39 @@ export default function SubscriptionsView({ liffId }: Props) {
           background: transparent;
           border: 1px solid rgba(248, 113, 113, 0.4);
           color: #f87171;
-          padding: 8px 14px;
+          padding: 8px 6px;
           border-radius: 8px;
           font-size: 13px;
+          font-weight: 600;
           cursor: pointer;
           font-family: inherit;
+          white-space: nowrap;
         }
         .del:hover {
           background: rgba(248, 113, 113, 0.12);
         }
         .actions-row {
           display: flex;
-          gap: 8px;
+          gap: 6px;
           margin-top: 12px;
+          flex-wrap: wrap;
+        }
+        .actions-row > button {
+          flex: 1 1 calc(33% - 4px);
+          min-width: 60px;
         }
         .btn-edit {
           flex: 1;
           background: rgba(255, 122, 69, 0.10);
           border: 1px solid rgba(255, 122, 69, 0.4);
           color: #ff7a45;
-          padding: 8px 12px;
+          padding: 8px 6px;
           border-radius: 8px;
           font-size: 13px;
           font-weight: 600;
           cursor: pointer;
           font-family: inherit;
+          white-space: nowrap;
         }
         .btn-edit:hover {
           background: rgba(255, 122, 69, 0.18);
@@ -616,12 +627,13 @@ export default function SubscriptionsView({ liffId }: Props) {
           background: rgba(96, 165, 250, 0.08);
           border: 1px solid rgba(96, 165, 250, 0.4);
           color: #60a5fa;
-          padding: 8px 12px;
+          padding: 8px 6px;
           border-radius: 8px;
           font-size: 13px;
           font-weight: 600;
           cursor: pointer;
           font-family: inherit;
+          white-space: nowrap;
         }
         .btn-test:hover {
           background: rgba(96, 165, 250, 0.16);
