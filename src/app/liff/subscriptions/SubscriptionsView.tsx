@@ -674,14 +674,11 @@ export default function SubscriptionsView({ liffId }: Props) {
         }
         .actions-row {
           display: flex;
-          gap: 4px;
+          gap: 6px;
           margin-top: 12px;
         }
         .actions-row > button {
           flex: 1;
-          min-height: 40px;
-          padding: 6px 2px !important;
-          font-size: 12px !important;
           min-width: 0;
         }
         .section-head {
