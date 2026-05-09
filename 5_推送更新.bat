@@ -6,7 +6,7 @@ echo  Vercel will auto-redeploy after push.
 echo ============================================
 echo.
 git add .
-git commit -m "Reorganize sub action buttons: 3 primary + 2 secondary tier"
+git commit -m "Fix group subs visibility: confirm msg now includes ctx URL"
 git push origin main
 echo.
 echo ============================================

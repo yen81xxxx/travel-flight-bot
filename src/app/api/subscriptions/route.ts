@@ -114,7 +114,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       returnDate: body.returnDate,
       maxPrice: body.maxPrice,
       isGroup: sourceType !== 'user',
-      previousMaxPrice: Number(existing.max_price)
+      previousMaxPrice: Number(existing.max_price),
+      sourceId: body.sourceId
     }));
     return NextResponse.json({
       ok: true,
@@ -151,7 +152,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     outboundDate: body.outboundDate,
     returnDate: body.returnDate,
     maxPrice: body.maxPrice,
-    isGroup: sourceType !== 'user'
+    isGroup: sourceType !== 'user',
+    sourceId: body.sourceId
   }));
   return NextResponse.json({ ok: true, action: 'created', subscription: data });
 }
@@ -165,9 +167,15 @@ interface ConfirmProps {
   maxPrice: number;
   isGroup: boolean;
   previousMaxPrice?: number;
+  sourceId: string;
 }
 
 function formatConfirm(p: ConfirmProps): string {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://travel-flight-bot.vercel.app';
+  const subsUrl = p.isGroup
+    ? `${appUrl}/liff/subscriptions?ctx=${encodeURIComponent(p.sourceId)}`
+    : `${appUrl}/liff/subscriptions`;
+
   const lines: string[] = [];
   lines.push(p.action === 'created' ? '✅ 訂閱建立成功' : '✅ 訂閱已更新');
   lines.push('');
@@ -183,7 +191,8 @@ function formatConfirm(p: ConfirmProps): string {
     lines.push(`🎯 跌破 NT$ ${p.maxPrice.toLocaleString()} 通知${p.isGroup ? '整個群組' : '你'}`);
   }
   lines.push('');
-  lines.push(`輸入「我的訂閱」可管理${p.isGroup ? '群組' : ''}訂閱`);
+  lines.push(`📋 管理${p.isGroup ? '此群組' : '你的'}訂閱：`);
+  lines.push(subsUrl);
   return lines.join('\n');
 }
 

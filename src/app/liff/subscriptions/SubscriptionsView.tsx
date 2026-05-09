@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { formatAirport } from '@/config/airports';
 import type { Subscription } from '@/types';
 import Sparkline from './Sparkline';
@@ -12,6 +12,12 @@ interface Props {
 // 為了區分來源
 type ItemWithSource = Subscription & { _source: 'personal' | 'group' };
 
+interface GroupBucket {
+  groupId: string;
+  name: string | null;
+  items: ItemWithSource[];
+}
+
 export default function SubscriptionsView({ liffId }: Props) {
   const [ready, setReady] = useState(false);
   const [canLogin, setCanLogin] = useState(false);
@@ -21,6 +27,7 @@ export default function SubscriptionsView({ liffId }: Props) {
   const [items, setItems] = useState<ItemWithSource[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [groupNames, setGroupNames] = useState<Record<string, string>>({});
 
   // 從 URL 讀 ctx（群組 ID）
   useEffect(() => {
@@ -104,6 +111,47 @@ export default function SubscriptionsView({ liffId }: Props) {
       }
     })();
   }, [sourceId, groupCtxId]);
+
+  // 把訂閱分成「個人」與「群組（按 source_id 再分群）」
+  const { personalItems, groupBuckets } = useMemo(() => {
+    const personal = items.filter(i => i._source === 'personal');
+    const groupMap = new Map<string, ItemWithSource[]>();
+    for (const it of items) {
+      if (it._source === 'group') {
+        const arr = groupMap.get(it.source_id) ?? [];
+        arr.push(it);
+        groupMap.set(it.source_id, arr);
+      }
+    }
+    const buckets: GroupBucket[] = Array.from(groupMap.entries()).map(([gid, arr]) => ({
+      groupId: gid,
+      name: groupNames[gid] ?? null,
+      items: arr
+    }));
+    return { personalItems: personal, groupBuckets: buckets };
+  }, [items, groupNames]);
+
+  // 對所有出現的群組 ID，背景拉群組名（拉一次就 cache）
+  useEffect(() => {
+    const idsToFetch = groupBuckets
+      .map(b => b.groupId)
+      .filter(gid => groupNames[gid] === undefined);
+    if (idsToFetch.length === 0) return;
+    (async () => {
+      const updates: Record<string, string> = {};
+      await Promise.all(idsToFetch.map(async gid => {
+        try {
+          const res = await fetch(`/api/group-info?groupId=${encodeURIComponent(gid)}`);
+          const d = await res.json();
+          if (d.ok && d.groupName) updates[gid] = d.groupName;
+          else updates[gid] = ''; // 標記失敗、避免重複嘗試
+        } catch {
+          updates[gid] = '';
+        }
+      }));
+      setGroupNames(prev => ({ ...prev, ...updates }));
+    })();
+  }, [groupBuckets, groupNames]);
 
   const handleDelete = async (sub: ItemWithSource) => {
     if (!sub.id) return;
@@ -223,6 +271,82 @@ export default function SubscriptionsView({ liffId }: Props) {
     }
   };
 
+  const renderCard = (sub: ItemWithSource) => (
+    <div key={`${sub._source}-${sub.id}`} className={`card ${sub._source} ${sub.paused ? 'paused' : ''}`}>
+      <div className="card-header">
+        <div className="route">
+          <span className="city">{formatAirport(sub.origin)}</span>
+          <span className="arrow">→</span>
+          <span className="city">{formatAirport(sub.destination)}</span>
+        </div>
+        {sub.paused && <span className="chip-paused">⏸️ 暫停中</span>}
+      </div>
+      {sub.label && (
+        <div className="label-line">📝 {sub.label}</div>
+      )}
+      {sub.outbound_date && sub.return_date && (
+        <div className="dates">
+          📅 {sub.outbound_date} ~ {sub.return_date}
+        </div>
+      )}
+      {editingId === sub.id ? (
+        <div className="edit-row">
+          <div className="edit-input-wrap">
+            <span className="edit-prefix">NT$</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={editPrice}
+              onChange={e => setEditPrice(e.target.value)}
+              disabled={savingEdit}
+              autoFocus
+            />
+          </div>
+          <div className="edit-actions">
+            <button className="btn-save" onClick={() => saveEdit(sub)} disabled={savingEdit}>
+              {savingEdit ? '儲存中…' : '✓ 儲存'}
+            </button>
+            <button className="btn-cancel-edit" onClick={cancelEdit} disabled={savingEdit}>
+              取消
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="price-row">
+            <span className="threshold">
+              跌破 <strong>NT$ {Number(sub.max_price).toLocaleString()}</strong> 通知我
+            </span>
+          </div>
+          <div className="actions-row">
+            <button className="btn-edit" onClick={() => startEdit(sub)}>金額</button>
+            <button className="btn-label" onClick={() => handleEditLabel(sub)}>備註</button>
+            <button
+              className={sub.paused ? 'btn-resume' : 'btn-pause'}
+              onClick={() => handleTogglePause(sub)}
+            >
+              {sub.paused ? '繼續' : '暫停'}
+            </button>
+            <button className="btn-test" onClick={() => handleTest(sub)}>試發</button>
+            <button className="del" onClick={() => handleDelete(sub)}>取消</button>
+          </div>
+        </>
+      )}
+      {sub.last_notified_at && (
+        <div className="last">
+          上次通知：{new Date(sub.last_notified_at).toLocaleString('zh-TW')}
+        </div>
+      )}
+      <Sparkline
+        origin={sub.origin}
+        destination={sub.destination}
+        outboundDate={sub.outbound_date}
+        returnDate={sub.return_date}
+        threshold={Number(sub.max_price)}
+      />
+    </div>
+  );
+
   if (!ready) {
     return (
       <div className="loading">
@@ -284,110 +408,58 @@ export default function SubscriptionsView({ liffId }: Props) {
           <div className="spinner" />
           <p>載入訂閱中…</p>
         </div>
-      ) : sourceId && items.length === 0 ? (
-        <div className="empty">
-          <div className="big">💤</div>
-          <h2>還沒有訂閱</h2>
-          <p>到搜尋頁面查詢航班，按「訂閱降價提醒」就會出現在這裡。</p>
-          <a className="btn" href={liffId ? `https://liff.line.me/${liffId}` : '/liff/search'}>
-            🔍 開始查詢
-          </a>
-        </div>
       ) : sourceId ? (
-        <div className="list">
-          {items.map(sub => (
-            <div key={`${sub._source}-${sub.id}`} className={`card ${sub._source} ${sub.paused ? 'paused' : ''}`}>
-              <div className="card-header">
-                <div className="route">
-                  <span className="city">{formatAirport(sub.origin)}</span>
-                  <span className="arrow">→</span>
-                  <span className="city">{formatAirport(sub.destination)}</span>
-                </div>
-                <div className="chips">
-                  {sub.paused && <span className="chip-paused">⏸️ 暫停中</span>}
-                  <span className={`source-chip ${sub._source}`}>
-                    {sub._source === 'group' ? '👥 群組' : '👤 個人'}
+        <>
+          {/* 個人訂閱區塊 */}
+          <div className="section-head">
+            <span className="section-icon">👤</span>
+            <h2 className="section-title">我的訂閱</h2>
+            <span className="section-count">{personalItems.length}</span>
+          </div>
+          {personalItems.length === 0 ? (
+            <div className="section-empty">
+              還沒有個人訂閱{' '}
+              <a href={liffId ? `https://liff.line.me/${liffId}` : '/liff/search'}>去查航班 →</a>
+            </div>
+          ) : (
+            <div className="list">
+              {personalItems.map(sub => renderCard(sub))}
+            </div>
+          )}
+
+          {/* 群組訂閱區塊 */}
+          <div className="section-head" style={{ marginTop: 24 }}>
+            <span className="section-icon">👥</span>
+            <h2 className="section-title">群組訂閱</h2>
+            <span className="section-count">
+              {groupBuckets.reduce((sum, b) => sum + b.items.length, 0)}
+            </span>
+          </div>
+          {groupBuckets.length === 0 ? (
+            <div className="section-empty">
+              {groupCtxId
+                ? '這個群組還沒有訂閱'
+                : '沒有資料 — 在 LINE 群組裡傳「我的訂閱」可看該群組的訂閱'}
+            </div>
+          ) : (
+            groupBuckets.map(bucket => (
+              <div key={bucket.groupId} className="group-bucket">
+                <div className="group-header">
+                  <span className="group-marker">📌</span>
+                  <span className="group-name">
+                    {bucket.name && bucket.name.length > 0
+                      ? bucket.name
+                      : `群組 ${bucket.groupId.slice(0, 8)}…`}
                   </span>
+                  <span className="group-count">{bucket.items.length}</span>
+                </div>
+                <div className="list">
+                  {bucket.items.map(sub => renderCard(sub))}
                 </div>
               </div>
-              {sub.label && (
-                <div className="label-line">📝 {sub.label}</div>
-              )}
-              {sub.outbound_date && sub.return_date && (
-                <div className="dates">
-                  📅 {sub.outbound_date} ~ {sub.return_date}
-                </div>
-              )}
-              {editingId === sub.id ? (
-                <div className="edit-row">
-                  <div className="edit-input-wrap">
-                    <span className="edit-prefix">NT$</span>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      value={editPrice}
-                      onChange={e => setEditPrice(e.target.value)}
-                      disabled={savingEdit}
-                      autoFocus
-                    />
-                  </div>
-                  <div className="edit-actions">
-                    <button className="btn-save" onClick={() => saveEdit(sub)} disabled={savingEdit}>
-                      {savingEdit ? '儲存中…' : '✓ 儲存'}
-                    </button>
-                    <button className="btn-cancel-edit" onClick={cancelEdit} disabled={savingEdit}>
-                      取消
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="price-row">
-                    <span className="threshold">
-                      跌破 <strong>NT$ {Number(sub.max_price).toLocaleString()}</strong> 通知我
-                    </span>
-                  </div>
-                  <div className="actions-row">
-                    <div className="actions-primary">
-                      <button className="btn-edit" onClick={() => startEdit(sub)}>
-                        改金額
-                      </button>
-                      <button className="btn-label" onClick={() => handleEditLabel(sub)}>
-                        備註
-                      </button>
-                      <button
-                        className={sub.paused ? 'btn-resume' : 'btn-pause'}
-                        onClick={() => handleTogglePause(sub)}
-                      >
-                        {sub.paused ? '繼續' : '暫停'}
-                      </button>
-                    </div>
-                    <div className="actions-secondary">
-                      <button className="btn-test" onClick={() => handleTest(sub)}>
-                        試發通知
-                      </button>
-                      <button className="del" onClick={() => handleDelete(sub)}>
-                        取消訂閱
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-              {sub.last_notified_at && (
-                <div className="last">
-                  上次通知：{new Date(sub.last_notified_at).toLocaleString('zh-TW')}
-                </div>
-              )}
-              <Sparkline
-                origin={sub.origin}
-                destination={sub.destination}
-                outboundDate={sub.outbound_date}
-                returnDate={sub.return_date}
-                threshold={Number(sub.max_price)}
-              />
-            </div>
-          ))}
-        </div>
+            ))
+          )}
+        </>
       ) : null}
 
       <style jsx>{`
@@ -602,30 +674,77 @@ export default function SubscriptionsView({ liffId }: Props) {
         }
         .actions-row {
           display: flex;
-          flex-direction: column;
-          gap: 8px;
+          gap: 4px;
           margin-top: 12px;
         }
-        .actions-primary {
-          display: flex;
-          gap: 6px;
-        }
-        .actions-primary > button {
+        .actions-row > button {
           flex: 1;
-          min-height: 44px;
+          min-height: 40px;
+          padding: 6px 2px !important;
+          font-size: 12px !important;
+          min-width: 0;
         }
-        .actions-secondary {
+        .section-head {
           display: flex;
-          gap: 6px;
+          align-items: center;
+          gap: 8px;
+          margin: 8px 0 12px;
+          padding: 0 4px;
         }
-        .actions-secondary > button {
+        .section-icon { font-size: 18px; }
+        .section-title {
+          font-size: 15px;
+          font-weight: 700;
+          color: #f0f4ff;
           flex: 1;
-          min-height: 36px;
+          margin: 0;
+        }
+        .section-count {
+          background: rgba(255, 122, 69, 0.15);
+          color: #ff7a45;
           font-size: 12px;
-          opacity: 0.85;
+          font-weight: 700;
+          padding: 2px 10px;
+          border-radius: 999px;
         }
-        .actions-secondary > button:hover {
-          opacity: 1;
+        .section-empty {
+          padding: 18px;
+          font-size: 13px;
+          color: #7e88a8;
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px dashed #2a3454;
+          border-radius: 12px;
+          text-align: center;
+        }
+        .section-empty :global(a) {
+          color: #ff7a45;
+          text-decoration: none;
+          font-weight: 600;
+        }
+        .group-bucket {
+          margin-bottom: 16px;
+        }
+        .group-header {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 10px;
+          background: rgba(96, 165, 250, 0.10);
+          border-left: 3px solid #60a5fa;
+          border-radius: 6px;
+          margin-bottom: 8px;
+          font-size: 13px;
+        }
+        .group-marker { font-size: 14px; }
+        .group-name {
+          flex: 1;
+          font-weight: 600;
+          color: #cdd5f0;
+        }
+        .group-count {
+          color: #60a5fa;
+          font-weight: 700;
+          font-size: 12px;
         }
         .btn-edit {
           flex: 1;

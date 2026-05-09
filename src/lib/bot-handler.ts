@@ -98,21 +98,25 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
 
   // 我的訂閱
   if (text === '我的訂閱' || text === '訂閱' || text === '/subs') {
+    const sourceType = event.source?.type ?? 'unknown';
     const isGroup = sourceId.startsWith('C') || sourceId.startsWith('R');
     const url = isGroup
       ? `${getSubscriptionsUrl()}?ctx=${encodeURIComponent(sourceId)}`
       : getSubscriptionsUrl();
-    await replyText(
-      replyToken,
-      [
-        '🔔 點下面連結查看訂閱',
-        isGroup
-          ? '會看到「個人訂閱 + 此群組訂閱」'
-          : '可以在這裡查看、改金額、取消',
-        '',
-        url
-      ].join('\n')
-    );
+    console.log('[bot] 我的訂閱', { sourceType, sourceIdPrefix: sourceId.slice(0, 1), isGroup, urlHasCtx: url.includes('ctx=') });
+    const lines = [
+      '🔔 點下面連結查看訂閱',
+      isGroup
+        ? '會看到「個人訂閱 + 此群組訂閱」'
+        : '可以在這裡查看、改金額、取消',
+      '',
+      url
+    ];
+    if (!isGroup) {
+      lines.push('');
+      lines.push('💡 想看「群組訂閱」？請到該 LINE 群組裡再傳一次「我的訂閱」（這條訊息看不到群組的訂閱）');
+    }
+    await replyText(replyToken, lines.join('\n'));
     return;
   }
 
