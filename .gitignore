@@ -35,6 +35,11 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local debug/verification scripts (may contain secrets)
+verify.bat
+verify_result.txt
+*.url
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
