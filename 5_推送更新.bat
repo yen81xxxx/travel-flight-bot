@@ -6,7 +6,7 @@ echo  Vercel will auto-redeploy after push.
 echo ============================================
 echo.
 git add .
-git commit -m "Restore button styling (drop padding/font-size override)"
+git commit -m "Fix: make subscription card styles global (renderCard JSX wasn't being scoped)"
 git push origin main
 echo.
 echo ============================================

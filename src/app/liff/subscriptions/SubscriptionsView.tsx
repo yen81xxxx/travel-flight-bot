@@ -462,7 +462,7 @@ export default function SubscriptionsView({ liffId }: Props) {
         </>
       ) : null}
 
-      <style jsx>{`
+      <style jsx global>{`
         .wrap {
           max-width: 640px;
           margin: 0 auto;
