@@ -348,24 +348,28 @@ export default function SubscriptionsView({ liffId }: Props) {
                     </span>
                   </div>
                   <div className="actions-row">
-                    <button className="btn-edit" onClick={() => startEdit(sub)}>
-                      改金額
-                    </button>
-                    <button className="btn-label" onClick={() => handleEditLabel(sub)}>
-                      備註
-                    </button>
-                    <button
-                      className={sub.paused ? 'btn-resume' : 'btn-pause'}
-                      onClick={() => handleTogglePause(sub)}
-                    >
-                      {sub.paused ? '繼續' : '暫停'}
-                    </button>
-                    <button className="btn-test" onClick={() => handleTest(sub)}>
-                      試發
-                    </button>
-                    <button className="del" onClick={() => handleDelete(sub)}>
-                      取消
-                    </button>
+                    <div className="actions-primary">
+                      <button className="btn-edit" onClick={() => startEdit(sub)}>
+                        改金額
+                      </button>
+                      <button className="btn-label" onClick={() => handleEditLabel(sub)}>
+                        備註
+                      </button>
+                      <button
+                        className={sub.paused ? 'btn-resume' : 'btn-pause'}
+                        onClick={() => handleTogglePause(sub)}
+                      >
+                        {sub.paused ? '繼續' : '暫停'}
+                      </button>
+                    </div>
+                    <div className="actions-secondary">
+                      <button className="btn-test" onClick={() => handleTest(sub)}>
+                        試發通知
+                      </button>
+                      <button className="del" onClick={() => handleDelete(sub)}>
+                        取消訂閱
+                      </button>
+                    </div>
                   </div>
                 </>
               )}
@@ -598,13 +602,30 @@ export default function SubscriptionsView({ liffId }: Props) {
         }
         .actions-row {
           display: flex;
-          gap: 6px;
+          flex-direction: column;
+          gap: 8px;
           margin-top: 12px;
-          flex-wrap: wrap;
         }
-        .actions-row > button {
-          flex: 1 1 calc(33% - 4px);
-          min-width: 60px;
+        .actions-primary {
+          display: flex;
+          gap: 6px;
+        }
+        .actions-primary > button {
+          flex: 1;
+          min-height: 44px;
+        }
+        .actions-secondary {
+          display: flex;
+          gap: 6px;
+        }
+        .actions-secondary > button {
+          flex: 1;
+          min-height: 36px;
+          font-size: 12px;
+          opacity: 0.85;
+        }
+        .actions-secondary > button:hover {
+          opacity: 1;
         }
         .btn-edit {
           flex: 1;
