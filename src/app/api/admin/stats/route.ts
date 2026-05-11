@@ -28,7 +28,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     notifsLast30d,
     quota
   ] = await Promise.all([
-    supabase.from('subscriptions').select('*', { count: 'exact', head: true }).eq('active', true),
+    supabase.from('subscriptions').select('*', { count: 'exact', head: true }).eq('active', true).eq('paused', false),
     supabase.from('subscriptions').select('*', { count: 'exact', head: true }),
     supabase.from('subscriptions').select('source_id').eq('active', true),
     supabase.from('flight_quotes').select('*', { count: 'exact', head: true }),
@@ -46,7 +46,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const { data: topRoutes } = await supabase
     .from('subscriptions')
     .select('origin, destination')
-    .eq('active', true);
+    .eq('active', true)
+    .eq('paused', false);
 
   const routeCount = new Map<string, number>();
   for (const r of (topRoutes ?? [])) {

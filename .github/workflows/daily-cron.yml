@@ -1,0 +1,20 @@
+name: Daily Cron (replaces broken Vercel cron)
+
+on:
+  schedule:
+    # 01:00 UTC = 09:00 TW
+    - cron: '0 1 * * *'
+  # 也可以在 GitHub Actions 頁面手動觸發
+  workflow_dispatch:
+
+jobs:
+  call-cron-endpoint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger /api/cron/daily-search
+        run: |
+          curl -X POST https://travel-flight-bot.vercel.app/api/cron/daily-search \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            --fail-with-body \
+            --max-time 90 \
+            --silent --show-error
