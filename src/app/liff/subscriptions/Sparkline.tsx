@@ -59,6 +59,10 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
     }
 
     const prices = points.map(p => p.minPrice);
+    const minHistoryPrice = Math.min(...prices);
+    const maxHistoryPrice = Math.max(...prices);
+    const isFlat = minHistoryPrice === maxHistoryPrice;
+
     const minP = Math.min(...prices, threshold);
     const maxP = Math.max(...prices, threshold);
     const range = Math.max(1, maxP - minP);
@@ -76,34 +80,46 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
     const trend = lastPrice - firstPrice;
     const trendPct = ((trend / firstPrice) * 100).toFixed(1);
 
-    const minHistoryPrice = Math.min(...prices);
-    const maxHistoryPrice = Math.max(...prices);
     const minIdx = prices.indexOf(minHistoryPrice);
     const maxIdx = prices.indexOf(maxHistoryPrice);
 
     const thresholdY = yScale(threshold);
+    // 門檻價跟最後價接近時不顯示門檻標籤（避免重疊）
+    const thresholdNearLast = Math.abs(thresholdY - yScale(lastPrice)) < 14;
 
-    // 標籤位置：避免 label 跟 last point 重疊
-    const showMinLabel = minIdx !== lastIdx;
-    const showMaxLabel = maxIdx !== lastIdx && maxIdx !== minIdx;
+    // 智慧 textAnchor：左邊用 start、右邊用 end、中間 middle
+    const anchorFor = (idx: number): 'start' | 'middle' | 'end' => {
+      const ratio = idx / Math.max(1, points.length - 1);
+      if (ratio < 0.15) return 'start';
+      if (ratio > 0.85) return 'end';
+      return 'middle';
+    };
+
+    // 標籤顯示策略
+    const showMinLabel = !isFlat && minIdx !== lastIdx;
+    const showMaxLabel = !isFlat && maxIdx !== lastIdx && maxIdx !== minIdx;
 
     return (
       <>
         <div className="spark-header">
-          <span className="spark-label">過去 {points.length} 天走勢</span>
+          <span className="spark-label">
+            過去 {points.length} 天 {isFlat && '· 價格無變化'}
+          </span>
           <span className={`spark-trend ${trend < 0 ? 'down' : trend > 0 ? 'up' : ''}`}>
             {trend < 0 ? '↓' : trend > 0 ? '↑' : '→'} {Math.abs(parseFloat(trendPct))}%
           </span>
         </div>
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" className="spark-svg">
-          {/* 門檻虛線 */}
+          {/* 門檻虛線（價格相同時跟資料線重疊，但虛線樣式可區分）*/}
           <line
             x1={padX} y1={thresholdY} x2={W - padX} y2={thresholdY}
             stroke="#ff7a45" strokeWidth="1" strokeDasharray="3 3" opacity="0.5"
           />
-          <text x={W - padX} y={thresholdY - 2} fill="#ff7a45" fontSize="8" textAnchor="end" opacity="0.7">
-            門檻 {threshold.toLocaleString()}
-          </text>
+          {!thresholdNearLast && (
+            <text x={padX} y={thresholdY - 3} fill="#ff7a45" fontSize="8" textAnchor="start" opacity="0.7">
+              門檻 {threshold.toLocaleString()}
+            </text>
+          )}
 
           {/* 折線 */}
           <path d={path} fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -129,7 +145,7 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
               fill="#4ade80"
               fontSize="9"
               fontWeight="600"
-              textAnchor="middle"
+              textAnchor={anchorFor(minIdx)}
             >
               ↓{minHistoryPrice.toLocaleString()}
             </text>
@@ -143,7 +159,7 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
               fill="#f87171"
               fontSize="9"
               fontWeight="600"
-              textAnchor="middle"
+              textAnchor={anchorFor(maxIdx)}
             >
               ↑{maxHistoryPrice.toLocaleString()}
             </text>
@@ -154,11 +170,11 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
             x={xScale(lastIdx)}
             y={yScale(lastPrice) - 6}
             fill="#fff"
-            fontSize="10"
+            fontSize="11"
             fontWeight="700"
-            textAnchor={lastIdx > points.length / 2 ? 'end' : 'middle'}
+            textAnchor="end"
           >
-            {lastPrice.toLocaleString()}
+            NT$ {lastPrice.toLocaleString()}
           </text>
         </svg>
       </>
