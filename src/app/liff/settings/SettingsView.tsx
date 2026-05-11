@@ -25,12 +25,19 @@ export default function SettingsView({ liffId }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   // 從 URL 讀 ctx
+  // ⚠️ LIFF OAuth redirect 會吃掉 ?ctx，靠 sessionStorage 跨 redirect 保留
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const ctx = new URLSearchParams(window.location.search).get('ctx');
+    let ctx = new URLSearchParams(window.location.search).get('ctx');
     if (ctx && (ctx.startsWith('C') || ctx.startsWith('R'))) {
-      setGroupCtxId(ctx);
+      sessionStorage.setItem('liff_ctx', ctx);
+    } else {
+      const saved = sessionStorage.getItem('liff_ctx');
+      if (saved && (saved.startsWith('C') || saved.startsWith('R'))) {
+        ctx = saved;
+      }
     }
+    if (ctx) setGroupCtxId(ctx);
   }, []);
 
   useEffect(() => {

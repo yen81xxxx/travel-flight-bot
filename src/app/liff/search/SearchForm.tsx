@@ -64,13 +64,20 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
   }, []);
 
   // 從 URL 讀 ctx (群組 ID)
+  // ⚠️ LIFF OAuth redirect 會吃掉 ?ctx，靠 sessionStorage 跨 redirect 保留
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
-    const ctx = params.get('ctx');
+    let ctx = params.get('ctx');
     if (ctx && (ctx.startsWith('C') || ctx.startsWith('R'))) {
-      setGroupCtxId(ctx);
+      sessionStorage.setItem('liff_ctx', ctx);
+    } else {
+      const saved = sessionStorage.getItem('liff_ctx');
+      if (saved && (saved.startsWith('C') || saved.startsWith('R'))) {
+        ctx = saved;
+      }
     }
+    if (ctx) setGroupCtxId(ctx);
   }, []);
 
   // LIFF 初始化

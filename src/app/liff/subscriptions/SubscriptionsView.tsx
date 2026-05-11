@@ -30,13 +30,22 @@ export default function SubscriptionsView({ liffId }: Props) {
   const [groupNames, setGroupNames] = useState<Record<string, string>>({});
 
   // 從 URL 讀 ctx（群組 ID）
+  // ⚠️ LIFF OAuth redirect 會把 ?ctx 從 URL 吃掉、只留 ?code&state&liffClientId，
+  // 所以：URL 有 ctx 時存進 sessionStorage、沒有時嘗試從 sessionStorage 讀回來。
+  // sessionStorage 同 tab 同 origin 跨 redirect 仍會保留。
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
-    const ctx = params.get('ctx');
+    let ctx = params.get('ctx');
     if (ctx && (ctx.startsWith('C') || ctx.startsWith('R'))) {
-      setGroupCtxId(ctx);
+      sessionStorage.setItem('liff_ctx', ctx);
+    } else {
+      const saved = sessionStorage.getItem('liff_ctx');
+      if (saved && (saved.startsWith('C') || saved.startsWith('R'))) {
+        ctx = saved;
+      }
     }
+    if (ctx) setGroupCtxId(ctx);
   }, []);
 
   useEffect(() => {
