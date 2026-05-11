@@ -5,7 +5,7 @@ cd /d "%~dp0"
 git add -A
 git status --short
 
-git commit -m "Stats accuracy fix + GitHub Actions cron fallback for Vercel"
+git commit -m "Remove Vercel cron config (replaced by GitHub Actions)"
 git push origin main
 
 echo.
