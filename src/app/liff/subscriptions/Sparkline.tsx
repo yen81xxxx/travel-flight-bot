@@ -30,9 +30,11 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
   const [points, setPoints] = useState<Point[]>([]);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState<RangeKey>(30);
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
 
   useEffect(() => {
     setLoading(true);
+    setSelectedIdx(null);  // 換 range 時清除選取
     const params = new URLSearchParams({ origin, destination, days: String(days) });
     if (outboundDate) params.set('outboundDate', outboundDate);
     if (returnDate) params.set('returnDate', returnDate);
@@ -109,7 +111,14 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
             {trend < 0 ? '↓' : trend > 0 ? '↑' : '→'} {Math.abs(parseFloat(trendPct))}%
           </span>
         </div>
-        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" className="spark-svg">
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          width="100%"
+          height={H}
+          preserveAspectRatio="none"
+          className="spark-svg"
+          onClick={() => setSelectedIdx(null)}
+        >
           {/* 門檻虛線（價格相同時跟資料線重疊，但虛線樣式可區分）*/}
           <line
             x1={padX} y1={thresholdY} x2={W - padX} y2={thresholdY}
@@ -124,16 +133,35 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
           {/* 折線 */}
           <path d={path} fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
 
-          {/* 點 */}
+          {/* 可見的點 */}
+          {points.map((p, i) => {
+            const isSelected = selectedIdx === i;
+            return (
+              <circle
+                key={`pt-${i}`}
+                cx={xScale(i)}
+                cy={yScale(p.minPrice)}
+                r={isSelected ? 4 : i === lastIdx ? 3.5 : i === minIdx || i === maxIdx ? 2.5 : 1.5}
+                fill={p.minPrice <= threshold ? '#4ade80' : i === lastIdx ? '#fff' : '#60a5fa'}
+                stroke={isSelected ? '#fff' : i === lastIdx ? '#60a5fa' : 'none'}
+                strokeWidth={isSelected ? 2 : i === lastIdx ? 1.5 : 0}
+              />
+            );
+          })}
+
+          {/* 加大的隱形觸控區（手機點選友善）*/}
           {points.map((p, i) => (
             <circle
-              key={i}
+              key={`hit-${i}`}
               cx={xScale(i)}
               cy={yScale(p.minPrice)}
-              r={i === lastIdx ? 3.5 : i === minIdx || i === maxIdx ? 2.5 : 1.5}
-              fill={p.minPrice <= threshold ? '#4ade80' : i === lastIdx ? '#fff' : '#60a5fa'}
-              stroke={i === lastIdx ? '#60a5fa' : 'none'}
-              strokeWidth={i === lastIdx ? 1.5 : 0}
+              r={12}
+              fill="transparent"
+              style={{ cursor: 'pointer' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedIdx(selectedIdx === i ? null : i);
+              }}
             />
           ))}
 
@@ -165,18 +193,58 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
             </text>
           )}
 
-          {/* 最後一筆（現在）價格 */}
-          <text
-            x={xScale(lastIdx)}
-            y={yScale(lastPrice) - 6}
-            fill="#fff"
-            fontSize="11"
-            fontWeight="700"
-            textAnchor="end"
-          >
-            NT$ {lastPrice.toLocaleString()}
-          </text>
+          {/* 最後一筆（現在）價格 — 沒選中時才顯示 */}
+          {selectedIdx === null && (
+            <text
+              x={xScale(lastIdx)}
+              y={yScale(lastPrice) - 6}
+              fill="#fff"
+              fontSize="11"
+              fontWeight="700"
+              textAnchor="end"
+            >
+              NT$ {lastPrice.toLocaleString()}
+            </text>
+          )}
+
+          {/* 點擊任一點的 tooltip */}
+          {selectedIdx !== null && (() => {
+            const sel = points[selectedIdx];
+            const cx = xScale(selectedIdx);
+            const cy = yScale(sel.minPrice);
+            const dateStr = sel.date; // YYYY-MM-DD
+            const priceStr = `NT$ ${sel.minPrice.toLocaleString()}`;
+            // 估算 tooltip 寬度（字數 × ~6px）
+            const w = Math.max(priceStr.length, dateStr.length) * 6 + 12;
+            const h = 28;
+            // 預設顯示在點上方、空間不夠時放下方
+            const above = cy > h + 4;
+            const ty = above ? cy - h - 6 : cy + 8;
+            // 防止 x 邊界溢出
+            let tx = cx - w / 2;
+            if (tx < 2) tx = 2;
+            if (tx + w > W - 2) tx = W - 2 - w;
+            return (
+              <g pointerEvents="none">
+                <rect
+                  x={tx} y={ty} width={w} height={h}
+                  rx={4} ry={4}
+                  fill="#0a0e1a" stroke="#60a5fa" strokeWidth="1"
+                />
+                <text x={tx + w / 2} y={ty + 11} fill="#7e88a8" fontSize="8" textAnchor="middle">
+                  {dateStr}
+                </text>
+                <text x={tx + w / 2} y={ty + 22} fill="#fff" fontSize="10" fontWeight="700" textAnchor="middle">
+                  {priceStr}
+                </text>
+              </g>
+            );
+          })()}
         </svg>
+
+        {selectedIdx !== null && (
+          <div className="tooltip-hint">點別處可關閉</div>
+        )}
       </>
     );
   };
@@ -256,6 +324,12 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
           text-align: center;
           background: rgba(255, 255, 255, 0.02);
           border-radius: 8px;
+        }
+        .tooltip-hint {
+          font-size: 10px;
+          color: #5a6280;
+          text-align: center;
+          margin-top: 4px;
         }
       `}</style>
     </div>
