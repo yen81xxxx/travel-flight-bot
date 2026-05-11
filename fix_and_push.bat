@@ -5,7 +5,7 @@ cd /d "%~dp0"
 git add -A
 git status --short
 
-git commit -m "Fix: persist ctx via sessionStorage to survive LIFF OAuth redirect"
+git commit -m "Sparkline: add 7/30/365 day selector and price labels (min/max/current)"
 git push origin main
 
 echo.

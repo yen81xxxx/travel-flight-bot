@@ -19,7 +19,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const destination = sp.get('destination');
   const outboundDate = sp.get('outboundDate');
   const returnDate = sp.get('returnDate');
-  const days = Math.min(90, parseInt(sp.get('days') ?? '30', 10));
+  const days = Math.min(365, parseInt(sp.get('days') ?? '30', 10));
 
   if (!origin || !destination) {
     return NextResponse.json({ ok: false, error: 'origin and destination required' }, { status: 400 });

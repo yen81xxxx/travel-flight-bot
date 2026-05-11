@@ -15,15 +15,25 @@ interface Point {
   minPrice: number;
 }
 
+type RangeKey = 7 | 30 | 365;
+const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
+  { key: 7, label: '7 天' },
+  { key: 30, label: '30 天' },
+  { key: 365, label: '1 年' }
+];
+
 /**
- * 過去 30 天最低價迷你折線圖（純 SVG，不依賴圖表庫）
+ * 過去 N 天最低價迷你折線圖（純 SVG，不依賴圖表庫）
+ * 支援 7/30/365 天切換、min/max/current 點價格標註
  */
 export default function Sparkline({ origin, destination, outboundDate, returnDate, threshold }: Props) {
   const [points, setPoints] = useState<Point[]>([]);
   const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState<RangeKey>(30);
 
   useEffect(() => {
-    const params = new URLSearchParams({ origin, destination, days: '30' });
+    setLoading(true);
+    const params = new URLSearchParams({ origin, destination, days: String(days) });
     if (outboundDate) params.set('outboundDate', outboundDate);
     if (returnDate) params.set('returnDate', returnDate);
 
@@ -34,72 +44,147 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [origin, destination, outboundDate, returnDate]);
-
-  if (loading) {
-    return <div className="spark-empty">載入歷史…</div>;
-  }
-  if (points.length < 2) {
-    return <div className="spark-empty">📊 歷史紀錄不足，再追蹤幾天就有走勢圖</div>;
-  }
+  }, [origin, destination, outboundDate, returnDate, days]);
 
   // 圖表尺寸
   const W = 280;
-  const H = 60;
-  const pad = 4;
+  const H = 90;
+  const padX = 8;
+  const padTop = 14;
+  const padBottom = 18;
 
-  const prices = points.map(p => p.minPrice);
-  const minP = Math.min(...prices, threshold);
-  const maxP = Math.max(...prices, threshold);
-  const range = Math.max(1, maxP - minP);
+  const renderChart = () => {
+    if (points.length < 2) {
+      return <div className="spark-empty">📊 此區間紀錄不足，再追蹤幾天就有走勢圖</div>;
+    }
 
-  const xScale = (i: number) => pad + (i / (points.length - 1)) * (W - 2 * pad);
-  const yScale = (price: number) => H - pad - ((price - minP) / range) * (H - 2 * pad);
+    const prices = points.map(p => p.minPrice);
+    const minP = Math.min(...prices, threshold);
+    const maxP = Math.max(...prices, threshold);
+    const range = Math.max(1, maxP - minP);
 
-  const path = points
-    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(i).toFixed(1)} ${yScale(p.minPrice).toFixed(1)}`)
-    .join(' ');
+    const xScale = (i: number) => padX + (i / (points.length - 1)) * (W - 2 * padX);
+    const yScale = (price: number) => H - padBottom - ((price - minP) / range) * (H - padTop - padBottom);
 
-  const lastPoint = points[points.length - 1];
-  const firstPoint = points[0];
-  const trend = lastPoint.minPrice - firstPoint.minPrice;
-  const trendPct = ((trend / firstPoint.minPrice) * 100).toFixed(1);
+    const path = points
+      .map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(i).toFixed(1)} ${yScale(p.minPrice).toFixed(1)}`)
+      .join(' ');
 
-  const thresholdY = yScale(threshold);
-  const minHistoryPrice = Math.min(...prices);
-  const maxHistoryPrice = Math.max(...prices);
+    const lastIdx = points.length - 1;
+    const lastPrice = points[lastIdx].minPrice;
+    const firstPrice = points[0].minPrice;
+    const trend = lastPrice - firstPrice;
+    const trendPct = ((trend / firstPrice) * 100).toFixed(1);
+
+    const minHistoryPrice = Math.min(...prices);
+    const maxHistoryPrice = Math.max(...prices);
+    const minIdx = prices.indexOf(minHistoryPrice);
+    const maxIdx = prices.indexOf(maxHistoryPrice);
+
+    const thresholdY = yScale(threshold);
+
+    // 標籤位置：避免 label 跟 last point 重疊
+    const showMinLabel = minIdx !== lastIdx;
+    const showMaxLabel = maxIdx !== lastIdx && maxIdx !== minIdx;
+
+    return (
+      <>
+        <div className="spark-header">
+          <span className="spark-label">過去 {points.length} 天走勢</span>
+          <span className={`spark-trend ${trend < 0 ? 'down' : trend > 0 ? 'up' : ''}`}>
+            {trend < 0 ? '↓' : trend > 0 ? '↑' : '→'} {Math.abs(parseFloat(trendPct))}%
+          </span>
+        </div>
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" className="spark-svg">
+          {/* 門檻虛線 */}
+          <line
+            x1={padX} y1={thresholdY} x2={W - padX} y2={thresholdY}
+            stroke="#ff7a45" strokeWidth="1" strokeDasharray="3 3" opacity="0.5"
+          />
+          <text x={W - padX} y={thresholdY - 2} fill="#ff7a45" fontSize="8" textAnchor="end" opacity="0.7">
+            門檻 {threshold.toLocaleString()}
+          </text>
+
+          {/* 折線 */}
+          <path d={path} fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+
+          {/* 點 */}
+          {points.map((p, i) => (
+            <circle
+              key={i}
+              cx={xScale(i)}
+              cy={yScale(p.minPrice)}
+              r={i === lastIdx ? 3.5 : i === minIdx || i === maxIdx ? 2.5 : 1.5}
+              fill={p.minPrice <= threshold ? '#4ade80' : i === lastIdx ? '#fff' : '#60a5fa'}
+              stroke={i === lastIdx ? '#60a5fa' : 'none'}
+              strokeWidth={i === lastIdx ? 1.5 : 0}
+            />
+          ))}
+
+          {/* 最低價標註 */}
+          {showMinLabel && (
+            <text
+              x={xScale(minIdx)}
+              y={yScale(minHistoryPrice) + 11}
+              fill="#4ade80"
+              fontSize="9"
+              fontWeight="600"
+              textAnchor="middle"
+            >
+              ↓{minHistoryPrice.toLocaleString()}
+            </text>
+          )}
+
+          {/* 最高價標註 */}
+          {showMaxLabel && (
+            <text
+              x={xScale(maxIdx)}
+              y={yScale(maxHistoryPrice) - 4}
+              fill="#f87171"
+              fontSize="9"
+              fontWeight="600"
+              textAnchor="middle"
+            >
+              ↑{maxHistoryPrice.toLocaleString()}
+            </text>
+          )}
+
+          {/* 最後一筆（現在）價格 */}
+          <text
+            x={xScale(lastIdx)}
+            y={yScale(lastPrice) - 6}
+            fill="#fff"
+            fontSize="10"
+            fontWeight="700"
+            textAnchor={lastIdx > points.length / 2 ? 'end' : 'middle'}
+          >
+            {lastPrice.toLocaleString()}
+          </text>
+        </svg>
+      </>
+    );
+  };
 
   return (
     <div className="spark">
-      <div className="spark-header">
-        <span className="spark-label">過去 {points.length} 天走勢</span>
-        <span className={`spark-trend ${trend < 0 ? 'down' : trend > 0 ? 'up' : ''}`}>
-          {trend < 0 ? '↓' : trend > 0 ? '↑' : '→'} {Math.abs(parseFloat(trendPct))}%
-        </span>
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" className="spark-svg">
-        {/* 門檻虛線 */}
-        <line
-          x1={pad} y1={thresholdY} x2={W - pad} y2={thresholdY}
-          stroke="#ff7a45" strokeWidth="1" strokeDasharray="3 3" opacity="0.5"
-        />
-        {/* 折線 */}
-        <path d={path} fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        {/* 點 */}
-        {points.map((p, i) => (
-          <circle
-            key={i}
-            cx={xScale(i)}
-            cy={yScale(p.minPrice)}
-            r={i === points.length - 1 ? 3 : 1.5}
-            fill={p.minPrice <= threshold ? '#4ade80' : '#60a5fa'}
-          />
+      <div className="range-tabs">
+        {RANGE_OPTIONS.map(opt => (
+          <button
+            key={opt.key}
+            className={days === opt.key ? 'tab active' : 'tab'}
+            onClick={() => setDays(opt.key)}
+          >
+            {opt.label}
+          </button>
         ))}
-      </svg>
-      <div className="spark-footer">
-        <span>最低 NT$ {minHistoryPrice.toLocaleString()}</span>
-        <span>最高 NT$ {maxHistoryPrice.toLocaleString()}</span>
       </div>
+
+      {loading ? (
+        <div className="spark-empty">載入歷史…</div>
+      ) : (
+        renderChart()
+      )}
+
       <style jsx>{`
         .spark {
           margin-top: 12px;
@@ -107,6 +192,28 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
           background: rgba(96, 165, 250, 0.05);
           border: 1px solid rgba(96, 165, 250, 0.15);
           border-radius: 10px;
+        }
+        .range-tabs {
+          display: flex;
+          gap: 6px;
+          margin-bottom: 8px;
+        }
+        .tab {
+          flex: 1;
+          padding: 4px 8px;
+          font-size: 11px;
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          color: #7e88a8;
+          border-radius: 6px;
+          cursor: pointer;
+          font-weight: 600;
+          font-family: inherit;
+        }
+        .tab.active {
+          background: rgba(96, 165, 250, 0.18);
+          border-color: rgba(96, 165, 250, 0.4);
+          color: #60a5fa;
         }
         .spark-header {
           display: flex;
@@ -126,16 +233,8 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
           display: block;
           width: 100%;
         }
-        .spark-footer {
-          display: flex;
-          justify-content: space-between;
-          font-size: 10px;
-          color: #5a6280;
-          margin-top: 4px;
-        }
         .spark-empty {
-          margin-top: 10px;
-          padding: 10px;
+          padding: 24px 10px;
           font-size: 12px;
           color: #5a6280;
           text-align: center;
