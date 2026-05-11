@@ -8,6 +8,9 @@ interface AlertFlexProps {
   cheapestPrice: number;
   threshold: number;
   airline: string;
+  // 這條訂閱的 source_id（user 或 group）。給「我的訂閱」按鈕帶 ctx 用，
+  // 不傳就 fallback 到普通連結（個人訂閱情境）
+  sourceId?: string;
 }
 
 interface DailyFlexProps {
@@ -155,7 +158,7 @@ export function buildAlertFlex(props: AlertFlexProps) {
             action: {
               type: 'uri',
               label: '📋 我的訂閱',
-              uri: `${APP_URL}/liff/subscriptions`
+              uri: subscriptionsUrlFor(props.sourceId)
             }
           }
         ]
@@ -278,6 +281,16 @@ export function buildDailyFlex(props: DailyFlexProps) {
       }
     }
   };
+}
+
+/**
+ * 「我的訂閱」按鈕的 URL ── 群組 source 要附 ctx 才能在 LIFF 撈到該群組的訂閱。
+ */
+function subscriptionsUrlFor(sourceId?: string): string {
+  if (sourceId && (sourceId.startsWith('C') || sourceId.startsWith('R'))) {
+    return `${APP_URL}/liff/subscriptions?ctx=${encodeURIComponent(sourceId)}`;
+  }
+  return `${APP_URL}/liff/subscriptions`;
 }
 
 /**

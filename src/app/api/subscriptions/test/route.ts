@@ -50,7 +50,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       returnDate,
       cheapestPrice: fakePrice,
       threshold: Number(s.max_price),
-      airline: '範例航空（這是測試訊息）'
+      airline: '範例航空（這是測試訊息）',
+      sourceId: s.source_id
     });
     const client = getLineClient();
     await client.pushMessage({

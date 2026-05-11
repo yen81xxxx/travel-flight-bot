@@ -6,7 +6,7 @@ echo  Vercel will auto-redeploy after push.
 echo ============================================
 echo.
 git add .
-git commit -m "Switch booking link to Skyscanner deep link (pre-fills airport+dates reliably)"
+git commit -m "Fix: alert flex 我的訂閱 button now includes ctx for group subs"
 git push origin main
 echo.
 echo ============================================

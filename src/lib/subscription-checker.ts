@@ -172,7 +172,8 @@ async function sendAlert(
       returnDate,
       cheapestPrice: cheapest,
       threshold: Number(sub.max_price),
-      airline: analysis.cheapestAirline ?? '—'
+      airline: analysis.cheapestAirline ?? '—',
+      sourceId: sub.source_id
     });
     const client = getLineClient();
     await client.pushMessage({
