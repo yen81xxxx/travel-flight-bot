@@ -11,7 +11,9 @@ const PostBody = z.object({
   sourceId: z.string().min(1),
   quietStart: z.string().regex(TIME_RE).nullable(),
   quietEnd: z.string().regex(TIME_RE).nullable(),
-  timezone: z.string().default('Asia/Taipei')
+  timezone: z.string().default('Asia/Taipei'),
+  dailySummary: z.boolean().optional(),
+  priceAlerts: z.boolean().optional()
 });
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
@@ -40,18 +42,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const supabase = getSupabase();
+  const upsertRow: Record<string, unknown> = {
+    source_id: body.sourceId,
+    quiet_start: body.quietStart,
+    quiet_end: body.quietEnd,
+    timezone: body.timezone,
+    updated_at: new Date().toISOString()
+  };
+  if (body.dailySummary !== undefined) upsertRow.daily_summary = body.dailySummary;
+  if (body.priceAlerts !== undefined) upsertRow.price_alerts = body.priceAlerts;
+
   const { error } = await supabase
     .from('notification_settings')
-    .upsert(
-      {
-        source_id: body.sourceId,
-        quiet_start: body.quietStart,
-        quiet_end: body.quietEnd,
-        timezone: body.timezone,
-        updated_at: new Date().toISOString()
-      },
-      { onConflict: 'source_id' }
-    );
+    .upsert(upsertRow, { onConflict: 'source_id' });
 
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });

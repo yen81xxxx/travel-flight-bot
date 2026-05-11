@@ -6,15 +6,32 @@ interface Props { liffId: string; }
 
 export default function SettingsView({ liffId }: Props) {
   const [ready, setReady] = useState(false);
-  const [sourceId, setSourceId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [profileName, setProfileName] = useState<string | null>(null);
+  const [groupCtxId, setGroupCtxId] = useState<string | null>(null);
+  const [groupName, setGroupName] = useState<string | null>(null);
+
+  // 設定的目標 source（個人 = userId、群組 = groupCtxId）
+  const targetSourceId = groupCtxId ?? userId;
+  const isGroupContext = !!groupCtxId;
 
   const [quietStart, setQuietStart] = useState('22:00');
   const [quietEnd, setQuietEnd] = useState('08:00');
-  const [enabled, setEnabled] = useState(false);
+  const [quietEnabled, setQuietEnabled] = useState(false);
+  const [dailySummary, setDailySummary] = useState(true);
+  const [priceAlerts, setPriceAlerts] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // 從 URL 讀 ctx
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const ctx = new URLSearchParams(window.location.search).get('ctx');
+    if (ctx && (ctx.startsWith('C') || ctx.startsWith('R'))) {
+      setGroupCtxId(ctx);
+    }
+  }, []);
 
   useEffect(() => {
     if (!liffId) {
@@ -28,14 +45,10 @@ export default function SettingsView({ liffId }: Props) {
         await liff.init({ liffId });
         if (liff.isLoggedIn()) {
           const p = await liff.getProfile();
-          setSourceId(p.userId);
+          setUserId(p.userId);
           setProfileName(p.displayName);
         } else if (liff.isInClient()) {
           liff.login();
-          return;
-        } else {
-          // 在外部瀏覽器但沒登入，要使用者按按鈕登入
-          setReady(true);
           return;
         }
         setReady(true);
@@ -46,23 +59,37 @@ export default function SettingsView({ liffId }: Props) {
     })();
   }, [liffId]);
 
-  // 載入既有設定
+  // 拿群組名（如果是群組情境）
   useEffect(() => {
-    if (!sourceId) return;
+    if (!groupCtxId) return;
     (async () => {
       try {
-        const r = await fetch(`/api/notification-settings?sourceId=${encodeURIComponent(sourceId)}`);
+        const r = await fetch(`/api/group-info?groupId=${encodeURIComponent(groupCtxId)}`);
+        const d = await r.json();
+        if (d.ok && d.groupName) setGroupName(d.groupName);
+      } catch {}
+    })();
+  }, [groupCtxId]);
+
+  // 載入既有設定
+  useEffect(() => {
+    if (!targetSourceId) return;
+    (async () => {
+      try {
+        const r = await fetch(`/api/notification-settings?sourceId=${encodeURIComponent(targetSourceId)}`);
         const d = await r.json();
         if (d.ok && d.settings) {
           if (d.settings.quiet_start && d.settings.quiet_end) {
             setQuietStart(d.settings.quiet_start.slice(0, 5));
             setQuietEnd(d.settings.quiet_end.slice(0, 5));
-            setEnabled(true);
+            setQuietEnabled(true);
           }
+          if (typeof d.settings.daily_summary === 'boolean') setDailySummary(d.settings.daily_summary);
+          if (typeof d.settings.price_alerts === 'boolean') setPriceAlerts(d.settings.price_alerts);
         }
       } catch {}
     })();
-  }, [sourceId]);
+  }, [targetSourceId]);
 
   const handleLogin = async () => {
     if (!liffId) return;
@@ -73,7 +100,7 @@ export default function SettingsView({ liffId }: Props) {
   };
 
   const save = async () => {
-    if (!sourceId) return;
+    if (!targetSourceId) return;
     setSaving(true);
     setSavedMsg(null);
     try {
@@ -81,10 +108,12 @@ export default function SettingsView({ liffId }: Props) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sourceId,
-          quietStart: enabled ? quietStart : null,
-          quietEnd: enabled ? quietEnd : null,
-          timezone: 'Asia/Taipei'
+          sourceId: targetSourceId,
+          quietStart: quietEnabled ? quietStart : null,
+          quietEnd: quietEnabled ? quietEnd : null,
+          timezone: 'Asia/Taipei',
+          dailySummary,
+          priceAlerts
         })
       });
       const d = await r.json();
@@ -102,7 +131,7 @@ export default function SettingsView({ liffId }: Props) {
     return <main className="loading">載入中…<style jsx>{`.loading{padding:80px;text-align:center;color:#7e88a8;}`}</style></main>;
   }
 
-  if (!sourceId) {
+  if (!userId) {
     return (
       <main className="wrap">
         <div className="card">
@@ -119,26 +148,59 @@ export default function SettingsView({ liffId }: Props) {
     );
   }
 
+  const headerSubtitle = isGroupContext
+    ? `📌 ${groupName ?? '群組'} 的通知設定`
+    : `${profileName ?? ''} 的通知設定`;
+
   return (
     <main className="wrap">
       <header className="hero">
         <h1>⚙️ 通知設定</h1>
-        <p>{profileName ?? ''}</p>
+        <p>{headerSubtitle}</p>
+        {isGroupContext && (
+          <p className="hint-group">這個設定只影響此群組的通知，跟你個人的設定獨立</p>
+        )}
       </header>
 
       <section className="card">
         <div className="row">
           <div>
-            <h3>🌙 靜音時段</h3>
-            <p className="hint">這段時間內不發送降價通知</p>
+            <h3>📮 每日航班摘要</h3>
+            <p className="hint">每天 09:00 推播當日 TPE→HND 最低價</p>
           </div>
           <label className="switch">
-            <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
+            <input type="checkbox" checked={dailySummary} onChange={e => setDailySummary(e.target.checked)} />
             <span className="slider" />
           </label>
         </div>
 
-        {enabled && (
+        <div className="divider" />
+
+        <div className="row">
+          <div>
+            <h3>🔔 降價提醒</h3>
+            <p className="hint">訂閱的航線跌破門檻時推播</p>
+          </div>
+          <label className="switch">
+            <input type="checkbox" checked={priceAlerts} onChange={e => setPriceAlerts(e.target.checked)} />
+            <span className="slider" />
+          </label>
+        </div>
+
+        <div className="divider" />
+
+        <div className="row">
+          <div>
+            <h3>🌙 靜音時段</h3>
+            <p className="hint">這段時間內不發送任何通知</p>
+          </div>
+          <label className="switch">
+            <input type="checkbox" checked={quietEnabled} onChange={e => setQuietEnabled(e.target.checked)} />
+            <span className="slider" />
+          </label>
+        </div>
+
+        {quietEnabled && (
           <div className="time-row">
             <label>
               <span>開始</span>
@@ -163,8 +225,8 @@ export default function SettingsView({ liffId }: Props) {
       </section>
 
       <p className="footnote">
-        💡 即便在靜音時段，cron 仍會每天執行價格檢查，只是不會推播給你。
-        通知會在離開靜音時段的下次 cron 執行時補發（如果價格仍符合條件）。
+        💡 即便關閉所有通知，cron 仍會繼續更新訂閱的歷史價格資料（你打開「我的訂閱」時還是看得到走勢圖）。
+        {isGroupContext && ' 想設你個人的通知，從 1:1 跟 bot 對話視窗傳「設定」進入。'}
       </p>
 
       <style jsx>{`
@@ -183,6 +245,15 @@ export default function SettingsView({ liffId }: Props) {
         }
         h1 { font-size: 22px; font-weight: 800; }
         .hero p { font-size: 13px; color: #cdd5f0; margin-top: 4px; }
+        .hint-group {
+          margin-top: 8px;
+          padding: 6px 10px;
+          background: rgba(96,165,250,.1);
+          border-left: 3px solid #60a5fa;
+          border-radius: 6px;
+          font-size: 12px;
+          color: #cdd5f0;
+        }
         .card {
           background: #1a2238;
           border: 1px solid #2a3454;
@@ -197,7 +268,8 @@ export default function SettingsView({ liffId }: Props) {
         }
         h3 { font-size: 16px; font-weight: 700; }
         .hint { font-size: 12px; color: #7e88a8; margin-top: 4px; }
-        .switch { position: relative; display: inline-block; width: 50px; height: 28px; }
+        .divider { height: 1px; background: rgba(255,255,255,.06); margin: 16px 0; }
+        .switch { position: relative; display: inline-block; width: 50px; height: 28px; flex-shrink: 0; }
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider {
           position: absolute; cursor: pointer; inset: 0;

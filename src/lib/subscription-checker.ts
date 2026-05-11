@@ -41,9 +41,14 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
   const allSubs = (subs ?? []) as Subscription[];
   result.total = allSubs.length;
 
-  // 抓所有 source 的通知設定（靜音時段）
+  // 抓所有 source 的通知設定（靜音時段、降價提醒開關）
   const sourceIds = Array.from(new Set(allSubs.map(s => s.source_id)));
-  const settingsMap = new Map<string, { quietStart: string | null; quietEnd: string | null; timezone: string }>();
+  const settingsMap = new Map<string, {
+    quietStart: string | null;
+    quietEnd: string | null;
+    timezone: string;
+    priceAlerts: boolean;
+  }>();
   if (sourceIds.length > 0) {
     const { data: settings } = await supabase
       .from('notification_settings')
@@ -53,7 +58,8 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
       settingsMap.set(s.source_id, {
         quietStart: s.quiet_start,
         quietEnd: s.quiet_end,
-        timezone: s.timezone ?? 'Asia/Taipei'
+        timezone: s.timezone ?? 'Asia/Taipei',
+        priceAlerts: s.price_alerts !== false  // null/undefined 視為開啟
       });
     }
   }
@@ -114,8 +120,16 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
             continue;
           }
 
-          // 靜音時段檢查
           const setting = settingsMap.get(sub.source_id);
+
+          // 降價提醒被關閉
+          if (setting && setting.priceAlerts === false) {
+            console.log('[sub-checker] price alerts disabled for source:', sub.source_id, 'skip sub:', sub.id);
+            result.skipped++;
+            continue;
+          }
+
+          // 靜音時段檢查
           if (setting && setting.quietStart && setting.quietEnd) {
             if (isWithinQuietHours(setting.quietStart, setting.quietEnd, setting.timezone)) {
               console.log('[sub-checker] in quiet hours, skip:', sub.id);

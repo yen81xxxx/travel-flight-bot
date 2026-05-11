@@ -57,7 +57,8 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
     const result = await searchFlights({ origin, destination, outboundDate, returnDate });
     const analysis = analyzeFlights(result.outbound, result.return);
 
-    // 推 Flex Message（失敗 fallback 純文字）
+    // 推 Flex Message 給有訂閱 + daily_summary 開啟的 source
+    // （個人 / 群組統一處理；尊重每個 source 的「每日摘要」開關）
     try {
       const flex = buildDailyFlex({
         origin, destination, outboundDate, returnDate,
@@ -66,12 +67,41 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
         outboundCount: analysis.outboundCount,
         returnCount: analysis.returnCount
       });
-      const target = process.env.LINE_DAILY_PUSH_TARGET?.trim();
       const client = getLineClient();
+      const target = process.env.LINE_DAILY_PUSH_TARGET?.trim();
+
       if (target) {
+        // 後門：env 有指定就只推那一個
         await client.pushMessage({ to: target, messages: [flex as any] });
       } else {
-        await client.broadcast({ messages: [flex as any] });
+        // 撈所有有訂閱的 distinct source_id（個人 + 群組）
+        const { data: subs } = await supabase
+          .from('subscriptions')
+          .select('source_id')
+          .eq('active', true)
+          .eq('paused', false);
+        const allSourceIds = Array.from(new Set((subs ?? []).map(s => s.source_id as string)));
+
+        if (allSourceIds.length === 0) {
+          console.log('[cron] no active subscribers, skip daily push');
+        } else {
+          // 撈每個 source 的 daily_summary 設定（沒設過預設 true）
+          const { data: settings } = await supabase
+            .from('notification_settings')
+            .select('source_id, daily_summary')
+            .in('source_id', allSourceIds);
+          const optedOut = new Set<string>();
+          for (const s of (settings ?? [])) {
+            if (s.daily_summary === false) optedOut.add(s.source_id as string);
+          }
+          const targets = allSourceIds.filter(id => !optedOut.has(id));
+          console.log(`[cron] daily push: ${targets.length}/${allSourceIds.length} sources opted in`);
+
+          // 逐一 pushMessage（單筆失敗不影響其他）
+          await Promise.allSettled(
+            targets.map(to => client.pushMessage({ to, messages: [flex as any] }))
+          );
+        }
       }
     } catch (e) {
       console.warn('[cron] flex daily push failed, fallback text:', e);

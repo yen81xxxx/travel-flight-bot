@@ -85,12 +85,17 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
 
   // 通知設定
   if (text === '設定' || text === '通知設定' || text === '/settings') {
+    const isGroup = sourceId.startsWith('C') || sourceId.startsWith('R');
+    const url = isGroup
+      ? `${APP_URL}/liff/settings?ctx=${encodeURIComponent(sourceId)}`
+      : `${APP_URL}/liff/settings`;
     await replyText(
       replyToken,
       [
-        '⚙️ 通知設定（靜音時段等）',
+        '⚙️ 通知設定',
+        isGroup ? '（這是「此群組」的設定，個人設定請到 1:1 視窗）' : '（每日摘要、降價提醒、靜音時段）',
         '',
-        `${APP_URL}/liff/settings`
+        url
       ].join('\n')
     );
     return;
