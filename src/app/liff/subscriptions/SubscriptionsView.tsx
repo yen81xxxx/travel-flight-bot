@@ -29,10 +29,8 @@ export default function SubscriptionsView({ liffId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [groupNames, setGroupNames] = useState<Record<string, string>>({});
 
-  // 從 URL 讀 ctx（群組 ID）
-  // ⚠️ LIFF OAuth redirect 會把 ?ctx 從 URL 吃掉、只留 ?code&state&liffClientId，
-  // 所以：URL 有 ctx 時存進 sessionStorage、沒有時嘗試從 sessionStorage 讀回來。
-  // sessionStorage 同 tab 同 origin 跨 redirect 仍會保留。
+  // 從 URL 讀 ctx（群組 ID）+ goto（認證後跳轉目的）
+  // ⚠️ LIFF OAuth redirect 會把 query 吃掉，所以兩個都先存 sessionStorage、redirect 回來再讀
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
@@ -46,7 +44,32 @@ export default function SubscriptionsView({ liffId }: Props) {
       }
     }
     if (ctx) setGroupCtxId(ctx);
+
+    // 認證後要跳轉到別的 LIFF 頁
+    const gotoParam = params.get('goto');
+    if (gotoParam) {
+      sessionStorage.setItem('liff_goto', gotoParam);
+    }
   }, []);
+
+  // 認證完成後（sourceId 有了），檢查是否要跳轉
+  useEffect(() => {
+    if (!sourceId) return;
+    if (typeof window === 'undefined') return;
+    const gotoTarget = sessionStorage.getItem('liff_goto');
+    if (gotoTarget) {
+      sessionStorage.removeItem('liff_goto');
+      // ctx 也保留給目的頁
+      const ctx = sessionStorage.getItem('liff_ctx');
+      const ctxQS = ctx ? `?ctx=${encodeURIComponent(ctx)}` : '';
+      window.location.replace(`/liff/${gotoTarget}${ctxQS}`);
+    }
+  }, [sourceId]);
+
+  // 偵測 URL 有 goto 時、提早顯示「跳轉中」遮罩
+  const isPendingRedirect = typeof window !== 'undefined'
+    && (new URLSearchParams(window.location.search).get('goto') !== null
+        || sessionStorage.getItem('liff_goto') !== null);
 
   useEffect(() => {
     if (!liffId) {
@@ -356,11 +379,11 @@ export default function SubscriptionsView({ liffId }: Props) {
     </div>
   );
 
-  if (!ready) {
+  if (!ready || isPendingRedirect) {
     return (
       <div className="loading">
         <div className="spinner" />
-        <p>載入中…</p>
+        <p>{isPendingRedirect ? '跳轉中…' : '載入中…'}</p>
         <style jsx>{`
           .loading {
             min-height: 100vh; display: flex; flex-direction: column;

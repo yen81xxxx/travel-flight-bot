@@ -84,11 +84,11 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
   }
 
   // 通知設定
+  // ⚠️ 走「訂閱頁 ?goto=settings」繞道，避免新加 LIFF 頁面要去 LINE Login channel 加白名單
   if (text === '設定' || text === '通知設定' || text === '/settings') {
     const isGroup = sourceId.startsWith('C') || sourceId.startsWith('R');
-    const url = isGroup
-      ? `${APP_URL}/liff/settings?ctx=${encodeURIComponent(sourceId)}`
-      : `${APP_URL}/liff/settings`;
+    const ctxParam = isGroup ? `&ctx=${encodeURIComponent(sourceId)}` : '';
+    const url = `${APP_URL}/liff/subscriptions?goto=settings${ctxParam}`;
     await replyText(
       replyToken,
       [
