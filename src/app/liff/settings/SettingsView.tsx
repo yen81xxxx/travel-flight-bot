@@ -41,6 +41,17 @@ export default function SettingsView({ liffId }: Props) {
   }, []);
 
   useEffect(() => {
+    // 群組設定：URL 帶 ctx 時跳過 LIFF auth（不需要 userId、避免 OAuth round-trip）
+    if (typeof window !== 'undefined') {
+      const urlCtx = new URLSearchParams(window.location.search).get('ctx');
+      const sessionCtx = sessionStorage.getItem('liff_ctx');
+      const ctx = urlCtx || sessionCtx;
+      if (ctx && (ctx.startsWith('C') || ctx.startsWith('R'))) {
+        setReady(true);
+        return;
+      }
+    }
+
     if (!liffId) {
       setError('需要 LIFF ID');
       setReady(true);
@@ -138,7 +149,8 @@ export default function SettingsView({ liffId }: Props) {
     return <main className="loading">載入中…<style jsx>{`.loading{padding:80px;text-align:center;color:#7e88a8;}`}</style></main>;
   }
 
-  if (!userId) {
+  // 群組情境 (有 ctx) 沒 userId 也能設、不需要登入
+  if (!userId && !isGroupContext) {
     return (
       <main className="wrap">
         <div className="card">
