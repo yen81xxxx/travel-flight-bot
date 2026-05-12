@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { formatAirport } from '@/config/airports';
 import type { Subscription } from '@/types';
 import Sparkline from './Sparkline';
+import TabNav from '../TabNav';
 
 interface Props {
   liffId: string;
@@ -403,6 +404,8 @@ export default function SubscriptionsView({ liffId }: Props) {
   }
 
   return (
+    <>
+    <TabNav active="subscriptions" liffId={liffId} />
     <div className="wrap">
       <header className="hero">
         <div className="brand">
@@ -957,5 +960,6 @@ export default function SubscriptionsView({ liffId }: Props) {
         }
       `}</style>
     </div>
+    </>
   );
 }

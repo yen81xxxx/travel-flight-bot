@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import TabNav from '../TabNav';
 
 interface Props { liffId: string; }
 
@@ -172,6 +173,8 @@ export default function SettingsView({ liffId }: Props) {
     : `${profileName ?? ''} 的通知設定`;
 
   return (
+    <>
+    <TabNav active="settings" liffId={liffId} />
     <main className="wrap">
       <header className="hero">
         <h1>⚙️ 通知設定</h1>
@@ -366,5 +369,6 @@ export default function SettingsView({ liffId }: Props) {
         }
       `}</style>
     </main>
+    </>
   );
 }

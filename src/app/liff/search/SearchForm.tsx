@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Airport } from '@/config/airports';
 import { isTaiwanAirport, isJapanAirport } from '@/config/airports';
+import TabNav from '../TabNav';
 
 interface Props {
   liffId: string;
@@ -330,6 +331,8 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
   }
 
   return (
+    <>
+    <TabNav active="search" liffId={liffId} />
     <div className="wrap">
       <header className="hero">
         <div className="brand">
@@ -1121,6 +1124,7 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
         }
       `}</style>
     </div>
+    </>
   );
 }
 
