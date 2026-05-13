@@ -245,6 +245,8 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
   };
 
   const handleSubscribe = async () => {
+    // double-submit 保護：已在 saving 中就直接 return
+    if (subscribeStatus === 'saving') return;
     if (!sourceId) {
       setError('需要在 LINE 內開啟才能訂閱');
       return;

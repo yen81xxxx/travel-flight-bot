@@ -38,7 +38,25 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
     return result;
   }
 
-  const allSubs = (subs ?? []) as Subscription[];
+  // 過濾掉出發日已過的訂閱（避免每天白白燒 SerpApi 配額）
+  const today = new Date().toISOString().slice(0, 10);
+  const rawSubs = (subs ?? []) as Subscription[];
+  const expiredIds: number[] = [];
+  const allSubs = rawSubs.filter(s => {
+    if (s.outbound_date && s.outbound_date < today) {
+      if (s.id) expiredIds.push(s.id);
+      return false;
+    }
+    return true;
+  });
+  if (expiredIds.length > 0) {
+    // 一次性軟刪除所有過期訂閱
+    await supabase
+      .from('subscriptions')
+      .update({ active: false })
+      .in('id', expiredIds);
+    console.log(`[sub-checker] auto-archived ${expiredIds.length} expired subs`);
+  }
   result.total = allSubs.length;
 
   // 抓所有 source 的通知設定（靜音時段、降價提醒開關）

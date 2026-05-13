@@ -44,7 +44,7 @@ function getSubscriptionsUrl(): string {
 export async function handleEvent(event: WebhookEvent): Promise<void> {
   // 群組/聊天室加入時打招呼
   if (event.type === 'join') {
-    const replyToken = (event as any).replyToken;
+    const replyToken = (event as { replyToken?: string }).replyToken;
     if (replyToken) {
       await replyText(
         replyToken,
@@ -56,6 +56,29 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
           '輸入「查航班」開始'
         ].join('\n')
       );
+    }
+    return;
+  }
+
+  // bot 被踢出群組/聊天室 → 軟刪除該 source 所有 active 訂閱（避免 cron 繼續浪費 SerpApi 配額）
+  if (event.type === 'leave') {
+    const leftSourceId = getSourceId(event);
+    if (leftSourceId) {
+      try {
+        const supabase = getSupabase();
+        const { error } = await supabase
+          .from('subscriptions')
+          .update({ active: false })
+          .eq('source_id', leftSourceId)
+          .eq('active', true);
+        if (error) {
+          console.error('[bot-handler] leave cleanup failed:', error);
+        } else {
+          console.log('[bot-handler] cleaned subs for left source:', leftSourceId);
+        }
+      } catch (err) {
+        console.error('[bot-handler] leave cleanup exception:', err);
+      }
     }
     return;
   }

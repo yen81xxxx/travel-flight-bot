@@ -37,14 +37,48 @@ export async function replyText(replyToken: string, text: string): Promise<void>
 }
 
 /**
- * Push API（推給特定 user/group），用於排程廣播
+ * 帶指數退避重試的 LINE push（最多 3 次：立即、200ms、800ms）
+ * 5xx 才重試；4xx 直接失敗（重試也不會好）
+ */
+async function pushWithRetry<T>(fn: () => Promise<T>): Promise<T> {
+  const delays = [0, 200, 800];
+  let lastErr: unknown;
+  for (let i = 0; i < delays.length; i++) {
+    if (delays[i] > 0) await new Promise(r => setTimeout(r, delays[i]));
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      // 4xx 不重試（auth / 格式錯誤）
+      const status = (err as { statusCode?: number; status?: number })?.statusCode
+        ?? (err as { statusCode?: number; status?: number })?.status;
+      if (typeof status === 'number' && status >= 400 && status < 500) {
+        throw err;
+      }
+      console.warn(`[line] push attempt ${i + 1}/${delays.length} failed:`, err);
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * Push API（推給特定 user/group），用於排程廣播 — 內建重試
  */
 export async function pushText(to: string, text: string): Promise<void> {
   const client = getLineClient();
-  await client.pushMessage({
+  await pushWithRetry(() => client.pushMessage({
     to,
     messages: [{ type: 'text', text }]
-  });
+  }));
+}
+
+/**
+ * 推任意 message（文字 / flex 等） — 內建重試
+ */
+export async function pushMessages(to: string, messages: unknown[]): Promise<void> {
+  const client = getLineClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await pushWithRetry(() => client.pushMessage({ to, messages: messages as any }));
 }
 
 /**
