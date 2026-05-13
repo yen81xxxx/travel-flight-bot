@@ -9,3 +9,5 @@ export { useAsync, useFetch } from './useAsync';
 export type { AsyncState, UseAsyncReturn } from './useAsync';
 export { useForm } from './useForm';
 export type { FormErrors, UseFormReturn } from './useForm';
+export { useSearchSession } from './useSearchSession';
+export type { SearchSessionState } from './useSearchSession';

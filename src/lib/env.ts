@@ -13,6 +13,7 @@ const requiredEnvVars = [
   'NEXT_PUBLIC_APP_URL'
 ] as const;
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const optionalEnvVars = [
   'DEFAULT_ORIGIN',
   'DEFAULT_DESTINATION',

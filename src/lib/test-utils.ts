@@ -44,8 +44,11 @@ export function createMockSupabaseClient() {
  */
 export function createMockLineClient() {
   return {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     replyMessage: async (_params: any) => ({}),
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     pushMessage: async (_params: any) => ({}),
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     broadcast: async (_params: any) => ({})
   };
 }

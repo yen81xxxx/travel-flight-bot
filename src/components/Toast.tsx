@@ -2,6 +2,8 @@
  * Toast 通知組件 - 錯誤、成功、警告提示
  */
 
+import { useEffect } from 'react';
+
 interface ToastProps {
   type: 'error' | 'success' | 'warning' | 'info';
   message: string;
@@ -10,6 +12,12 @@ interface ToastProps {
 }
 
 export function Toast({ type, message, onClose, autoClose = 5000 }: ToastProps) {
+  // 自動關閉 Toast
+  useEffect(() => {
+    if (!autoClose || !onClose) return;
+    const timer = setTimeout(onClose, autoClose);
+    return () => clearTimeout(timer);
+  }, [autoClose, onClose]);
   const bgColor = {
     error: 'bg-red-50 border-red-200',
     success: 'bg-green-50 border-green-200',
