@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { searchFlights } from '@/lib/serpapi';
 import { analyzeFlights } from '@/lib/flights';
-import { dailyPush, getLineClient } from '@/lib/line';
+import { getLineClient } from '@/lib/line';
 import { getSupabase } from '@/lib/supabase';
 import { checkAllSubscriptions } from '@/lib/subscription-checker';
 import { cleanupOldRecords, getQuotaStats } from '@/lib/cleanup';
 import { buildDailyFlex } from '@/lib/flex-message';
+import type { Subscription } from '@/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,127 +26,187 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const origin = process.env.DEFAULT_ORIGIN ?? 'TPE';
-  const destination = process.env.DEFAULT_DESTINATION ?? 'HND';
-  const tripDays = parseInt(process.env.DEFAULT_TRIP_LENGTH_DAYS ?? '4', 10);
-  const minAhead = parseInt(process.env.DEFAULT_TRIP_DAYS_AHEAD_MIN ?? '14', 10);
-  const maxAhead = parseInt(process.env.DEFAULT_TRIP_DAYS_AHEAD_MAX ?? '90', 10);
-  const offset = Math.floor((minAhead + maxAhead) / 2);
-  const outboundDate = formatDate(addDays(new Date(), offset));
-  const returnDate = formatDate(addDays(new Date(), offset + tripDays));
-
   const supabase = getSupabase();
   const startedAt = new Date();
-  const { data: runRow } = await supabase
-    .from('search_runs')
-    .insert({
-      triggered_by: 'cron',
-      origin,
-      destination,
-      outbound_date: outboundDate,
-      return_date: returnDate,
-      status: 'success',
-      started_at: startedAt.toISOString()
-    })
-    .select()
-    .single();
+  const today = new Date().toISOString().slice(0, 10);
 
-  let dailyResult: any = null;
-  let dailyError: string | null = null;
+  // ============================================
+  // 1) 撈所有 active + unpaused 訂閱
+  // ============================================
+  const { data: rawSubs } = await supabase
+    .from('subscriptions')
+    .select('*')
+    .eq('active', true)
+    .eq('paused', false);
+  const allSubs = ((rawSubs ?? []) as Subscription[]).filter(s =>
+    !s.outbound_date || s.outbound_date >= today
+  );
 
-  try {
-    const result = await searchFlights({ origin, destination, outboundDate, returnDate });
-    const analysis = analyzeFlights(result.outbound, result.return);
+  // ============================================
+  // 2) 每個 source 找「最近一筆訂閱」（按 outbound_date 升冪）
+  // ============================================
+  const nearestBySource = new Map<string, Subscription>();
+  for (const sub of allSubs) {
+    const existing = nearestBySource.get(sub.source_id);
+    if (!existing) {
+      nearestBySource.set(sub.source_id, sub);
+      continue;
+    }
+    const a = sub.outbound_date ?? '9999-12-31';
+    const b = existing.outbound_date ?? '9999-12-31';
+    if (a < b) nearestBySource.set(sub.source_id, sub);
+  }
 
-    // 推 Flex Message 給有訂閱 + daily_summary 開啟的 source
-    // （個人 / 群組統一處理；尊重每個 source 的「每日摘要」開關）
+  // ============================================
+  // 3) 過濾 daily_summary=false 的 source
+  // ============================================
+  const allSourceIds = Array.from(nearestBySource.keys());
+  const optedOut = new Set<string>();
+  if (allSourceIds.length > 0) {
+    const { data: settings } = await supabase
+      .from('notification_settings')
+      .select('source_id, daily_summary')
+      .in('source_id', allSourceIds);
+    for (const s of (settings ?? [])) {
+      if (s.daily_summary === false) optedOut.add(s.source_id as string);
+    }
+  }
+  const targets: { source: string; sub: Subscription }[] = [];
+  for (const [src, sub] of nearestBySource) {
+    if (!optedOut.has(src)) targets.push({ source: src, sub });
+  }
+
+  // ============================================
+  // 4) 把相同 (origin, dest, outbound, return) 合併查詢（省 SerpApi 配額）
+  // ============================================
+  const queryGroups = new Map<string, typeof targets>();
+  for (const t of targets) {
+    const key = [
+      t.sub.origin,
+      t.sub.destination,
+      t.sub.outbound_date ?? '',
+      t.sub.return_date ?? ''
+    ].join('|');
+    const arr = queryGroups.get(key) ?? [];
+    arr.push(t);
+    queryGroups.set(key, arr);
+  }
+
+  // ============================================
+  // 5) 逐組查詢 + per-source push（個別失敗不影響其他）
+  // ============================================
+  const client = getLineClient();
+  let pushedOk = 0;
+  let pushedFail = 0;
+  let totalSerpapiCalls = 0;
+  let totalFromCache = 0;
+  const perGroupResults: Array<{
+    route: string;
+    cheapest: number | null;
+    fromCache: boolean;
+    sourceCount: number;
+  }> = [];
+
+  for (const [key, group] of queryGroups) {
+    const [origin, destination, outboundDate, returnDate] = key.split('|');
     try {
-      const flex = buildDailyFlex({
-        origin, destination, outboundDate, returnDate,
-        cheapestPrice: analysis.cheapestRoundTripPrice,
-        cheapestAirline: analysis.cheapestAirline,
-        outboundCount: analysis.outboundCount,
-        returnCount: analysis.returnCount
+      const result = await searchFlights({ origin, destination, outboundDate, returnDate });
+      totalSerpapiCalls += result.serpapiCalls;
+      if (result.fromCache) totalFromCache++;
+      const analysis = analyzeFlights(result.outbound, result.return);
+
+      perGroupResults.push({
+        route: `${origin}-${destination} ${outboundDate}~${returnDate}`,
+        cheapest: analysis.cheapestRoundTripPrice,
+        fromCache: result.fromCache,
+        sourceCount: group.length
       });
-      const client = getLineClient();
-      const target = process.env.LINE_DAILY_PUSH_TARGET?.trim();
 
-      if (target) {
-        // 後門：env 有指定就只推那一個
-        await client.pushMessage({ to: target, messages: [flex as any] });
-      } else {
-        // 撈所有有訂閱的 distinct source_id（個人 + 群組）
-        const { data: subs } = await supabase
-          .from('subscriptions')
-          .select('source_id')
-          .eq('active', true)
-          .eq('paused', false);
-        const allSourceIds = Array.from(new Set((subs ?? []).map(s => s.source_id as string)));
-
-        if (allSourceIds.length === 0) {
-          console.log('[cron] no active subscribers, skip daily push');
-        } else {
-          // 撈每個 source 的 daily_summary 設定（沒設過預設 true）
-          const { data: settings } = await supabase
-            .from('notification_settings')
-            .select('source_id, daily_summary')
-            .in('source_id', allSourceIds);
-          const optedOut = new Set<string>();
-          for (const s of (settings ?? [])) {
-            if (s.daily_summary === false) optedOut.add(s.source_id as string);
+      // push to every target in this group with their own threshold
+      await Promise.allSettled(
+        group.map(async (t) => {
+          try {
+            const flex = buildDailyFlex({
+              origin,
+              destination,
+              outboundDate,
+              returnDate,
+              cheapestPrice: analysis.cheapestRoundTripPrice,
+              cheapestAirline: analysis.cheapestAirline,
+              outboundCount: analysis.outboundCount,
+              returnCount: analysis.returnCount,
+              threshold: Number(t.sub.max_price),
+              sourceId: t.source
+            });
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await client.pushMessage({ to: t.source, messages: [flex as any] });
+            pushedOk++;
+          } catch (err) {
+            console.error('[cron] push failed for', t.source, err);
+            pushedFail++;
           }
-          const targets = allSourceIds.filter(id => !optedOut.has(id));
-          console.log(`[cron] daily push: ${targets.length}/${allSourceIds.length} sources opted in`);
-
-          // 逐一 pushMessage（單筆失敗不影響其他）
-          await Promise.allSettled(
-            targets.map(to => client.pushMessage({ to, messages: [flex as any] }))
-          );
-        }
-      }
-    } catch (e) {
-      console.warn('[cron] flex daily push failed, fallback text:', e);
-      const text = analysis.cheapestRoundTripPrice
-        ? `✈️ 今日 ${origin}→${destination} 最低 NT$ ${analysis.cheapestRoundTripPrice.toLocaleString()}`
-        : `✈️ 今日 ${origin}→${destination} 沒搜到資料`;
-      await dailyPush(text);
-    }
-
-    if (runRow?.id) {
-      await supabase
-        .from('search_runs')
-        .update({
-          status: result.fromCache ? 'cached' : 'success',
-          serpapi_calls: result.serpapiCalls,
-          duration_ms: Date.now() - startedAt.getTime(),
-          finished_at: new Date().toISOString()
         })
-        .eq('id', runRow.id);
-    }
-
-    dailyResult = {
-      origin, destination, outboundDate, returnDate,
-      fromCache: result.fromCache,
-      serpapiCalls: result.serpapiCalls,
-      cheapest: analysis.cheapestRoundTripPrice
-    };
-  } catch (err) {
-    dailyError = err instanceof Error ? err.message : String(err);
-    console.error('[cron] daily search failed:', err);
-    if (runRow?.id) {
-      await supabase
-        .from('search_runs')
-        .update({
-          status: 'failed',
-          error_message: dailyError,
-          duration_ms: Date.now() - startedAt.getTime(),
-          finished_at: new Date().toISOString()
-        })
-        .eq('id', runRow.id);
+      );
+    } catch (err) {
+      console.error('[cron] search failed for', key, err);
+      pushedFail += group.length;
     }
   }
 
-  // 跑訂閱檢查（合併查詢）
+  // ============================================
+  // 6) 沒訂閱的 fallback — 若 env 有設 LINE_DAILY_PUSH_TARGET，仍推一張預設 card（保留測試後門）
+  // ============================================
+  let fallbackResult: string | null = null;
+  if (targets.length === 0) {
+    const fallbackTarget = process.env.LINE_DAILY_PUSH_TARGET?.trim();
+    if (fallbackTarget) {
+      try {
+        const origin = process.env.DEFAULT_ORIGIN ?? 'TPE';
+        const destination = process.env.DEFAULT_DESTINATION ?? 'HND';
+        const tripDays = parseInt(process.env.DEFAULT_TRIP_LENGTH_DAYS ?? '4', 10);
+        const minAhead = parseInt(process.env.DEFAULT_TRIP_DAYS_AHEAD_MIN ?? '14', 10);
+        const maxAhead = parseInt(process.env.DEFAULT_TRIP_DAYS_AHEAD_MAX ?? '90', 10);
+        const offset = Math.floor((minAhead + maxAhead) / 2);
+        const outboundDate = formatDate(addDays(new Date(), offset));
+        const returnDate = formatDate(addDays(new Date(), offset + tripDays));
+        const result = await searchFlights({ origin, destination, outboundDate, returnDate });
+        totalSerpapiCalls += result.serpapiCalls;
+        const analysis = analyzeFlights(result.outbound, result.return);
+        const flex = buildDailyFlex({
+          origin, destination, outboundDate, returnDate,
+          cheapestPrice: analysis.cheapestRoundTripPrice,
+          cheapestAirline: analysis.cheapestAirline,
+          outboundCount: analysis.outboundCount,
+          returnCount: analysis.returnCount
+        });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await client.pushMessage({ to: fallbackTarget, messages: [flex as any] });
+        fallbackResult = `pushed default card to ${fallbackTarget}`;
+      } catch (err) {
+        fallbackResult = `fallback push failed: ${err instanceof Error ? err.message : String(err)}`;
+        console.error('[cron] fallback push failed:', err);
+      }
+    } else {
+      fallbackResult = 'no subscribers and no LINE_DAILY_PUSH_TARGET set; skipped';
+    }
+  }
+
+  // ============================================
+  // 7) 寫一筆 search_runs 總結
+  // ============================================
+  await supabase.from('search_runs').insert({
+    triggered_by: 'cron',
+    status: pushedFail === 0 ? 'success' : 'partial',
+    started_at: startedAt.toISOString(),
+    finished_at: new Date().toISOString(),
+    serpapi_calls: totalSerpapiCalls,
+    duration_ms: Date.now() - startedAt.getTime(),
+    error_message: pushedFail > 0 ? `${pushedFail} push failed` : null
+  });
+
+  // ============================================
+  // 8) 跑訂閱降價檢查（這邊用每筆訂閱實際的日期，跟上面合併查詢的 cache 共用）
+  // ============================================
   let subResult = { total: 0, notified: 0, skipped: 0, errors: 0, serpapiCalls: 0 };
   try {
     subResult = await checkAllSubscriptions();
@@ -153,7 +214,9 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
     console.error('[cron] subscription check failed:', err);
   }
 
-  // 清理舊資料
+  // ============================================
+  // 9) 清理 + 配額
+  // ============================================
   let cleanup = { flightQuotesDeleted: 0, searchRunsDeleted: 0, notificationsDeleted: 0 };
   try {
     cleanup = await cleanupOldRecords();
@@ -161,7 +224,6 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
     console.error('[cron] cleanup failed:', err);
   }
 
-  // 配額統計
   let quota = { thisMonth: 0, cachedHits: 0, estimatedRemaining: 250 };
   try {
     quota = await getQuotaStats();
@@ -170,9 +232,18 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   }
 
   return NextResponse.json({
-    ok: dailyError === null,
-    daily: dailyResult,
-    dailyError,
+    ok: pushedFail === 0,
+    daily: {
+      sourcesTargeted: targets.length,
+      sourcesOptedOut: optedOut.size,
+      queryGroups: queryGroups.size,
+      pushedOk,
+      pushedFail,
+      serpapiCalls: totalSerpapiCalls,
+      fromCache: totalFromCache,
+      perGroup: perGroupResults,
+      fallback: fallbackResult
+    },
     subscriptions: subResult,
     cleanup,
     quota

@@ -2,7 +2,7 @@
 chcp 65001 > nul
 cd /d "%~dp0"
 git add -A
-git commit -m "Production-grade hardening: leave-event cleanup, expired-sub archive, push retry, double-submit guard"
+git commit -m "Daily push uses each source's nearest subscription dates (not generic defaults)"
 git push origin main
 echo DONE
 pause
