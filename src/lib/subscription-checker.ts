@@ -3,7 +3,6 @@ import { searchFlights } from './serpapi';
 import { analyzeFlights } from './flights';
 import { pushText } from './line';
 import { buildAlertFlex } from './flex-message';
-import { messagingApi } from '@line/bot-sdk';
 import { getLineClient } from './line';
 import { formatAirport } from '@/config/airports';
 import type { Subscription } from '@/types';
@@ -210,7 +209,8 @@ async function sendAlert(
     const client = getLineClient();
     await client.pushMessage({
       to: sub.source_id,
-      messages: [flex as any]
+      // @ts-expect-error - LINE Bot SDK type mismatch
+      messages: [flex]
     });
   } catch (e) {
     console.warn('[sub-checker] flex push failed, falling back to text:', e);

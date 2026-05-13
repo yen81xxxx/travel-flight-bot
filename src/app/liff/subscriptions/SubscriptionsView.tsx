@@ -106,7 +106,7 @@ export default function SubscriptionsView({ liffId }: Props) {
       liff.login({
         redirectUri: typeof window !== 'undefined' ? window.location.href : undefined
       });
-    } catch (err) {
+    } catch {
       setError('登入失敗，請稍後再試');
     }
   };

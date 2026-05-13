@@ -37,7 +37,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   let body: z.infer<typeof PostBody>;
   try {
     body = PostBody.parse(await req.json());
-  } catch (err) {
+  } catch {
     return NextResponse.json({ ok: false, error: 'Invalid body' }, { status: 400 });
   }
 

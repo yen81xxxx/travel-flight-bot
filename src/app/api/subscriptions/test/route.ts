@@ -20,7 +20,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   let body: z.infer<typeof Body>;
   try {
     body = Body.parse(await req.json());
-  } catch (err) {
+  } catch {
     return NextResponse.json({ ok: false, error: 'Invalid body' }, { status: 400 });
   }
 
@@ -61,7 +61,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           type: 'text',
           text: '🧪 以下是當這條航線跌破門檻時，你會收到的通知範例：'
         },
-        flex as any
+        // @ts-expect-error - LINE Bot SDK type mismatch
+        flex
       ]
     });
     return NextResponse.json({ ok: true });

@@ -297,12 +297,6 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
 
   const fmt = (n: number | null | undefined) =>
     n != null ? `NT$ ${n.toLocaleString()}` : '—';
-  const fmtDuration = (m: number | null | undefined) => {
-    if (m == null) return '—';
-    const h = Math.floor(m / 60);
-    const min = m % 60;
-    return `${h}h${min > 0 ? min + 'm' : ''}`;
-  };
 
   if (!liffReady) {
     return (
@@ -583,7 +577,7 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
               <div className="flight-list">
                 {[...result.outbound]
                   .sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity))
-                  .map((r, i, arr) => (
+                  .map((r, i) => (
                     <FlightCard key={i} row={r} cheapest={i === 0} />
                   ))}
               </div>

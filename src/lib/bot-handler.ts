@@ -278,6 +278,6 @@ async function runSearchAndPush(
     }
     try {
       await pushText(sourceId, '❌ 查詢失敗，請稍後再試。');
-    } catch (_e) {}
+    } catch {}
   }
 }

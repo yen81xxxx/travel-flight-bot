@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSupabase } from '@/lib/supabase';
-import { TW_ORIGINS, JP_DESTINATIONS, ALL_AIRPORTS, isTaiwanAirport, isJapanAirport, formatAirport } from '@/config/airports';
+import { ALL_AIRPORTS, isTaiwanAirport, isJapanAirport, formatAirport } from '@/config/airports';
 import { pushText } from '@/lib/line';
 import type { SourceType } from '@/types';
 
@@ -219,7 +219,7 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
   let body: z.infer<typeof PatchBody>;
   try {
     body = PatchBody.parse(await req.json());
-  } catch (err) {
+  } catch {
     return NextResponse.json({ ok: false, error: 'Invalid body' }, { status: 400 });
   }
 
