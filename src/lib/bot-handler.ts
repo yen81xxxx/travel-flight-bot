@@ -62,6 +62,13 @@ function isGroupOrRoom(sourceId: string): boolean {
   return sourceId.startsWith('C') || sourceId.startsWith('R');
 }
 
+/**
+ * 判斷文本是否匹配命令（支持大小寫無關）
+ */
+function matchesCommand(text: string, commandList: readonly string[]): boolean {
+  return commandList.includes(text) || commandList.includes(text.toLowerCase());
+}
+
 function buildLiffUrl(): string | null {
   const liffId = process.env.NEXT_PUBLIC_LIFF_ID?.trim();
   if (!liffId) return null;
@@ -117,14 +124,14 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
   const state = await getState(sourceId);
 
   // 取消查詢
-  if (COMMANDS.CANCEL.includes(text) || COMMANDS.CANCEL.includes(text.toLowerCase())) {
+  if (matchesCommand(text, COMMANDS.CANCEL)) {
     await resetState(sourceId);
     await replyText(replyToken, CANCEL_TEXT);
     return;
   }
 
   // 說明 / 幫助
-  if (COMMANDS.HELP.includes(text) || COMMANDS.HELP.includes(text.toLowerCase())) {
+  if (matchesCommand(text, COMMANDS.HELP)) {
     await replyText(replyToken, HELP_TEXT);
     return;
   }
@@ -132,7 +139,7 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
   // 通知設定
   // 個人 (U) / 群組 (C) / 聊天室 (R) 統一直達 /liff/settings?ctx=sourceId
   // SettingsView 看到 ctx 會跳過 LIFF OAuth → 不會卡在 access.line.me 400、不會被 token 過期影響
-  if (COMMANDS.SETTINGS.includes(text)) {
+  if (matchesCommand(text, COMMANDS.SETTINGS)) {
     const isGroup = isGroupOrRoom(sourceId);
     const url = `${APP_URL}/liff/settings?ctx=${encodeURIComponent(sourceId)}`;
     await replyText(
@@ -148,7 +155,7 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
   }
 
   // 我的訂閱
-  if (COMMANDS.SUBSCRIPTIONS.includes(text)) {
+  if (matchesCommand(text, COMMANDS.SUBSCRIPTIONS)) {
     const sourceType = event.source?.type ?? 'unknown';
     const isGroup = isGroupOrRoom(sourceId);
     const url = isGroup
@@ -172,7 +179,7 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
   }
 
   // 進入查詢流程
-  if (COMMANDS.SEARCH.includes(text)) {
+  if (matchesCommand(text, COMMANDS.SEARCH)) {
     const liffUrl = buildLiffUrl();
     if (liffUrl) {
       // 在群組裡點 LIFF 連結時，附帶 ctx=<sourceId>，讓 LIFF 可以提供「訂閱給群組」選項

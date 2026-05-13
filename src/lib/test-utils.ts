@@ -44,9 +44,9 @@ export function createMockSupabaseClient() {
  */
 export function createMockLineClient() {
   return {
-    replyMessage: async (params: any) => ({}),
-    pushMessage: async (params: any) => ({}),
-    broadcast: async (params: any) => ({})
+    replyMessage: async (_params: any) => ({}),
+    pushMessage: async (_params: any) => ({}),
+    broadcast: async (_params: any) => ({})
   };
 }
 

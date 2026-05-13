@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Airport } from '@/config/airports';
 import { isTaiwanAirport, isJapanAirport } from '@/config/airports';
 import TabNav from '../TabNav';
+import { useForm } from '@/hooks/useForm';
+import { useLiff } from '@/hooks/useLiff';
+import { useSessionStorage } from '@/hooks/useSessionStorage';
 
 interface Props {
   liffId: string;
@@ -33,104 +36,63 @@ interface SearchResponse {
   error?: string;
 }
 
+interface SearchFormValues {
+  origin: string;
+  destination: string;
+  outboundDate: string;
+  returnDate: string;
+}
+
+interface SubscriptionFormValues {
+  customMaxPrice: string;
+  subLabel: string;
+}
+
 export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
-  const [liffReady, setLiffReady] = useState(false);
-  const [insideLine, setInsideLine] = useState(false);
-  const [canLogin, setCanLogin] = useState(false);  // LIFF 已載入且可登入（電腦版場景）
-  const [sourceId, setSourceId] = useState<string | null>(null);
-  const [profileName, setProfileName] = useState<string | null>(null);
+  // LIFF 狀態管理
+  const { liffReady, isInLine: insideLine, user, login: handleLineLogin } = useLiff(liffId);
+  const sourceId = user?.userId ?? null;
+  const profileName = user?.displayName ?? null;
 
-  const [origin, setOrigin] = useState('TPE');
-  const [destination, setDestination] = useState('HND');
-  const [outboundDate, setOutboundDate] = useState('');
-  const [returnDate, setReturnDate] = useState('');
+  // 群組上下文 - 跨 OAuth redirect 保留
+  const [groupCtxId, setGroupCtxId] = useSessionStorage<string | null>('liff_ctx', null);
 
+  // 搜尋表單狀態
+  const searchForm = useForm<SearchFormValues>(
+    { origin: 'TPE', destination: 'HND', outboundDate: '', returnDate: '' }
+  );
+
+  // 訂閱表單狀態
+  const subscribeForm = useForm<SubscriptionFormValues>(
+    { customMaxPrice: '', subLabel: '' }
+  );
+
+  // API 結果和加載狀態
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SearchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-
   const [subscribeStatus, setSubscribeStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [customMaxPrice, setCustomMaxPrice] = useState<string>('');
-  const [groupCtxId, setGroupCtxId] = useState<string | null>(null);
   const [subscribeAs, setSubscribeAs] = useState<'self' | 'group'>('self');
-  const [subLabel, setSubLabel] = useState<string>('');
 
   // 預設日期：30 天後出發、停 4 晚
   useEffect(() => {
     const now = new Date();
     const out = new Date(now.getTime() + 30 * 86400_000);
     const ret = new Date(out.getTime() + 4 * 86400_000);
-    setOutboundDate(out.toISOString().slice(0, 10));
-    setReturnDate(ret.toISOString().slice(0, 10));
-  }, []);
+    searchForm.setValue('outboundDate', out.toISOString().slice(0, 10));
+    searchForm.setValue('returnDate', ret.toISOString().slice(0, 10));
+  }, [searchForm]);
 
   // 從 URL 讀 ctx (群組 ID)
   // ⚠️ LIFF OAuth redirect 會吃掉 ?ctx，靠 sessionStorage 跨 redirect 保留
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
-    let ctx = params.get('ctx');
+    const ctx = params.get('ctx');
     if (ctx && (ctx.startsWith('C') || ctx.startsWith('R'))) {
-      sessionStorage.setItem('liff_ctx', ctx);
-    } else {
-      const saved = sessionStorage.getItem('liff_ctx');
-      if (saved && (saved.startsWith('C') || saved.startsWith('R'))) {
-        ctx = saved;
-      }
+      setGroupCtxId(ctx);
     }
-    if (ctx) setGroupCtxId(ctx);
-  }, []);
-
-  // LIFF 初始化
-  useEffect(() => {
-    if (!liffId) {
-      setLiffReady(true);
-      return;
-    }
-    (async () => {
-      try {
-        const liff = (await import('@line/liff')).default;
-        await liff.init({ liffId });
-        const isInClient = liff.isInClient();
-        setInsideLine(isInClient);
-        setCanLogin(true);  // LIFF 已可用，無論是否在 LINE 內
-
-        if (liff.isLoggedIn()) {
-          try {
-            const profile = await liff.getProfile();
-            setSourceId(profile.userId);
-            setProfileName(profile.displayName);
-          } catch (e) {
-            console.warn('getProfile failed:', e);
-          }
-        } else if (isInClient) {
-          // 在 LINE App 內但沒 token，直接 login（不需要使用者點按鈕）
-          liff.login();
-          return;
-        }
-        // 在外部瀏覽器且沒登入 → 不自動 login，等使用者按按鈕
-        setLiffReady(true);
-      } catch (err) {
-        console.error('LIFF init failed:', err);
-        setError(`LIFF 初始化失敗：${err instanceof Error ? err.message : String(err)}`);
-        setLiffReady(true);
-      }
-    })();
-  }, [liffId]);
-
-  const handleLineLogin = async () => {
-    if (!liffId) return;
-    try {
-      const liff = (await import('@line/liff')).default;
-      // 帶 redirectUri 讓登入後回到原本頁面（含搜尋條件保留）
-      liff.login({
-        redirectUri: typeof window !== 'undefined' ? window.location.href : undefined
-      });
-    } catch (err) {
-      console.error('login failed:', err);
-      setError('登入失敗，請稍後再試');
-    }
-  };
+  }, [setGroupCtxId]);
 
   // 把日本機場依地區分組（給下拉選單）
   const jpByRegion = useMemo(() => {
@@ -144,8 +106,8 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
 
   // 對調出發地與目的地
   const swapDirections = () => {
-    setOrigin(destination);
-    setDestination(origin);
+    searchForm.setValue('origin', searchForm.values.destination);
+    searchForm.setValue('destination', searchForm.values.origin);
     setResult(null);
     setError(null);
     setSubscribeStatus('idle');
@@ -175,6 +137,8 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const { origin, destination, outboundDate, returnDate } = searchForm.values;
 
     // 方向驗證：必須一個台灣、一個日本
     const tw1 = isTaiwanAirport(origin);
@@ -235,7 +199,7 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
       setResult(data);
       // 預設訂閱門檻 = 當下最便宜價格
       if (data.analysis?.cheapestRoundTripPrice) {
-        setCustomMaxPrice(String(data.analysis.cheapestRoundTripPrice));
+        subscribeForm.setValue('customMaxPrice', String(data.analysis.cheapestRoundTripPrice));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -253,7 +217,7 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
     }
     if (!result?.analysis?.cheapestRoundTripPrice) return;
 
-    const userInputPrice = parseFloat(customMaxPrice);
+    const userInputPrice = parseFloat(subscribeForm.values.customMaxPrice);
     if (isNaN(userInputPrice) || userInputPrice <= 0) {
       setError('請輸入有效的金額');
       return;
@@ -262,6 +226,7 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
     setSubscribeStatus('saving');
     try {
       const maxPrice = userInputPrice;
+      const { origin, destination, outboundDate, returnDate } = searchForm.values;
       // 訂給群組或個人
       const targetSourceId = subscribeAs === 'group' && groupCtxId ? groupCtxId : sourceId;
       const res = await fetch('/api/subscriptions', {
@@ -274,7 +239,7 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
           maxPrice,
           outboundDate,
           returnDate,
-          label: subLabel.trim() || undefined
+          label: subscribeForm.values.subLabel.trim() || undefined
         })
       });
       const data = await res.json();
@@ -292,7 +257,9 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
     try {
       const liff = (await import('@line/liff')).default;
       if (liff.isInClient()) liff.closeWindow();
-    } catch {}
+    } catch (err) {
+      console.warn('closeLiff failed:', err);
+    }
   };
 
   const fmt = (n: number | null | undefined) =>
@@ -345,8 +312,8 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
           <div className="airport-pick">
             <span className="role">FROM</span>
             <select
-              value={origin}
-              onChange={e => setOrigin(e.target.value)}
+              value={searchForm.values.origin}
+              onChange={e => searchForm.setValue('origin', e.target.value)}
               disabled={loading}
               className="picker"
             >
@@ -367,8 +334,8 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
           <div className="airport-pick">
             <span className="role">TO</span>
             <select
-              value={destination}
-              onChange={e => setDestination(e.target.value)}
+              value={searchForm.values.destination}
+              onChange={e => searchForm.setValue('destination', e.target.value)}
               disabled={loading}
               className="picker"
             >
@@ -382,8 +349,8 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
             <span className="role">📅 去程</span>
             <input
               type="date"
-              value={outboundDate}
-              onChange={e => setOutboundDate(e.target.value)}
+              value={searchForm.values.outboundDate}
+              onChange={e => searchForm.setValue('outboundDate', e.target.value)}
               required
               disabled={loading}
               min={new Date().toISOString().slice(0, 10)}
@@ -393,11 +360,11 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
             <span className="role">📅 回程</span>
             <input
               type="date"
-              value={returnDate}
-              onChange={e => setReturnDate(e.target.value)}
+              value={searchForm.values.returnDate}
+              onChange={e => searchForm.setValue('returnDate', e.target.value)}
               required
               disabled={loading}
-              min={outboundDate || new Date().toISOString().slice(0, 10)}
+              min={searchForm.values.outboundDate || new Date().toISOString().slice(0, 10)}
             />
           </label>
         </div>
@@ -485,8 +452,8 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
                 <input
                   type="number"
                   inputMode="numeric"
-                  value={customMaxPrice}
-                  onChange={e => setCustomMaxPrice(e.target.value)}
+                  value={subscribeForm.values.customMaxPrice}
+                  onChange={e => subscribeForm.setValue('customMaxPrice', e.target.value)}
                   placeholder="輸入金額"
                   disabled={subscribeStatus === 'saving' || subscribeStatus === 'saved'}
                 />
@@ -494,8 +461,8 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
 
               <input
                 type="text"
-                value={subLabel}
-                onChange={e => setSubLabel(e.target.value)}
+                value={subscribeForm.values.subLabel}
+                onChange={e => subscribeForm.setValue('subLabel', e.target.value)}
                 placeholder="📝 備註（選填，例如「老婆生日旅行」）"
                 disabled={subscribeStatus === 'saving' || subscribeStatus === 'saved'}
                 className="sub-label-input"
@@ -515,7 +482,7 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
                     <button
                       key={p.label}
                       type="button"
-                      onClick={() => setCustomMaxPrice(String(value))}
+                      onClick={() => subscribeForm.setValue('customMaxPrice', String(value))}
                       className="preset-btn"
                       disabled={subscribeStatus === 'saving' || subscribeStatus === 'saved'}
                     >
@@ -528,21 +495,21 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
 
               <button
                 onClick={handleSubscribe}
-                disabled={subscribeStatus === 'saving' || subscribeStatus === 'saved' || !customMaxPrice}
+                disabled={subscribeStatus === 'saving' || subscribeStatus === 'saved' || !subscribeForm.values.customMaxPrice}
                 className="btn-subscribe"
               >
                 {subscribeStatus === 'saved' ? (
-                  <>✅ 已訂閱（低於 NT$ {Number(customMaxPrice).toLocaleString()} 會通知）</>
+                  <>✅ 已訂閱（低於 NT$ {Number(subscribeForm.values.customMaxPrice).toLocaleString()} 會通知）</>
                 ) : subscribeStatus === 'saving' ? (
                   <>⏳ 訂閱中…</>
                 ) : (
-                  <>確認訂閱（低於 NT$ {customMaxPrice ? Number(customMaxPrice).toLocaleString() : '—'}）</>
+                  <>確認訂閱（低於 NT$ {subscribeForm.values.customMaxPrice ? Number(subscribeForm.values.customMaxPrice).toLocaleString() : '—'}）</>
                 )}
               </button>
             </div>
           )}
 
-          {!sourceId && canLogin && result.analysis.cheapestRoundTripPrice && (
+          {!sourceId && liffReady && result.analysis.cheapestRoundTripPrice && (
             <button onClick={handleLineLogin} className="btn-line-login">
               <span className="line-icon">L</span>
               <span>用 LINE 登入以訂閱降價提醒</span>
@@ -561,7 +528,7 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
               <div className="text">
                 <strong>訂閱完成！</strong>
                 <p>
-                  跌破 NT$ {Number(customMaxPrice).toLocaleString()}{' '}
+                  跌破 NT$ {Number(subscribeForm.values.customMaxPrice).toLocaleString()}{' '}
                   時會自動 LINE 通知{subscribeAs === 'group' ? '整個群組' : '你'}。
                 </p>
                 <p>

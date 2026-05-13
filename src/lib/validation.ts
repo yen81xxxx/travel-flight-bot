@@ -2,7 +2,7 @@
  * 統一的輸入驗證工具
  */
 
-import { AppError, ErrorCode, createValidationError } from './error-handler';
+import { createValidationError } from './error-handler';
 
 /**
  * 驗證 IATA 機場代碼格式（3 個大寫字母）

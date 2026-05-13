@@ -72,13 +72,16 @@ export function toFlightQuoteDTO(quote: FlightQuote): FlightQuoteDTO {
  * 將 Subscription 轉換為 SubscriptionDTO
  */
 export function toSubscriptionDTO(sub: Subscription): SubscriptionDTO {
+  if (!sub.id) {
+    throw new Error('Subscription must have an id to convert to DTO');
+  }
   return {
     id: sub.id,
     origin: sub.origin,
     destination: sub.destination,
-    outboundDate: sub.outbound_date,
-    returnDate: sub.return_date,
-    thresholdPrice: sub.threshold_price,
+    outboundDate: sub.outbound_date || '',
+    returnDate: sub.return_date || '',
+    thresholdPrice: sub.max_price,
     active: sub.active
   };
 }

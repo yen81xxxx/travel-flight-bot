@@ -57,7 +57,7 @@ export function pick<T, K extends keyof T>(obj: T, keys: K[]): Pick<T, K> {
 /**
  * 忽略物件的指定屬性
  */
-export function omit<T, K extends keyof T>(obj: T, keys: K[]): Omit<T, K> {
+export function omit<T extends Record<string, any>, K extends keyof T>(obj: T, keys: K[]): Omit<T, K> {
   const keySet = new Set(keys);
   return Object.fromEntries(
     Object.entries(obj).filter(([key]) => !keySet.has(key as K))
@@ -68,18 +68,18 @@ export function omit<T, K extends keyof T>(obj: T, keys: K[]): Omit<T, K> {
  * 深層合併物件
  */
 export function deepMerge<T extends object>(target: T, source: Partial<T>): T {
-  const result = { ...target };
+  const result = { ...target } as Record<string, any>;
   for (const key in source) {
-    const sourceValue = source[key];
+    const sourceValue = source[key as keyof T];
     const targetValue = result[key];
 
     if (isObject(sourceValue) && isObject(targetValue)) {
-      result[key] = deepMerge(targetValue as object, sourceValue as object) as T[keyof T];
+      result[key] = deepMerge(targetValue as object, sourceValue as object);
     } else if (sourceValue !== undefined) {
-      result[key] = sourceValue as T[keyof T];
+      result[key] = sourceValue;
     }
   }
-  return result;
+  return result as T;
 }
 
 /**
