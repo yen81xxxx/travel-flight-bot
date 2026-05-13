@@ -107,13 +107,11 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
   }
 
   // 通知設定
-  // 群組情境：直接給 /liff/settings?ctx=...，設定頁會偵測 ctx 跳過 LIFF auth（避開 OAuth 慢 + 白名單問題）
-  // 個人情境：走訂閱頁繞道（已白名單）→ 自動跳轉
+  // 個人 (U) / 群組 (C) / 聊天室 (R) 統一直達 /liff/settings?ctx=sourceId
+  // SettingsView 看到 ctx 會跳過 LIFF OAuth → 不會卡在 access.line.me 400、不會被 token 過期影響
   if (text === '設定' || text === '通知設定' || text === '/settings') {
     const isGroup = sourceId.startsWith('C') || sourceId.startsWith('R');
-    const url = isGroup
-      ? `${APP_URL}/liff/settings?ctx=${encodeURIComponent(sourceId)}`
-      : `${APP_URL}/liff/subscriptions?goto=settings`;
+    const url = `${APP_URL}/liff/settings?ctx=${encodeURIComponent(sourceId)}`;
     await replyText(
       replyToken,
       [

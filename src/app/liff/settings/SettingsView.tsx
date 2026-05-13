@@ -5,6 +5,11 @@ import TabNav from '../TabNav';
 
 interface Props { liffId: string; }
 
+function isValidCtxPrefix(s: string | null | undefined): boolean {
+  if (!s) return false;
+  return s.startsWith('U') || s.startsWith('C') || s.startsWith('R');
+}
+
 export default function SettingsView({ liffId }: Props) {
   const [ready, setReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
@@ -12,9 +17,11 @@ export default function SettingsView({ liffId }: Props) {
   const [groupCtxId, setGroupCtxId] = useState<string | null>(null);
   const [groupName, setGroupName] = useState<string | null>(null);
 
-  // 設定的目標 source（個人 = userId、群組 = groupCtxId）
+  // 設定的目標 source。groupCtxId 雖然叫 group，但 ctx 也可以是個人 userId (U-prefix)
+  // 來自 bot 的個人 1:1 連結 → 不用 LIFF OAuth、直接用 ctx
   const targetSourceId = groupCtxId ?? userId;
-  const isGroupContext = !!groupCtxId;
+  const isGroupContext = !!groupCtxId && (groupCtxId.startsWith('C') || groupCtxId.startsWith('R'));
+  const isPersonalViaCtx = !!groupCtxId && groupCtxId.startsWith('U');
 
   const [quietStart, setQuietStart] = useState('22:00');
   const [quietEnd, setQuietEnd] = useState('08:00');
@@ -25,16 +32,16 @@ export default function SettingsView({ liffId }: Props) {
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // 從 URL 讀 ctx
-  // ⚠️ LIFF OAuth redirect 會吃掉 ?ctx，靠 sessionStorage 跨 redirect 保留
+  // 從 URL 讀 ctx — 接受 U (個人 1:1) / C (群組) / R (聊天室)
+  // ⚠️ 跨頁 redirect 會吃掉 query string，靠 sessionStorage 保留
   useEffect(() => {
     if (typeof window === 'undefined') return;
     let ctx = new URLSearchParams(window.location.search).get('ctx');
-    if (ctx && (ctx.startsWith('C') || ctx.startsWith('R'))) {
+    if (ctx && isValidCtxPrefix(ctx)) {
       sessionStorage.setItem('liff_ctx', ctx);
     } else {
       const saved = sessionStorage.getItem('liff_ctx');
-      if (saved && (saved.startsWith('C') || saved.startsWith('R'))) {
+      if (saved && isValidCtxPrefix(saved)) {
         ctx = saved;
       }
     }
@@ -42,12 +49,13 @@ export default function SettingsView({ liffId }: Props) {
   }, []);
 
   useEffect(() => {
-    // 群組設定：URL 帶 ctx 時跳過 LIFF auth（不需要 userId、避免 OAuth round-trip）
+    // 有 ctx 時跳過 LIFF auth（個人、群組、聊天室都通用）
+    // → 不依賴 LIFF OAuth → 不會卡在 access.line.me 400、不會被 token 過期影響
     if (typeof window !== 'undefined') {
       const urlCtx = new URLSearchParams(window.location.search).get('ctx');
       const sessionCtx = sessionStorage.getItem('liff_ctx');
       const ctx = urlCtx || sessionCtx;
-      if (ctx && (ctx.startsWith('C') || ctx.startsWith('R'))) {
+      if (ctx && isValidCtxPrefix(ctx)) {
         setReady(true);
         return;
       }
@@ -78,9 +86,9 @@ export default function SettingsView({ liffId }: Props) {
     })();
   }, [liffId]);
 
-  // 拿群組名（如果是群組情境）
+  // 拿群組名（只有群組情境才需要 — 個人 ctx U-prefix 跳過）
   useEffect(() => {
-    if (!groupCtxId) return;
+    if (!groupCtxId || !isGroupContext) return;
     (async () => {
       try {
         const r = await fetch(`/api/group-info?groupId=${encodeURIComponent(groupCtxId)}`);
@@ -88,7 +96,7 @@ export default function SettingsView({ liffId }: Props) {
         if (d.ok && d.groupName) setGroupName(d.groupName);
       } catch {}
     })();
-  }, [groupCtxId]);
+  }, [groupCtxId, isGroupContext]);
 
   // 載入既有設定
   useEffect(() => {
@@ -150,8 +158,9 @@ export default function SettingsView({ liffId }: Props) {
     return <main className="loading">載入中…<style jsx>{`.loading{padding:80px;text-align:center;color:#7e88a8;}`}</style></main>;
   }
 
-  // 群組情境 (有 ctx) 沒 userId 也能設、不需要登入
-  if (!userId && !isGroupContext) {
+  // 有 ctx (個人 U / 群組 C / 聊天室 R) 都不需要 LIFF 登入，直接讀寫
+  // 只有「沒 userId AND 沒 ctx」才需要走 LIFF 登入流程（極端情境：使用者在瀏覽器直接打開 /liff/settings）
+  if (!userId && !groupCtxId) {
     return (
       <main className="wrap">
         <div className="card">
@@ -170,7 +179,9 @@ export default function SettingsView({ liffId }: Props) {
 
   const headerSubtitle = isGroupContext
     ? `📌 ${groupName ?? '群組'} 的通知設定`
-    : `${profileName ?? ''} 的通知設定`;
+    : isPersonalViaCtx
+      ? '你的個人通知設定'
+      : `${profileName ?? ''} 的通知設定`;
 
   return (
     <>

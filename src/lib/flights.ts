@@ -26,11 +26,17 @@ export function analyzeFlights(
   const cheapestOut = sortedOut[0] ?? null;
   const cheapestRet = sortedRet[0] ?? null;
 
+  // ⚠️ SerpApi 的 Google Flights round-trip：outbound 和 return 結果的 price 都已經是「來回總價」
+  // （outbound 是估計值、return 是該 outbound+return 配對的精確值）
+  // 過去的版本曾經誤把兩個相加，會讓價格變成實際的 2 倍。
+  //
+  // 正確邏輯：
+  //  - 有 return 結果 → 用 cheapestRet.price（含 outbound 配對的精確來回總價）
+  //  - 沒有 return 結果（單程或拿不到 departure_token）→ 用 cheapestOut.price（已是估計來回總價）
   let cheapestRoundTrip: number | null = null;
-  if (cheapestOut?.price != null && cheapestRet?.price != null) {
-    cheapestRoundTrip = cheapestOut.price + cheapestRet.price;
-  } else if (cheapestOut?.price != null && ret.length === 0) {
-    // 如果是 SerpApi round-trip 直接給來回總價的情境
+  if (cheapestRet?.price != null) {
+    cheapestRoundTrip = cheapestRet.price;
+  } else if (cheapestOut?.price != null) {
     cheapestRoundTrip = cheapestOut.price;
   }
 
@@ -78,17 +84,19 @@ export function formatAnalysisForLine(
   if (analysis.cheapestAirline) {
     lines.push(`🏢 主推航空：${analysis.cheapestAirline}`);
   }
+  // 註：outbound 和 return 的 price 都是「來回總價」(SerpApi/Google Flights 規格)，
+  // 所以個別 leg 不再顯示金額，避免誤導
   if (analysis.cheapestOutbound) {
     const o = analysis.cheapestOutbound;
     lines.push('');
-    lines.push(`【去程】${o.airline} NT$ ${(o.price ?? 0).toLocaleString()}`);
+    lines.push(`【去程】${o.airline ?? '—'}`);
     if (o.duration_minutes) {
       lines.push(`  ⏱ ${formatDuration(o.duration_minutes)}　${o.stops === 0 ? '直飛' : `${o.stops} 次轉機`}`);
     }
   }
   if (analysis.cheapestReturn) {
     const r = analysis.cheapestReturn;
-    lines.push(`【回程】${r.airline} NT$ ${(r.price ?? 0).toLocaleString()}`);
+    lines.push(`【回程】${r.airline ?? '—'}`);
     if (r.duration_minutes) {
       lines.push(`  ⏱ ${formatDuration(r.duration_minutes)}　${r.stops === 0 ? '直飛' : `${r.stops} 次轉機`}`);
     }
