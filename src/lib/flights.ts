@@ -59,6 +59,19 @@ function byPriceAsc(a: FlightQuote, b: FlightQuote): number {
 }
 
 /**
+ * 格式化單一航班段（去程或回程）
+ */
+function formatLegLine(legLabel: string, flight: FlightQuote): string[] {
+  const legLines: string[] = [];
+  legLines.push(`【${legLabel}】${flight.airline ?? '—'}`);
+  if (flight.duration_minutes) {
+    const stops = flight.stops === 0 ? '直飛' : `${flight.stops} 次轉機`;
+    legLines.push(`  ⏱ ${formatDuration(flight.duration_minutes)}　${stops}`);
+  }
+  return legLines;
+}
+
+/**
  * 把分析結果轉成簡短的 LINE 訊息文字（純文字版）。
  */
 export function formatAnalysisForLine(
@@ -87,19 +100,11 @@ export function formatAnalysisForLine(
   // 註：outbound 和 return 的 price 都是「來回總價」(SerpApi/Google Flights 規格)，
   // 所以個別 leg 不再顯示金額，避免誤導
   if (analysis.cheapestOutbound) {
-    const o = analysis.cheapestOutbound;
     lines.push('');
-    lines.push(`【去程】${o.airline ?? '—'}`);
-    if (o.duration_minutes) {
-      lines.push(`  ⏱ ${formatDuration(o.duration_minutes)}　${o.stops === 0 ? '直飛' : `${o.stops} 次轉機`}`);
-    }
+    lines.push(...formatLegLine('去程', analysis.cheapestOutbound));
   }
   if (analysis.cheapestReturn) {
-    const r = analysis.cheapestReturn;
-    lines.push(`【回程】${r.airline ?? '—'}`);
-    if (r.duration_minutes) {
-      lines.push(`  ⏱ ${formatDuration(r.duration_minutes)}　${r.stops === 0 ? '直飛' : `${r.stops} 次轉機`}`);
-    }
+    lines.push(...formatLegLine('回程', analysis.cheapestReturn));
   }
 
   return lines.join('\n');

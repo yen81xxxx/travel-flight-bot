@@ -5,6 +5,9 @@ enum LogLevel {
   ERROR = 'ERROR',
 }
 
+// ===== 日誌級別順序（越往後越嚴重） =====
+const LOG_LEVELS = [LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR] as const;
+
 interface LogEntry {
   timestamp: string
   level: LogLevel
@@ -16,6 +19,25 @@ interface LogEntry {
   }
 }
 
+/**
+ * 建構日誌條目，自動過濾 undefined 的欄位
+ */
+function createLogEntry(
+  level: LogLevel,
+  message: string,
+  context?: Record<string, unknown>,
+  error?: Error
+): LogEntry {
+  const entry: LogEntry = {
+    timestamp: new Date().toISOString(),
+    level,
+    message
+  };
+  if (context) entry.context = context;
+  if (error) entry.error = { message: error.message, stack: error.stack };
+  return entry;
+}
+
 class Logger {
   private level: LogLevel = LogLevel.INFO
 
@@ -25,20 +47,13 @@ class Logger {
 
   private log(level: LogLevel, message: string, context?: Record<string, unknown>, error?: Error): void {
     if (this.shouldLog(level)) {
-      const entry: LogEntry = {
-        timestamp: new Date().toISOString(),
-        level,
-        message,
-        ...(context && { context }),
-        ...(error && { error: { message: error.message, stack: error.stack } }),
-      }
+      const entry = createLogEntry(level, message, context, error);
       console.log(JSON.stringify(entry))
     }
   }
 
   private shouldLog(level: LogLevel): boolean {
-    const levels = [LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR]
-    return levels.indexOf(level) >= levels.indexOf(this.level)
+    return LOG_LEVELS.indexOf(level) >= LOG_LEVELS.indexOf(this.level)
   }
 
   debug(message: string, context?: Record<string, unknown>): void {
@@ -60,9 +75,15 @@ class Logger {
 
 const logger = new Logger()
 
+/**
+ * 將任意值轉換為 Error 對象
+ */
+function toError(err: unknown): Error {
+  return err instanceof Error ? err : new Error(String(err));
+}
+
 export function logError(err: unknown, context?: Record<string, unknown>) {
-  const error = err instanceof Error ? err : new Error(String(err))
-  logger.error('Unhandled error', context, error)
+  logger.error('Unhandled error', context, toError(err))
 }
 
 export function logInfo(msg: string, data?: Record<string, unknown>) {

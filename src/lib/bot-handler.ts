@@ -7,6 +7,7 @@ import { getSupabase } from './supabase';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://travel-flight-bot.vercel.app';
 
+// ===== 提示文本 =====
 const HELP_TEXT = [
   '✈️ 機票查詢機器人',
   '',
@@ -19,6 +20,14 @@ const HELP_TEXT = [
   '💡 提示：在搜尋結果頁可以「訂閱降價提醒」'
 ].join('\n');
 
+const JOIN_TEXT = [
+  '👋 哈囉，我是機票小助手！',
+  '',
+  '在群組裡可以一起追蹤同一條航線、共享降價提醒。',
+  '',
+  '輸入「查航班」開始'
+].join('\n');
+
 const ASK_DATE_TEXT = [
   '請輸入去程與回程日期',
   '',
@@ -28,7 +37,30 @@ const ASK_DATE_TEXT = [
   '輸入「取消」可中止查詢'
 ].join('\n');
 
+const CANCEL_TEXT = '已取消查詢。輸入「查航班」可重新開始。';
+const INVALID_DATE_FORMAT_TEXT = '日期格式不正確。請輸入：YYYY-MM-DD YYYY-MM-DD\n範例：2027-02-15 2027-02-18\n\n輸入「取消」可中止。';
+const INVALID_DATE_RANGE_TEXT = '回程日期必須晚於去程日期，請重新輸入。';
+const SEARCH_STARTED_TEXT = (outbound: string, ret: string) => `🔍 正在查詢 ${outbound} ~ ${ret} 的航班，稍候...`;
+const SEARCH_FAILED_TEXT = '❌ 查詢失敗，請稍後再試。';
+
+// ===== 命令常量 =====
+const COMMANDS = {
+  CANCEL: ['取消', 'cancel'],
+  HELP: ['說明', '幫助', 'help', '/help'],
+  SETTINGS: ['設定', '通知設定', '/settings'],
+  SUBSCRIPTIONS: ['我的訂閱', '訂閱', '/subs'],
+  SEARCH: ['查航班', '查機票', '/search']
+} as const;
+
+// ===== 正規表達式 =====
 const DATE_FORMAT = /^(\d{4}-\d{2}-\d{2})\s+(\d{4}-\d{2}-\d{2})$/;
+
+/**
+ * 判斷 sourceId 是否為群組 / 聊天室
+ */
+function isGroupOrRoom(sourceId: string): boolean {
+  return sourceId.startsWith('C') || sourceId.startsWith('R');
+}
 
 function buildLiffUrl(): string | null {
   const liffId = process.env.NEXT_PUBLIC_LIFF_ID?.trim();
@@ -46,16 +78,7 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
   if (event.type === 'join') {
     const replyToken = (event as { replyToken?: string }).replyToken;
     if (replyToken) {
-      await replyText(
-        replyToken,
-        [
-          '👋 哈囉，我是機票小助手！',
-          '',
-          '在群組裡可以一起追蹤同一條航線、共享降價提醒。',
-          '',
-          '輸入「查航班」開始'
-        ].join('\n')
-      );
+      await replyText(replyToken, JOIN_TEXT);
     }
     return;
   }
@@ -94,14 +117,14 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
   const state = await getState(sourceId);
 
   // 取消查詢
-  if (text === '取消' || text.toLowerCase() === 'cancel') {
+  if (COMMANDS.CANCEL.includes(text) || COMMANDS.CANCEL.includes(text.toLowerCase())) {
     await resetState(sourceId);
-    await replyText(replyToken, '已取消查詢。輸入「查航班」可重新開始。');
+    await replyText(replyToken, CANCEL_TEXT);
     return;
   }
 
   // 說明 / 幫助
-  if (text === '說明' || text === '幫助' || text === 'help' || text === '/help') {
+  if (COMMANDS.HELP.includes(text) || COMMANDS.HELP.includes(text.toLowerCase())) {
     await replyText(replyToken, HELP_TEXT);
     return;
   }
@@ -109,8 +132,8 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
   // 通知設定
   // 個人 (U) / 群組 (C) / 聊天室 (R) 統一直達 /liff/settings?ctx=sourceId
   // SettingsView 看到 ctx 會跳過 LIFF OAuth → 不會卡在 access.line.me 400、不會被 token 過期影響
-  if (text === '設定' || text === '通知設定' || text === '/settings') {
-    const isGroup = sourceId.startsWith('C') || sourceId.startsWith('R');
+  if (COMMANDS.SETTINGS.includes(text)) {
+    const isGroup = isGroupOrRoom(sourceId);
     const url = `${APP_URL}/liff/settings?ctx=${encodeURIComponent(sourceId)}`;
     await replyText(
       replyToken,
@@ -125,9 +148,9 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
   }
 
   // 我的訂閱
-  if (text === '我的訂閱' || text === '訂閱' || text === '/subs') {
+  if (COMMANDS.SUBSCRIPTIONS.includes(text)) {
     const sourceType = event.source?.type ?? 'unknown';
-    const isGroup = sourceId.startsWith('C') || sourceId.startsWith('R');
+    const isGroup = isGroupOrRoom(sourceId);
     const url = isGroup
       ? `${getSubscriptionsUrl()}?ctx=${encodeURIComponent(sourceId)}`
       : getSubscriptionsUrl();
@@ -149,11 +172,11 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
   }
 
   // 進入查詢流程
-  if (text === '查航班' || text === '查機票' || text === '/search') {
+  if (COMMANDS.SEARCH.includes(text)) {
     const liffUrl = buildLiffUrl();
     if (liffUrl) {
       // 在群組裡點 LIFF 連結時，附帶 ctx=<sourceId>，讓 LIFF 可以提供「訂閱給群組」選項
-      const isGroup = sourceId.startsWith('C') || sourceId.startsWith('R');
+      const isGroup = isGroupOrRoom(sourceId);
       const urlWithCtx = isGroup
         ? `${liffUrl}?ctx=${encodeURIComponent(sourceId)}`
         : liffUrl;
@@ -179,10 +202,7 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
   if (state.state === 'waiting_date') {
     const m = text.match(DATE_FORMAT);
     if (!m) {
-      await replyText(
-        replyToken,
-        '日期格式不正確。請輸入：YYYY-MM-DD YYYY-MM-DD\n範例：2027-02-15 2027-02-18\n\n輸入「取消」可中止。'
-      );
+      await replyText(replyToken, INVALID_DATE_FORMAT_TEXT);
       return;
     }
 
@@ -190,19 +210,18 @@ export async function handleEvent(event: WebhookEvent): Promise<void> {
     const returnDate = m[2];
 
     if (new Date(outboundDate) >= new Date(returnDate)) {
-      await replyText(replyToken, '回程日期必須晚於去程日期，請重新輸入。');
+      await replyText(replyToken, INVALID_DATE_RANGE_TEXT);
       return;
     }
 
     await resetState(sourceId);
-    await replyText(replyToken, `🔍 正在查詢 ${outboundDate} ~ ${returnDate} 的航班，稍候...`);
+    await replyText(replyToken, SEARCH_STARTED_TEXT(outboundDate, returnDate));
     await runSearchAndPush(sourceId, outboundDate, returnDate, 'line');
     return;
   }
 
   // 預設：在群組裡不亂回應，僅 user 1:1 才送 help
-  const isGroup = sourceId.startsWith('C') || sourceId.startsWith('R');
-  if (!isGroup) {
+  if (!isGroupOrRoom(sourceId)) {
     await replyText(replyToken, HELP_TEXT);
   }
 }
@@ -277,7 +296,7 @@ async function runSearchAndPush(
         .eq('id', runRow.id);
     }
     try {
-      await pushText(sourceId, '❌ 查詢失敗，請稍後再試。');
+      await pushText(sourceId, SEARCH_FAILED_TEXT);
     } catch {}
   }
 }

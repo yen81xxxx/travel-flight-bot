@@ -5,12 +5,15 @@ import { analyzeFlights, formatAnalysisForLine } from '@/lib/flights';
 import { pushText } from '@/lib/line';
 import { getSupabase } from '@/lib/supabase';
 import { TW_ORIGINS, JP_DESTINATIONS, ALL_AIRPORTS, isTaiwanAirport, isJapanAirport } from '@/config/airports';
+import { toApiResponse, toErrorResponse, ErrorCode, AppError, withTimeout } from '@/lib/error-handler';
+import { validateSearchParams } from '@/lib/validation';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;  // 含 2 次 SerpApi（round-trip）+ DB + push
 
 const VALID_IATA = ALL_AIRPORTS.map(a => a.iata);
+const REQUEST_TIMEOUT_MS = 55000; // 少於 maxDuration 留 5 秒餘地
 
 const SearchBody = z.object({
   origin: z.enum(VALID_IATA as [string, ...string[]]),

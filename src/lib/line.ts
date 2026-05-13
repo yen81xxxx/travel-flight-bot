@@ -37,6 +37,15 @@ export async function replyText(replyToken: string, text: string): Promise<void>
 }
 
 /**
+ * 從錯誤物件提取 HTTP 狀態碼（支援 statusCode 或 status 屬性）
+ */
+function extractErrorStatus(err: unknown): number | null {
+  if (typeof err !== 'object' || err === null) return null;
+  const errorObj = err as { statusCode?: number; status?: number };
+  return errorObj.statusCode ?? errorObj.status ?? null;
+}
+
+/**
  * 帶指數退避重試的 LINE push（最多 3 次：立即、200ms、800ms）
  * 5xx 才重試；4xx 直接失敗（重試也不會好）
  */
@@ -50,8 +59,7 @@ async function pushWithRetry<T>(fn: () => Promise<T>): Promise<T> {
     } catch (err) {
       lastErr = err;
       // 4xx 不重試（auth / 格式錯誤）
-      const status = (err as { statusCode?: number; status?: number })?.statusCode
-        ?? (err as { statusCode?: number; status?: number })?.status;
+      const status = extractErrorStatus(err);
       if (typeof status === 'number' && status >= 400 && status < 500) {
         throw err;
       }

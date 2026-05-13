@@ -112,6 +112,12 @@ export async function searchFlights(params: SearchParams): Promise<SearchResult>
   };
 }
 
+function filterUndefinedParams(query: Record<string, string | undefined>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(query).filter((entry) => entry[1] !== undefined)
+  ) as Record<string, string>;
+}
+
 async function callSerpApi(query: Record<string, string | undefined>): Promise<SerpApiFlightsResponse> {
   const apiKey = process.env.SERPAPI_KEY;
   if (!apiKey) throw new Error('SERPAPI_KEY not set');
@@ -122,7 +128,7 @@ async function callSerpApi(query: Record<string, string | undefined>): Promise<S
     hl: 'zh-tw',
     gl: 'tw',
     currency: 'TWD',
-    ...Object.fromEntries(Object.entries(query).filter(([, v]) => v !== undefined) as [string, string][])
+    ...filterUndefinedParams(query)
   });
 
   const url = `${SERPAPI_BASE}?${params.toString()}`;

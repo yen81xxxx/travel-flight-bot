@@ -1,0 +1,19 @@
+{
+  "enabledPlugins": {
+    "ralph-loop@builtin": true
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "Stop",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"systemMessage\": \"Ralph Loop: 重新開始迭代...\"}'",
+            "statusMessage": "正在重新運行 Ralph Loop..."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -15,6 +15,20 @@ interface CheckResult {
   serpapiCalls: number;
 }
 
+interface NotificationSettings {
+  quietStart: string | null;
+  quietEnd: string | null;
+  timezone: string;
+  priceAlerts: boolean;
+}
+
+/**
+ * 取得今天日期（YYYY-MM-DD 格式）
+ */
+function getTodayDateString(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 /**
  * 跑過所有 active 訂閱，逐一搜尋並比對價格門檻。
  * 通知條件（兩者皆需滿足）：
@@ -38,16 +52,20 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
   }
 
   // 過濾掉出發日已過的訂閱（避免每天白白燒 SerpApi 配額）
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayDateString();
   const rawSubs = (subs ?? []) as Subscription[];
-  const expiredIds: number[] = [];
-  const allSubs = rawSubs.filter(s => {
-    if (s.outbound_date && s.outbound_date < today) {
-      if (s.id) expiredIds.push(s.id);
-      return false;
-    }
-    return true;
-  });
+  const { active: allSubs, expired: expiredIds } = rawSubs.reduce(
+    (acc, s) => {
+      if (s.outbound_date && s.outbound_date < today) {
+        if (s.id) acc.expired.push(s.id);
+      } else {
+        acc.active.push(s);
+      }
+      return acc;
+    },
+    { active: [] as Subscription[], expired: [] as number[] }
+  );
+
   if (expiredIds.length > 0) {
     // 一次性軟刪除所有過期訂閱
     await supabase
@@ -60,12 +78,7 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
 
   // 抓所有 source 的通知設定（靜音時段、降價提醒開關）
   const sourceIds = Array.from(new Set(allSubs.map(s => s.source_id)));
-  const settingsMap = new Map<string, {
-    quietStart: string | null;
-    quietEnd: string | null;
-    timezone: string;
-    priceAlerts: boolean;
-  }>();
+  const settingsMap = new Map<string, NotificationSettings>();
   if (sourceIds.length > 0) {
     const { data: settings } = await supabase
       .from('notification_settings')

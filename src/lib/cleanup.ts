@@ -1,9 +1,44 @@
 import { getSupabase } from './supabase';
 
+// ===== 清理配置 =====
+const RETENTION_DAYS = {
+  FLIGHT_QUOTES: 30,
+  SEARCH_RUNS: 90,
+  NOTIFICATIONS: 365
+} as const;
+
 interface CleanupResult {
   flightQuotesDeleted: number;
   searchRunsDeleted: number;
   notificationsDeleted: number;
+}
+
+/**
+ * 將天數轉換為 ISO 時間戳（過去 N 天）
+ */
+function daysAgo(days: number): string {
+  return new Date(Date.now() - days * 86400_000).toISOString();
+}
+
+/**
+ * 通用的刪除函數（帶重試邏輯）
+ */
+async function deleteOldRecords(
+  tableName: string,
+  dateColumnName: string,
+  retentionDays: number
+): Promise<number> {
+  const supabase = getSupabase();
+  try {
+    const { count } = await supabase
+      .from(tableName)
+      .delete({ count: 'exact' })
+      .lt(dateColumnName, daysAgo(retentionDays));
+    return count ?? 0;
+  } catch (e) {
+    console.error(`[cleanup] ${tableName} failed:`, e);
+    return 0;
+  }
 }
 
 /**
@@ -13,47 +48,17 @@ interface CleanupResult {
  * - notifications: 365 天前
  */
 export async function cleanupOldRecords(): Promise<CleanupResult> {
-  const supabase = getSupabase();
+  const [flightQuotesDeleted, searchRunsDeleted, notificationsDeleted] = await Promise.all([
+    deleteOldRecords('flight_quotes', 'queried_at', RETENTION_DAYS.FLIGHT_QUOTES),
+    deleteOldRecords('search_runs', 'started_at', RETENTION_DAYS.SEARCH_RUNS),
+    deleteOldRecords('notifications', 'sent_at', RETENTION_DAYS.NOTIFICATIONS)
+  ]);
 
-  const days = (n: number) => new Date(Date.now() - n * 86400_000).toISOString();
-
-  const result: CleanupResult = {
-    flightQuotesDeleted: 0,
-    searchRunsDeleted: 0,
-    notificationsDeleted: 0
+  return {
+    flightQuotesDeleted,
+    searchRunsDeleted,
+    notificationsDeleted
   };
-
-  try {
-    const { count } = await supabase
-      .from('flight_quotes')
-      .delete({ count: 'exact' })
-      .lt('queried_at', days(30));
-    result.flightQuotesDeleted = count ?? 0;
-  } catch (e) {
-    console.error('[cleanup] flight_quotes failed:', e);
-  }
-
-  try {
-    const { count } = await supabase
-      .from('search_runs')
-      .delete({ count: 'exact' })
-      .lt('started_at', days(90));
-    result.searchRunsDeleted = count ?? 0;
-  } catch (e) {
-    console.error('[cleanup] search_runs failed:', e);
-  }
-
-  try {
-    const { count } = await supabase
-      .from('notifications')
-      .delete({ count: 'exact' })
-      .lt('sent_at', days(365));
-    result.notificationsDeleted = count ?? 0;
-  } catch (e) {
-    console.error('[cleanup] notifications failed:', e);
-  }
-
-  return result;
 }
 
 interface QuotaStats {
@@ -63,29 +68,33 @@ interface QuotaStats {
 }
 
 /**
+ * 計算本月開始的 ISO 時間戳
+ */
+function getStartOfMonth(): string {
+  const date = new Date();
+  date.setDate(1);
+  date.setHours(0, 0, 0, 0);
+  return date.toISOString();
+}
+
+/**
  * 統計本月 SerpApi 用量
  */
 export async function getQuotaStats(monthlyLimit = 250): Promise<QuotaStats> {
   const supabase = getSupabase();
-  const startOfMonth = new Date();
-  startOfMonth.setDate(1);
-  startOfMonth.setHours(0, 0, 0, 0);
-
   const { data: runs } = await supabase
     .from('search_runs')
     .select('status, serpapi_calls')
-    .gte('started_at', startOfMonth.toISOString());
+    .gte('started_at', getStartOfMonth());
 
   const allRuns = runs ?? [];
-  let calls = 0;
-  let cached = 0;
-  for (const r of allRuns) {
-    if (r.status === 'cached') {
-      cached++;
-    } else {
-      calls += r.serpapi_calls ?? 0;
-    }
-  }
+  const { calls, cached } = allRuns.reduce(
+    (acc, r) => ({
+      calls: acc.calls + (r.status === 'cached' ? 0 : r.serpapi_calls ?? 0),
+      cached: acc.cached + (r.status === 'cached' ? 1 : 0)
+    }),
+    { calls: 0, cached: 0 }
+  );
 
   return {
     thisMonth: calls,
