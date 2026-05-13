@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
+import { checkEnvironmentSecurity } from '@/lib/security';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,18 +12,9 @@ export const dynamic = 'force-dynamic';
 export async function GET(): Promise<NextResponse> {
   const checks: Record<string, { ok: boolean; detail?: string }> = {};
 
-  // 1. env vars
-  const required = [
-    'SERPAPI_KEY',
-    'NEXT_PUBLIC_SUPABASE_URL',
-    'SUPABASE_SERVICE_ROLE_KEY',
-    'LINE_CHANNEL_ACCESS_TOKEN',
-    'LINE_CHANNEL_SECRET',
-    'CRON_SECRET'
-  ];
-  for (const k of required) {
-    checks[`env.${k}`] = { ok: !!process.env[k] };
-  }
+  // 1. env vars - use centralized security check
+  const missing = checkEnvironmentSecurity();
+  checks.environment = { ok: missing.length === 0, detail: missing.length > 0 ? `Missing: ${missing.join(', ')}` : undefined };
 
   // 2. Supabase
   try {

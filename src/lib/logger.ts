@@ -1,24 +1,72 @@
-/**
- * 錯誤日誌封裝。
- * 預設輸出到 console。
- * 之後想接 Sentry：
- *   1. npm install @sentry/nextjs
- *   2. 跑 npx @sentry/wizard@latest -i nextjs
- *   3. 把 captureException 換成 Sentry.captureException
- */
+enum LogLevel {
+  DEBUG = 'DEBUG',
+  INFO = 'INFO',
+  WARN = 'WARN',
+  ERROR = 'ERROR',
+}
+
+interface LogEntry {
+  timestamp: string
+  level: LogLevel
+  message: string
+  context?: Record<string, unknown>
+  error?: {
+    message: string
+    stack?: string
+  }
+}
+
+class Logger {
+  private level: LogLevel = LogLevel.INFO
+
+  setLevel(level: LogLevel) {
+    this.level = level
+  }
+
+  private log(level: LogLevel, message: string, context?: Record<string, unknown>, error?: Error): void {
+    if (this.shouldLog(level)) {
+      const entry: LogEntry = {
+        timestamp: new Date().toISOString(),
+        level,
+        message,
+        ...(context && { context }),
+        ...(error && { error: { message: error.message, stack: error.stack } }),
+      }
+      console.log(JSON.stringify(entry))
+    }
+  }
+
+  private shouldLog(level: LogLevel): boolean {
+    const levels = [LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR]
+    return levels.indexOf(level) >= levels.indexOf(this.level)
+  }
+
+  debug(message: string, context?: Record<string, unknown>): void {
+    this.log(LogLevel.DEBUG, message, context)
+  }
+
+  info(message: string, context?: Record<string, unknown>): void {
+    this.log(LogLevel.INFO, message, context)
+  }
+
+  warn(message: string, context?: Record<string, unknown>, error?: Error): void {
+    this.log(LogLevel.WARN, message, context, error)
+  }
+
+  error(message: string, context?: Record<string, unknown>, error?: Error): void {
+    this.log(LogLevel.ERROR, message, context, error)
+  }
+}
+
+const logger = new Logger()
 
 export function logError(err: unknown, context?: Record<string, unknown>) {
-  const msg = err instanceof Error ? err.message : String(err);
-  const stack = err instanceof Error ? err.stack : undefined;
-
-  console.error('[error]', msg, { context, stack });
-
-  // 之後可在這加 Sentry：
-  // if (typeof Sentry !== 'undefined') {
-  //   Sentry.captureException(err, { extra: context });
-  // }
+  const error = err instanceof Error ? err : new Error(String(err))
+  logger.error('Unhandled error', context, error)
 }
 
 export function logInfo(msg: string, data?: Record<string, unknown>) {
-  console.log('[info]', msg, data ?? '');
+  logger.info(msg, data)
 }
+
+export { logger, LogLevel }
