@@ -11,3 +11,4 @@ export { useForm } from './useForm';
 export type { FormErrors, UseFormReturn } from './useForm';
 export { useSearchSession } from './useSearchSession';
 export type { SearchSessionState } from './useSearchSession';
+export { useOptimizedImage } from './useOptimizedImage';

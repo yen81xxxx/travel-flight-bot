@@ -13,3 +13,5 @@ export { Spinner } from './Spinner';
 export { EmptyState } from './EmptyState';
 export { Badge } from './Badge';
 export { Alert } from './Alert';
+export { OptimizedImage } from './OptimizedImage';
+export { LazyPageLoader } from './LazyPageLoader';

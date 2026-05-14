@@ -40,13 +40,13 @@ export default function TabNav({ active, liffId }: Props) {
 
   return (
     <nav className="tabnav">
-      <a href={searchUrl} className={`tab ${active === 'search' ? 'active' : ''}`}>
+      <a href={searchUrl} className={`tab ${active === 'search' ? 'active' : ''}`} data-preload-search>
         🔍 查航班
       </a>
-      <a href={subsUrl} className={`tab ${active === 'subscriptions' ? 'active' : ''}`}>
+      <a href={subsUrl} className={`tab ${active === 'subscriptions' ? 'active' : ''}`} data-preload-subscriptions>
         📋 我的訂閱
       </a>
-      <a href={settingsUrl} className={`tab ${active === 'settings' ? 'active' : ''}`}>
+      <a href={settingsUrl} className={`tab ${active === 'settings' ? 'active' : ''}`} data-preload-settings>
         ⚙️ 設定
       </a>
       <style jsx>{`
