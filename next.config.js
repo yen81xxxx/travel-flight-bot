@@ -6,7 +6,8 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '2mb'
     }
-  }
+  },
+  dangerouslySkipPermissions: true
 };
 
 module.exports = nextConfig;
