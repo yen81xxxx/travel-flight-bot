@@ -15,3 +15,5 @@ export { Badge } from './Badge';
 export { Alert } from './Alert';
 export { OptimizedImage } from './OptimizedImage';
 export { LazyPageLoader } from './LazyPageLoader';
+export { FormField } from './FormField';
+export { FormSection } from './FormSection';
