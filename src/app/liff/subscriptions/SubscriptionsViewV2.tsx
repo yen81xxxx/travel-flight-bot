@@ -202,20 +202,29 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
             margin: 0 auto;
             padding: 16px;
             padding-bottom: 80px;
+            background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%);
+            min-height: 100vh;
           }
 
           .subs-header {
-            margin-bottom: 24px;
+            margin-bottom: 28px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 12px;
+            background: linear-gradient(135deg, #001a4d 0%, #1a3a66 100%);
+            border-radius: 16px;
+            padding: 28px;
+            border: 1px solid rgba(0, 102, 255, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 102, 255, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.1);
           }
 
           .subs-header h1 {
             font-size: 28px;
-            font-weight: 700;
+            font-weight: 800;
             margin: 0;
+            color: #ffffff;
+            letter-spacing: -0.5px;
           }
 
           .subs-list {
@@ -225,20 +234,21 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
           }
 
           .route-group {
-            margin-bottom: 16px;
+            margin-bottom: 20px;
           }
 
           .route-title {
             font-size: 16px;
-            font-weight: 600;
+            font-weight: 700;
             margin: 0 0 12px;
-            color: #333;
+            color: #1f2937;
+            letter-spacing: -0.3px;
           }
 
           .subs-cards {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 10px;
           }
 
           .sub-item {
@@ -246,6 +256,11 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
             justify-content: space-between;
             align-items: flex-start;
             gap: 12px;
+            transition: all 0.2s ease;
+          }
+
+          .sub-item:hover {
+            transform: translateX(2px);
           }
 
           .sub-info {
@@ -262,38 +277,49 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
           }
 
           .date-badge {
-            font-size: 12px;
-            background: #f0f4ff;
-            color: #0066ff;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-weight: 500;
+            font-size: 11px;
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+            color: #0369a1;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            border: 1px solid rgba(3, 105, 161, 0.2);
+            box-shadow: 0 1px 3px rgba(3, 105, 161, 0.1);
           }
 
           .sub-price {
             display: flex;
             align-items: center;
             justify-content: space-between;
+            padding: 12px;
+            background: linear-gradient(135deg, #fff7ed 0%, #ffecdc 100%);
+            border-radius: 8px;
           }
 
           .price-label {
             font-size: 12px;
-            color: #6b7280;
-            font-weight: 500;
+            color: #92400e;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
           }
 
           .price-value {
-            font-size: 18px;
-            font-weight: 700;
-            color: #ff7a45;
+            font-size: 20px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ff7a45 0%, #ff6b35 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
           }
 
           .sub-label {
             font-size: 13px;
             color: #666;
-            padding: 6px 10px;
-            background: #f9f9f9;
-            border-radius: 4px;
+            padding: 8px 12px;
+            background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
+            border: 1px solid #e0e7ff;
+            border-radius: 6px;
             max-width: 100%;
             word-break: break-word;
           }

@@ -208,29 +208,39 @@ export default function SettingsViewV2({ liffId }: Props) {
             margin: 0 auto;
             padding: 16px;
             padding-bottom: 80px;
+            background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%);
+            min-height: 100vh;
           }
 
           .settings-header {
-            margin-bottom: 24px;
+            margin-bottom: 28px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 12px;
+            background: linear-gradient(135deg, #001a4d 0%, #1a3a66 100%);
+            border-radius: 16px;
+            padding: 28px;
+            border: 1px solid rgba(0, 102, 255, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 102, 255, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.1);
           }
 
           .settings-header h1 {
             font-size: 28px;
-            font-weight: 700;
+            font-weight: 800;
             margin: 0;
+            color: #ffffff;
+            letter-spacing: -0.5px;
           }
 
           .setting-title {
             font-size: 18px;
-            font-weight: 600;
-            margin: 0 0 16px;
+            font-weight: 700;
+            margin: 0 0 20px;
             display: flex;
             align-items: center;
             gap: 8px;
+            color: #1f2937;
           }
 
           .setting-item {
@@ -238,7 +248,13 @@ export default function SettingsViewV2({ liffId }: Props) {
             justify-content: space-between;
             align-items: center;
             padding: 16px 0;
-            border-bottom: 1px solid #e5e7eb;
+            border-bottom: 1px solid #e0e7ff;
+            transition: all 0.2s ease;
+          }
+
+          .setting-item:hover {
+            padding-left: 8px;
+            padding-right: 8px;
           }
 
           .setting-item:last-child {
@@ -263,36 +279,41 @@ export default function SettingsViewV2({ liffId }: Props) {
           }
 
           .toggle {
-            width: 48px;
-            height: 28px;
+            width: 52px;
+            height: 32px;
             -webkit-appearance: none;
             appearance: none;
-            background: #d1d5db;
+            background: linear-gradient(135deg, #e0e7ff 0%, #d9e3ff 100%);
+            border: 1.5px solid #c7d5ff;
             border-radius: 999px;
             cursor: pointer;
             position: relative;
-            transition: background 0.3s;
+            transition: all 0.3s ease;
             flex-shrink: 0;
+            box-shadow: 0 2px 4px rgba(0, 102, 255, 0.1);
           }
 
           .toggle:checked {
-            background: #0066ff;
+            background: linear-gradient(135deg, #0066ff 0%, #0052cc 100%);
+            border-color: #0052cc;
+            box-shadow: 0 4px 12px rgba(0, 102, 255, 0.3);
           }
 
           .toggle:before {
             content: '';
             position: absolute;
-            width: 24px;
-            height: 24px;
+            width: 26px;
+            height: 26px;
             border-radius: 50%;
             background: white;
-            top: 2px;
-            left: 2px;
-            transition: left 0.3s;
+            top: 3px;
+            left: 3px;
+            transition: left 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
           }
 
           .toggle:checked:before {
-            left: 22px;
+            left: 23px;
           }
 
           .time-range {
@@ -300,37 +321,46 @@ export default function SettingsViewV2({ liffId }: Props) {
             grid-template-columns: 1fr 1fr;
             gap: 12px;
             margin-top: 12px;
-            padding: 12px;
-            background: #f9f9f9;
-            border-radius: 8px;
+            padding: 16px;
+            background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
+            border: 1px solid #e0e7ff;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 102, 255, 0.06);
           }
 
           .time-input-group {
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 8px;
           }
 
           .time-input-group label {
-            font-size: 13px;
-            font-weight: 500;
+            font-size: 12px;
+            font-weight: 600;
             color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
           }
 
           .time-input {
-            padding: 8px 12px;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
+            padding: 10px 12px;
+            border: 1.5px solid #e0e7ff;
+            border-radius: 8px;
             font-size: 14px;
+            background: white;
+            transition: all 0.2s ease;
+            font-family: inherit;
           }
 
           .time-input:focus {
-            outline: 2px solid #0066ff;
-            outline-offset: -1px;
+            outline: none;
+            border-color: #0066ff;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.1), 0 2px 8px rgba(0, 102, 255, 0.15);
           }
 
           .button-group {
-            margin-top: 24px;
+            margin-top: 28px;
             display: flex;
             gap: 12px;
           }

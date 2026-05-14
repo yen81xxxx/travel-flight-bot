@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(curl -s http://localhost:3000/api/admin/performance)",
+      "Bash(curl -s http://localhost:3000/api/admin/funnel)",
+      "Bash(curl -s http://localhost:3000/admin/dashboard)",
+      "Bash(curl -s http://localhost:3000/liff/search)"
     ]
   }
 }
