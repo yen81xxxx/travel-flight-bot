@@ -310,15 +310,20 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
           <form onSubmit={handleSearchSubmit} className="card form">
             <div className="route-display">
               <div className="airport-pick">
-                <span className="role">FROM</span>
-                <select
-                  value={searchForm.values.origin}
-                  onChange={e => searchForm.setValue('origin', e.target.value)}
-                  disabled={loading}
-                  className="picker"
-                >
-                  {renderAirportOptions()}
-                </select>
+                <span className="role">出發</span>
+                <div className="airport-display">
+                  <select
+                    value={searchForm.values.origin}
+                    onChange={e => searchForm.setValue('origin', e.target.value)}
+                    disabled={loading}
+                    className="picker"
+                  >
+                    {renderAirportOptions()}
+                  </select>
+                  <div className="airport-code">
+                    {searchForm.values.origin?.slice(0, 3).toUpperCase() || 'TPE'}
+                  </div>
+                </div>
               </div>
 
               <button
@@ -331,19 +336,24 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
                 }}
                 disabled={loading}
               >
-                ⇄
+                ⇅
               </button>
 
               <div className="airport-pick">
-                <span className="role">TO</span>
-                <select
-                  value={searchForm.values.destination}
-                  onChange={e => searchForm.setValue('destination', e.target.value)}
-                  disabled={loading}
-                  className="picker"
-                >
-                  {renderAirportOptions()}
-                </select>
+                <span className="role">目的地</span>
+                <div className="airport-display">
+                  <select
+                    value={searchForm.values.destination}
+                    onChange={e => searchForm.setValue('destination', e.target.value)}
+                    disabled={loading}
+                    className="picker"
+                  >
+                    {renderAirportOptions()}
+                  </select>
+                  <div className="airport-code">
+                    {searchForm.values.destination?.slice(0, 3).toUpperCase() || 'NRT'}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -565,14 +575,34 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
           .route-display {
             display: grid;
             grid-template-columns: 1fr auto 1fr;
-            gap: 8px;
+            gap: 12px;
             align-items: end;
           }
 
           .airport-pick {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 6px;
+          }
+
+          .airport-display {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+
+          .airport-code {
+            font-size: 14px;
+            font-weight: 900;
+            color: #0066ff;
+            min-width: 40px;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+            padding: 8px;
+            background: linear-gradient(135deg, #f0f4ff 0%, #e8f0ff 100%);
+            border-radius: 6px;
+            border: 1px solid #d9e3ff;
           }
 
           .role {

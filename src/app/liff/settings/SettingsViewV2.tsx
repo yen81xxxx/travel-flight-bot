@@ -103,8 +103,14 @@ export default function SettingsViewV2({ liffId }: Props) {
       <TabNav active="settings" liffId={liffId} />
       <div className="settings-wrap">
         <header className="settings-header">
-          <h1>⚙️ 通知設定</h1>
-          {isGroupContext && <Badge variant="info">群組設定</Badge>}
+          <div className="header-content">
+            <h1>⚙️ 通知設定</h1>
+            {isGroupContext && <Badge variant="info">群組設定</Badge>}
+          </div>
+          <div className="flight-indicator">
+            <div className="indicator-label">飛行狀態</div>
+            <div className="altitude-display">ON</div>
+          </div>
         </header>
 
         {error && <Alert type="error" closable onClose={() => setError(null)}>{error}</Alert>}
@@ -217,12 +223,16 @@ export default function SettingsViewV2({ liffId }: Props) {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 12px;
+            gap: 24px;
             background: linear-gradient(135deg, #001a4d 0%, #1a3a66 100%);
             border-radius: 16px;
             padding: 28px;
             border: 1px solid rgba(0, 102, 255, 0.3);
             box-shadow: 0 8px 32px rgba(0, 102, 255, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+          }
+
+          .header-content {
+            flex: 1;
           }
 
           .settings-header h1 {
@@ -231,6 +241,34 @@ export default function SettingsViewV2({ liffId }: Props) {
             margin: 0;
             color: #ffffff;
             letter-spacing: -0.5px;
+          }
+
+          .flight-indicator {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+          }
+
+          .indicator-label {
+            font-size: 11px;
+            color: #a0c4ff;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+
+          .altitude-display {
+            font-size: 16px;
+            font-weight: 800;
+            color: #4ade80;
+            font-family: 'Courier New', monospace;
+            text-shadow: 0 0 10px rgba(74, 222, 128, 0.5);
           }
 
           .setting-title {

@@ -146,6 +146,15 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                 <div className="subs-cards">
                   {subs.map(sub => (
                     <Card key={sub.id}>
+                      <div className="route-visualization">
+                        <div className="airport-code">{sub.origin?.slice(0, 3).toUpperCase()}</div>
+                        <svg className="route-svg" viewBox="0 0 100 40">
+                          <line x1="15" y1="20" x2="75" y2="20" stroke="currentColor" strokeWidth="2" strokeDasharray="5,5" />
+                          <circle cx="85" cy="20" r="3" fill="currentColor" />
+                          <path d="M 85 20 L 95 15 L 93 20 L 95 25 Z" fill="currentColor" />
+                        </svg>
+                        <div className="airport-code">{sub.destination?.slice(0, 3).toUpperCase()}</div>
+                      </div>
                       <div className="sub-item">
                         <div className="sub-info">
                           <div className="sub-dates">
@@ -249,6 +258,34 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
             display: flex;
             flex-direction: column;
             gap: 10px;
+          }
+
+          .route-visualization {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 12px;
+            background: linear-gradient(135deg, #f0f4ff 0%, #e8f0ff 100%);
+            border-radius: 8px;
+            margin-bottom: 12px;
+            border: 1px solid #d9e3ff;
+          }
+
+          .airport-code {
+            font-size: 12px;
+            font-weight: 800;
+            color: #0066ff;
+            min-width: 32px;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+          }
+
+          .route-svg {
+            flex: 1;
+            height: 30px;
+            color: #0066ff;
+            opacity: 0.7;
           }
 
           .sub-item {
