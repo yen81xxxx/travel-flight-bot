@@ -501,40 +501,59 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
             padding: 16px;
             padding-bottom: 80px;
             font-family: -apple-system, BlinkMacSystemFont, 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+            background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%);
           }
 
           .hero {
-            background: linear-gradient(135deg, rgba(255, 122, 69, 0.18), rgba(96, 165, 250, 0.06));
-            border-radius: 20px;
-            padding: 24px;
+            background: linear-gradient(135deg, #001a4d 0%, #1a3a66 100%);
+            border-radius: 16px;
+            padding: 28px;
             margin-bottom: 24px;
             display: flex;
             align-items: center;
-            gap: 14px;
+            gap: 16px;
+            border: 1px solid rgba(0, 102, 255, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 102, 255, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.1);
           }
 
           .logo {
-            font-size: 36px;
-            filter: drop-shadow(0 4px 12px rgba(255, 122, 69, 0.4));
+            font-size: 40px;
+            filter: drop-shadow(0 4px 12px rgba(255, 122, 69, 0.6));
+            animation: float 3s ease-in-out infinite;
+          }
+
+          @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-8px); }
           }
 
           .hero h1 {
-            font-size: 24px;
+            font-size: 28px;
             font-weight: 800;
             margin-bottom: 4px;
+            color: #ffffff;
+            letter-spacing: -0.5px;
           }
 
           .hero p {
-            font-size: 13px;
-            color: #666;
+            font-size: 14px;
+            color: #a0c4ff;
+            font-weight: 500;
           }
 
           .card {
             background: white;
-            border: 1px solid #e5e7eb;
-            border-radius: 16px;
-            padding: 20px;
+            border: 1px solid #e0e7ff;
+            border-radius: 14px;
+            padding: 24px;
             margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 0 20px rgba(0, 102, 255, 0.08);
+            transition: all 0.3s ease;
+          }
+
+          .card:hover {
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06), 0 0 30px rgba(0, 102, 255, 0.12);
+            transform: translateY(-2px);
           }
 
           .form {
@@ -565,30 +584,41 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
 
           .picker, .date-input input {
             width: 100%;
-            padding: 12px;
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
+            padding: 12px 14px;
+            border: 1.5px solid #e0e7ff;
+            border-radius: 10px;
             font-size: 16px;
+            background: #f8f9ff;
+            transition: all 0.2s;
+            font-family: inherit;
           }
 
           .picker:focus, .date-input input:focus {
-            outline: 2px solid #0066ff;
-            outline-offset: -1px;
+            outline: none;
+            border-color: #0066ff;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.1), 0 2px 8px rgba(0, 102, 255, 0.15);
           }
 
           .swap-btn {
             padding: 10px 12px;
-            border: 1px solid #ddd;
-            background: #f9f9f9;
-            border-radius: 8px;
+            border: 1.5px solid #e0e7ff;
+            background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
+            border-radius: 10px;
             cursor: pointer;
-            font-size: 18px;
+            font-size: 20px;
             height: 48px;
             transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
           }
 
           .swap-btn:hover {
-            background: #f0f0f0;
+            background: linear-gradient(135deg, #f0f4ff 0%, #e8f0ff 100%);
+            border-color: #b3c9ff;
+            transform: rotate(180deg);
+            box-shadow: 0 2px 8px rgba(0, 102, 255, 0.1);
           }
 
           .date-row {
@@ -605,37 +635,66 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
 
           .btn-primary {
             padding: 14px;
-            background: #0066ff;
+            background: linear-gradient(135deg, #0066ff 0%, #0052cc 100%);
             color: white;
             border: none;
-            border-radius: 8px;
+            border-radius: 10px;
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 102, 255, 0.3), 0 0 20px rgba(0, 102, 255, 0.15);
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+          }
+
+          .btn-primary::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+          }
+
+          .btn-primary:hover:not(:disabled)::before {
+            left: 100%;
           }
 
           .btn-primary:hover:not(:disabled) {
-            background: #0052cc;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 102, 255, 0.4), 0 0 30px rgba(0, 102, 255, 0.2);
+          }
+
+          .btn-primary:active:not(:disabled) {
+            transform: translateY(0);
           }
 
           .btn-primary:disabled {
-            opacity: 0.6;
+            opacity: 0.5;
             cursor: not-allowed;
+            box-shadow: none;
           }
 
           .btn-secondary {
             padding: 12px;
-            background: #f3f4f6;
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
+            background: #f8f9ff;
+            border: 1.5px solid #d0d9ff;
+            border-radius: 10px;
             cursor: pointer;
             font-size: 14px;
+            font-weight: 600;
+            color: #333;
             transition: all 0.2s;
           }
 
           .btn-secondary:hover {
-            background: #e5e7eb;
+            background: #f0f4ff;
+            border-color: #b3c9ff;
+            box-shadow: 0 2px 8px rgba(0, 102, 255, 0.1);
           }
 
           .btn-line-login {
@@ -665,15 +724,30 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
           }
 
           .alert {
-            padding: 12px;
-            border-radius: 8px;
+            padding: 14px 16px;
+            border-radius: 10px;
             font-size: 14px;
+            font-weight: 500;
+            border: 1px solid;
+            animation: slideInDown 0.3s ease-out;
+          }
+
+          @keyframes slideInDown {
+            from {
+              opacity: 0;
+              transform: translateY(-10px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
           }
 
           .alert-error {
-            background: #fee2e2;
+            background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
             color: #991b1b;
-            border: 1px solid #fca5a5;
+            border-color: #fecaca;
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.1);
           }
 
           .summary-cards {
@@ -684,26 +758,43 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
           }
 
           .stat {
-            background: #f9f9f9;
-            padding: 16px;
-            border-radius: 8px;
+            background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #e0e7ff;
             text-align: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0, 102, 255, 0.06);
+          }
+
+          .stat:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 20px rgba(0, 102, 255, 0.15);
+            border-color: #b3c9ff;
           }
 
           .stat-label {
-            font-size: 12px;
-            color: #999;
-            margin-bottom: 4px;
+            font-size: 11px;
+            color: #6b7280;
+            margin-bottom: 8px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
           }
 
           .stat-value {
-            font-size: 20px;
-            font-weight: 700;
-            color: #333;
+            font-size: 22px;
+            font-weight: 800;
+            color: #1f2937;
+            font-variant-numeric: tabular-nums;
           }
 
           .stat-value.accent {
-            color: #ff7a45;
+            background: linear-gradient(135deg, #ff7a45 0%, #ff6b35 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: none;
           }
 
           .empty-state {
@@ -775,31 +866,93 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
 
           .success-state {
             text-align: center;
-            padding: 32px 0;
+            padding: 40px 20px;
+            background: linear-gradient(135deg, #f0fdf4 0%, #f0f4ff 100%);
+            border: 1px solid rgba(34, 197, 94, 0.2);
+            border-radius: 12px;
+            animation: fadeInScale 0.4s ease-out;
+          }
+
+          @keyframes fadeInScale {
+            from {
+              opacity: 0;
+              transform: scale(0.95);
+            }
+            to {
+              opacity: 1;
+              transform: scale(1);
+            }
           }
 
           .success-state .big {
-            font-size: 48px;
+            font-size: 64px;
             margin-bottom: 16px;
+            animation: bounce 0.6s ease-out;
+          }
+
+          @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
           }
 
           .success-state p {
-            color: #666;
+            color: #1f2937;
             margin-bottom: 24px;
-            line-height: 1.5;
+            line-height: 1.6;
+            font-weight: 500;
+          }
+
+          .tg {
+            padding: 12px 16px;
+            border: 1.5px solid #e0e7ff;
+            background: #f8f9ff;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            color: #666;
+            transition: all 0.2s;
+          }
+
+          .tg:hover {
+            background: #f0f4ff;
+            border-color: #b3c9ff;
+          }
+
+          .tg.active {
+            background: linear-gradient(135deg, #0066ff 0%, #0052cc 100%);
+            color: white;
+            border-color: #0052cc;
+            box-shadow: 0 4px 12px rgba(0, 102, 255, 0.3);
           }
 
           @media (max-width: 640px) {
             .wrap {
               padding: 12px;
+              padding-bottom: 60px;
             }
 
             .hero {
-              padding: 16px;
+              padding: 20px;
+              gap: 12px;
+            }
+
+            .hero h1 {
+              font-size: 24px;
             }
 
             .card {
               padding: 16px;
+              margin-bottom: 12px;
+            }
+
+            .btn-primary {
+              padding: 12px;
+              font-size: 15px;
+            }
+
+            .stat-value {
+              font-size: 18px;
             }
           }
         `}</style>
