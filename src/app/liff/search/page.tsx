@@ -1,5 +1,5 @@
 import { TW_ORIGINS, JP_DESTINATIONS } from '@/config/airports';
-import SearchForm from './SearchForm';
+import SearchFormV2 from './SearchFormV2';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +12,7 @@ export default function LiffSearchPage() {
   const liffId = process.env.NEXT_PUBLIC_LIFF_ID ?? '';
 
   return (
-    <SearchForm
+    <SearchFormV2
       liffId={liffId}
       twAirports={TW_ORIGINS}
       jpAirports={JP_DESTINATIONS}
