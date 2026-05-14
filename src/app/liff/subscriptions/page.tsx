@@ -1,4 +1,4 @@
-import SubscriptionsView from './SubscriptionsView';
+import SubscriptionsViewV2 from './SubscriptionsViewV2';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,5 +9,5 @@ export const metadata = {
 
 export default function LiffSubscriptionsPage() {
   const liffId = process.env.NEXT_PUBLIC_LIFF_ID ?? '';
-  return <SubscriptionsView liffId={liffId} />;
+  return <SubscriptionsViewV2 liffId={liffId} />;
 }
