@@ -5,7 +5,7 @@ import type {
   TripLeg
 } from '@/types';
 import { getSupabase } from './supabase';
-import { isWhitelistedAirline, normalizeAirlineName } from '@/config/airlines';
+import { isWhitelistedAirline, normalizeAirlineName, getAirlineCategory } from '@/config/airlines';
 
 const SERPAPI_BASE = 'https://serpapi.com/search.json';
 const CACHE_TTL_HOURS = 6;
@@ -22,6 +22,8 @@ export interface SearchResult {
   return: FlightQuote[];
   fromCache: boolean;
   serpapiCalls: number;
+  /** ISO timestamp 標示這份資料實際被查到的時間（cache hit 用快取時間，新查用 fetch 當下） */
+  queriedAt: string;
 }
 
 /**
@@ -53,7 +55,9 @@ export async function searchFlights(params: SearchParams): Promise<SearchResult>
     const outbound = cached.filter(q => q.trip_leg === 'outbound') as FlightQuote[];
     const ret = cached.filter(q => q.trip_leg === 'return') as FlightQuote[];
     if (outbound.length > 0) {
-      return { outbound, return: ret, fromCache: true, serpapiCalls: 0 };
+      // 用快取裡最新一筆的 queried_at 作為「資料時間」（cached 已 desc 排序）
+      const queriedAt = (cached[0].queried_at as string | undefined) ?? new Date().toISOString();
+      return { outbound, return: ret, fromCache: true, serpapiCalls: 0, queriedAt };
     }
   }
 
@@ -71,9 +75,13 @@ export async function searchFlights(params: SearchParams): Promise<SearchResult>
 
   let returnResp: SerpApiFlightsResponse | null = null;
   if (params.returnDate) {
-    // SerpApi round-trip 的回程要用 departure_token 再查一次
-    const firstFlight = (outboundResp.best_flights ?? outboundResp.other_flights ?? [])[0];
-    const token = firstFlight?.departure_token;
+    // SerpApi round-trip 的回程要用 departure_token 再查一次。
+    // 優先用「最便宜的廉航 outbound」的 token，這樣 return 列表會是「該廉航去 + 各家廉航回」的混搭組合，
+    // 可以拿到真實的廉航 mix-and-match 最低價（虎航去 + 捷星回 之類）。
+    // 沒有廉航時 fallback 回第一個 flight（維持原本行為）。
+    const allFlights = [...(outboundResp.best_flights ?? []), ...(outboundResp.other_flights ?? [])];
+    const cheapestLccOutbound = pickCheapestLccFlight(allFlights);
+    const token = cheapestLccOutbound?.departure_token ?? allFlights[0]?.departure_token;
     if (token) {
       returnResp = await callSerpApi({
         departure_id: params.origin,
@@ -94,6 +102,7 @@ export async function searchFlights(params: SearchParams): Promise<SearchResult>
     : [];
 
   // ---- 4. 寫入快取（同時是歷史紀錄）----
+  const queriedAt = new Date().toISOString();
   const allQuotes = [...outboundQuotes, ...returnQuotes];
   if (allQuotes.length > 0) {
     const { error: insertErr } = await supabase
@@ -108,8 +117,24 @@ export async function searchFlights(params: SearchParams): Promise<SearchResult>
     outbound: outboundQuotes,
     return: returnQuotes,
     fromCache: false,
-    serpapiCalls
+    serpapiCalls,
+    queriedAt
   };
+}
+
+/**
+ * 從原始 SerpApi response 裡挑「最便宜的廉航 outbound」用來查 return。
+ * 拿第一段（去程第一個 leg）的航空判分類，符合 outbound 主航司的常見定義。
+ */
+function pickCheapestLccFlight(flights: SerpApiFlight[]): SerpApiFlight | null {
+  let best: SerpApiFlight | null = null;
+  for (const f of flights) {
+    if (f.price == null) continue;
+    const firstAirline = f.flights?.[0]?.airline ?? '';
+    if (getAirlineCategory(firstAirline) !== 'lcc') continue;
+    if (best == null || (f.price < (best.price ?? Number.POSITIVE_INFINITY))) best = f;
+  }
+  return best;
 }
 
 function filterUndefinedParams(query: Record<string, string | undefined>): Record<string, string> {

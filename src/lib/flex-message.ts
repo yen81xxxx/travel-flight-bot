@@ -13,6 +13,17 @@ interface AlertFlexProps {
   sourceId?: string;
 }
 
+interface TraditionalRoundTripData {
+  airline: string;
+  price: number;
+}
+
+interface LccComboData {
+  outboundAirline: string;
+  returnAirline: string;
+  price: number;
+}
+
 interface DailyFlexProps {
   origin: string;
   destination: string;
@@ -20,8 +31,14 @@ interface DailyFlexProps {
   returnDate: string;
   cheapestPrice: number | null;
   cheapestAirline: string | null;
-  outboundCount: number;
-  returnCount: number;
+  // 卡片主體顯示這兩列：
+  // - 傳統航空（星宇/長榮）同家來回最低
+  // - 廉航（虎航/捷星/酷航）去 + 回最便宜組合（可不同家）
+  traditionalRoundTrip?: TraditionalRoundTripData | null;
+  lccCombo?: LccComboData | null;
+  // 資料來自快取時的 ISO timestamp（快取被寫入的時間）。
+  // 有值 → 卡片底部會加 "(抓 HH:mm 的快取)" 提醒；null/undefined → 不顯示。
+  cachedAt?: string | null;
   // 如果這張 card 是給某個訂閱者看的，帶上他的門檻和 source_id：
   // - threshold：顯示「你的門檻 NT$ X，目前 ±Y%」
   // - sourceId：footer 多一顆「我的訂閱」按鈕（群組會帶 ctx）
@@ -221,52 +238,19 @@ export function buildDailyFlex(props: DailyFlexProps) {
       color: '#666666'
     },
     { type: 'separator', margin: 'md' },
-    {
-      type: 'box',
-      layout: 'baseline',
-      contents: [
-        {
-          type: 'text',
-          text: 'NT$',
-          size: 'sm',
-          color: '#666666',
-          flex: 0
-        },
-        {
-          type: 'text',
-          text: props.cheapestPrice != null
-            ? props.cheapestPrice.toLocaleString()
-            : '—',
-          weight: 'bold',
-          size: '3xl',
-          color: priceColor,
-          margin: 'sm'
-        }
-      ]
-    }
+    lccRow(props.lccCombo, priceColor),
+    traditionalRow(props.traditionalRoundTrip, priceColor)
   ];
   if (compareLine) body.push(compareLine);
+  const cacheHint = props.cachedAt ? `（抓 ${formatTaipeiHmFromIso(props.cachedAt)} 的快取）` : '';
   body.push({
-    type: 'box',
-    layout: 'horizontal',
+    type: 'text',
+    text: `🕐 ${formatTaipeiHm()} 更新${cacheHint}`,
+    size: 'xs',
+    color: '#94a3b8',
     margin: 'md',
-    contents: [
-      {
-        type: 'text',
-        text: `🏢 ${props.cheapestAirline ?? '—'}`,
-        size: 'xs',
-        color: '#666666',
-        flex: 1
-      },
-      {
-        type: 'text',
-        text: `去程 ${props.outboundCount} ・ 回程 ${props.returnCount}`,
-        size: 'xs',
-        color: '#666666',
-        flex: 1,
-        align: 'end'
-      }
-    ]
+    align: 'end',
+    wrap: true
   });
 
   // Footer：訂閱者多一顆「我的訂閱」按鈕
@@ -362,6 +346,98 @@ function subscriptionsUrlFor(sourceId?: string): string {
  */
 function flightSearchUrl(p: AlertFlexProps): string {
   return skyscannerUrl(p.origin, p.destination, p.outboundDate, p.returnDate);
+}
+
+/**
+ * 廉航列：去 + 回可不同家。同家時顯示「虎航往返」，不同家時顯示「虎航去・捷星回」。
+ */
+function lccRow(data: LccComboData | null | undefined, priceColor: string): Record<string, unknown> {
+  const hasData = data != null;
+  const airlineLabel = hasData
+    ? (data!.outboundAirline === data!.returnAirline
+        ? `${data!.outboundAirline} 往返`
+        : `${data!.outboundAirline} 去・${data!.returnAirline} 回`)
+    : '查無';
+  return comboRow('🛩 廉航', hasData ? data!.price : null, airlineLabel, priceColor);
+}
+
+/**
+ * 傳統列：同家來回。
+ */
+function traditionalRow(
+  data: TraditionalRoundTripData | null | undefined,
+  priceColor: string
+): Record<string, unknown> {
+  const hasData = data != null;
+  const airlineLabel = hasData ? `${data!.airline} 往返` : '查無';
+  return comboRow('🏢 傳統', hasData ? data!.price : null, airlineLabel, priceColor);
+}
+
+function comboRow(
+  label: string,
+  price: number | null,
+  airlineLabel: string,
+  priceColor: string
+): Record<string, unknown> {
+  const hasPrice = price != null;
+  return {
+    type: 'box',
+    layout: 'vertical',
+    margin: 'md',
+    spacing: 'xs',
+    contents: [
+      {
+        type: 'box',
+        layout: 'baseline',
+        contents: [
+          {
+            type: 'text',
+            text: label,
+            size: 'sm',
+            color: '#666666',
+            flex: 3
+          },
+          {
+            type: 'text',
+            text: hasPrice ? `NT$ ${price!.toLocaleString()}` : '—',
+            size: 'md',
+            weight: 'bold',
+            color: hasPrice ? priceColor : '#cbd5e1',
+            flex: 5,
+            align: 'end'
+          }
+        ]
+      },
+      {
+        type: 'text',
+        text: airlineLabel,
+        size: 'xs',
+        color: '#94a3b8',
+        align: 'end'
+      }
+    ]
+  };
+}
+
+/**
+ * 把當下時間格式化成台北時區的 "HH:mm"。
+ * 用 Intl 強制 timezone，避免在 Vercel UTC runtime 上算錯。
+ */
+function formatTaipeiHm(): string {
+  return formatTaipeiHmFromDate(new Date());
+}
+
+function formatTaipeiHmFromIso(iso: string): string {
+  return formatTaipeiHmFromDate(new Date(iso));
+}
+
+function formatTaipeiHmFromDate(d: Date): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Taipei',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).format(d);
 }
 
 function skyscannerUrl(origin: string, destination: string, outboundDate: string, returnDate: string): string {

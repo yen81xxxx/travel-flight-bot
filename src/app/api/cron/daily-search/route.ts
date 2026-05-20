@@ -133,8 +133,9 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
               returnDate,
               cheapestPrice: analysis.cheapestRoundTripPrice,
               cheapestAirline: analysis.cheapestAirline,
-              outboundCount: analysis.outboundCount,
-              returnCount: analysis.returnCount,
+              traditionalRoundTrip: analysis.traditionalRoundTrip,
+              lccCombo: analysis.lccCombo,
+              cachedAt: result.fromCache ? result.queriedAt : null,
               threshold: Number(t.sub.max_price),
               sourceId: t.source
             });
@@ -176,8 +177,9 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
           origin, destination, outboundDate, returnDate,
           cheapestPrice: analysis.cheapestRoundTripPrice,
           cheapestAirline: analysis.cheapestAirline,
-          outboundCount: analysis.outboundCount,
-          returnCount: analysis.returnCount
+          traditionalRoundTrip: analysis.traditionalRoundTrip,
+          lccCombo: analysis.lccCombo,
+          cachedAt: result.fromCache ? result.queriedAt : null
         });
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await client.pushMessage({ to: fallbackTarget, messages: [flex as any] });

@@ -1,10 +1,35 @@
 import type { FlightQuote } from '@/types';
+import { getAirlineCategory } from '@/config/airlines';
+
+/** 同一家航空公司來回（傳統航空優先這個組合） */
+export interface SameAirlineRoundTrip {
+  airline: string;
+  price: number;
+}
+
+/** 去程 + 回程可以不同家的組合（廉航 mix-and-match） */
+export interface MixedAirlineCombo {
+  outboundAirline: string;
+  returnAirline: string;
+  price: number;
+}
 
 export interface FlightAnalysis {
   cheapestOutbound: FlightQuote | null;
   cheapestReturn: FlightQuote | null;
   cheapestRoundTripPrice: number | null;
   cheapestAirline: string | null;
+  /**
+   * 傳統航空（星宇/長榮）同家來回最低價。
+   * 用 outbound 的估算（Google Flights 對該航司同家來回的估算），不需多打 API。
+   */
+  traditionalRoundTrip: SameAirlineRoundTrip | null;
+  /**
+   * 廉航（虎航/捷星/酷航）去 + 回最便宜組合（可不同家）。
+   * - 有 return list 時：從 return list 抓最便宜回程 + 它對應的去程（serpapi 已用最便宜廉航 outbound 的 token 查）
+   * - 沒有 return list 時：fallback 到「最便宜廉航 outbound」同家來回估算
+   */
+  lccCombo: MixedAirlineCombo | null;
   outboundCount: number;
   returnCount: number;
 }
@@ -47,9 +72,65 @@ export function analyzeFlights(
     cheapestReturn: cheapestRet,
     cheapestRoundTripPrice: cheapestRoundTrip,
     cheapestAirline,
+    traditionalRoundTrip: pickTraditionalSameAirline(outbound),
+    lccCombo: pickLccCombo(outbound, ret),
     outboundCount: outbound.length,
     returnCount: ret.length
   };
+}
+
+/**
+ * 傳統航空：從 outbound 列表分別找最便宜的星宇 / 長榮估算，選低的回傳。
+ * outbound[i].price 是 Google Flights 對「該家航司同家來回」的估算總價，所以這天然就是同家來回。
+ */
+function pickTraditionalSameAirline(outbound: FlightQuote[]): SameAirlineRoundTrip | null {
+  let best: FlightQuote | null = null;
+  for (const q of outbound) {
+    if (q.price == null || !q.airline) continue;
+    if (getAirlineCategory(q.airline) !== 'full-service') continue;
+    if (best == null || (q.price < (best.price ?? Number.POSITIVE_INFINITY))) best = q;
+  }
+  if (!best || best.price == null || !best.airline) return null;
+  return { airline: best.airline, price: best.price };
+}
+
+/**
+ * 廉航混搭：
+ * - 拿「最便宜的廉航 outbound」當去程（airline X）
+ * - 從 return list 抓「最便宜的廉航回程」當回程（airline Y，可能 ≠ X）
+ * - 價格用 return list 那筆的 price（已是 X 去 + Y 回的精確來回總價）
+ *
+ * 若 return list 沒有廉航回程（例如 SerpApi 沒回傳混搭選項），fallback 到去程同家估算。
+ */
+function pickLccCombo(outbound: FlightQuote[], ret: FlightQuote[]): MixedAirlineCombo | null {
+  const cheapestLccOut = pickCheapestLcc(outbound);
+  if (!cheapestLccOut) return null;
+
+  const cheapestLccRet = pickCheapestLcc(ret);
+  if (cheapestLccRet && cheapestLccRet.price != null && cheapestLccRet.airline) {
+    return {
+      outboundAirline: cheapestLccOut.airline!,
+      returnAirline: cheapestLccRet.airline,
+      price: cheapestLccRet.price
+    };
+  }
+
+  // fallback：沒有廉航回程資料，用去程估算（同家來回）
+  return {
+    outboundAirline: cheapestLccOut.airline!,
+    returnAirline: cheapestLccOut.airline!,
+    price: cheapestLccOut.price!
+  };
+}
+
+function pickCheapestLcc(quotes: FlightQuote[]): FlightQuote | null {
+  let best: FlightQuote | null = null;
+  for (const q of quotes) {
+    if (q.price == null || !q.airline) continue;
+    if (getAirlineCategory(q.airline) !== 'lcc') continue;
+    if (best == null || (q.price < (best.price ?? Number.POSITIVE_INFINITY))) best = q;
+  }
+  return best;
 }
 
 function byPriceAsc(a: FlightQuote, b: FlightQuote): number {
