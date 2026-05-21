@@ -19,7 +19,7 @@ const AIRLINES: AirlineEntry[] = [
   { category: 'full-service', displayName: '長榮航空', nameKeywords: ['長榮', 'EVA'],     codeKeywords: ['BR'] },
   { category: 'lcc',          displayName: '台灣虎航', nameKeywords: ['虎航', 'Tigerair'],codeKeywords: ['IT'] },
   { category: 'lcc',          displayName: '捷星',     nameKeywords: ['捷星', 'Jetstar'], codeKeywords: ['GK'] },
-  { category: 'lcc',          displayName: '酷航',     nameKeywords: ['酷航', 'Scoot'],   codeKeywords: [] }
+  { category: 'lcc',          displayName: '酷航',     nameKeywords: ['酷航', 'Scoot'],   codeKeywords: ['TR'] }
 ];
 
 export const AIRLINE_KEYWORDS: string[] = AIRLINES.flatMap(a => [...a.nameKeywords, ...a.codeKeywords]);
@@ -48,6 +48,16 @@ export function getAirlineCategory(airline: string | null | undefined): AirlineC
  */
 export function normalizeAirlineName(airline: string): string {
   return matchByName(airline)?.displayName ?? airline;
+}
+
+/**
+ * 取得某個分類所有航空公司的 IATA code（給 Skyscanner deep-link 的 oa/ia 參數用）。
+ * 例：getAirlineCodesByCategory('lcc') → ['IT', 'GK', 'TR']
+ */
+export function getAirlineCodesByCategory(category: AirlineCategory): string[] {
+  return AIRLINES
+    .filter(a => a.category === category)
+    .flatMap(a => a.codeKeywords);
 }
 
 function matchByName(airline: string | null | undefined): AirlineEntry | null {

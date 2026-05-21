@@ -1,4 +1,5 @@
 import { formatAirport } from '@/config/airports';
+import { getAirlineCodesByCategory, type AirlineCategory } from '@/config/airlines';
 
 interface AlertFlexProps {
   origin: string;
@@ -238,8 +239,8 @@ export function buildDailyFlex(props: DailyFlexProps) {
       color: '#666666'
     },
     { type: 'separator', margin: 'md' },
-    lccRow(props.lccCombo, priceColor),
-    traditionalRow(props.traditionalRoundTrip, priceColor)
+    lccRow(props.lccCombo, priceColor, props.origin, props.destination, props.outboundDate, props.returnDate),
+    traditionalRow(props.traditionalRoundTrip, priceColor, props.origin, props.destination, props.outboundDate, props.returnDate)
   ];
   if (compareLine) body.push(compareLine);
   const cacheHint = props.cachedAt ? `（抓 ${formatTaipeiHmFromIso(props.cachedAt)} 的快取）` : '';
@@ -253,21 +254,9 @@ export function buildDailyFlex(props: DailyFlexProps) {
     wrap: true
   });
 
-  // Footer：訂閱者多一顆「我的訂閱」按鈕
+  // Footer：訂閱者只需要「我的訂閱」按鈕；Skyscanner 入口改成 body 兩列各自可點
   const footerButtons: Record<string, unknown>[] = [];
-  if (props.sourceId && props.cheapestPrice != null) {
-    // 訂閱者：主按鈕直接帶 Skyscanner deep link（已含日期 + 機場碼）
-    footerButtons.push({
-      type: 'button',
-      style: 'primary',
-      color: priceColor,
-      height: 'sm',
-      action: {
-        type: 'uri',
-        label: '🛒 用 Skyscanner 訂',
-        uri: skyscannerUrl(props.origin, props.destination, props.outboundDate, props.returnDate)
-      }
-    });
+  if (props.sourceId) {
     footerButtons.push({
       type: 'button',
       style: 'secondary',
@@ -350,41 +339,65 @@ function flightSearchUrl(p: AlertFlexProps): string {
 
 /**
  * 廉航列：去 + 回可不同家。同家時顯示「虎航往返」，不同家時顯示「虎航去・捷星回」。
+ * 整列可點，帶 Skyscanner 廉航直飛篩選參數。
  */
-function lccRow(data: LccComboData | null | undefined, priceColor: string): Record<string, unknown> {
+function lccRow(
+  data: LccComboData | null | undefined,
+  priceColor: string,
+  origin: string,
+  destination: string,
+  outboundDate: string,
+  returnDate: string
+): Record<string, unknown> {
   const hasData = data != null;
   const airlineLabel = hasData
     ? (data!.outboundAirline === data!.returnAirline
         ? `${data!.outboundAirline} 往返`
         : `${data!.outboundAirline} 去・${data!.returnAirline} 回`)
     : '查無';
-  return comboRow('🛩 廉航', hasData ? data!.price : null, airlineLabel, priceColor);
+  const uri = hasData
+    ? skyscannerUrlForCategory('lcc', origin, destination, outboundDate, returnDate)
+    : null;
+  return comboRow('🛩 廉航', hasData ? data!.price : null, airlineLabel, priceColor, uri);
 }
 
 /**
- * 傳統列：同家來回。
+ * 傳統列：同家來回。整列可點，帶 Skyscanner 全服務直飛篩選參數。
  */
 function traditionalRow(
   data: TraditionalRoundTripData | null | undefined,
-  priceColor: string
+  priceColor: string,
+  origin: string,
+  destination: string,
+  outboundDate: string,
+  returnDate: string
 ): Record<string, unknown> {
   const hasData = data != null;
   const airlineLabel = hasData ? `${data!.airline} 往返` : '查無';
-  return comboRow('🏢 傳統', hasData ? data!.price : null, airlineLabel, priceColor);
+  const uri = hasData
+    ? skyscannerUrlForCategory('full-service', origin, destination, outboundDate, returnDate)
+    : null;
+  return comboRow('🏢 傳統', hasData ? data!.price : null, airlineLabel, priceColor, uri);
 }
 
+/**
+ * 一列：左 emoji + label、右上價格、右下航司 + ▸ 提示。
+ * 傳入 uri 時整個 box 變成可點的 Flex action（直接開 Skyscanner）。
+ */
 function comboRow(
   label: string,
   price: number | null,
   airlineLabel: string,
-  priceColor: string
+  priceColor: string,
+  uri: string | null
 ): Record<string, unknown> {
   const hasPrice = price != null;
-  return {
+  const box: Record<string, unknown> = {
     type: 'box',
     layout: 'vertical',
     margin: 'md',
     spacing: 'xs',
+    paddingAll: '4px',
     contents: [
       {
         type: 'box',
@@ -410,13 +423,17 @@ function comboRow(
       },
       {
         type: 'text',
-        text: airlineLabel,
+        text: uri ? `${airlineLabel}  ▸` : airlineLabel,
         size: 'xs',
         color: '#94a3b8',
         align: 'end'
       }
     ]
   };
+  if (uri) {
+    box.action = { type: 'uri', label: airlineLabel.slice(0, 40), uri };
+  }
+  return box;
 }
 
 /**
@@ -443,4 +460,28 @@ function formatTaipeiHmFromDate(d: Date): string {
 function skyscannerUrl(origin: string, destination: string, outboundDate: string, returnDate: string): string {
   const ymd = (d: string) => d.replace(/-/g, '').slice(2); // 2026-06-08 -> 260608
   return `https://www.skyscanner.com.tw/transport/flights/${origin}/${destination}/${ymd(outboundDate)}/${ymd(returnDate)}/?adultsv2=1`;
+}
+
+/**
+ * 分類版 Skyscanner deep-link：在基礎 URL 後加上「只看直飛 + 經濟艙 + 該分類航司」的 query 參數。
+ * - directflights=true → 只直飛
+ * - cabinclass=economy → 經濟艙
+ * - oa/ia=航司代碼（逗號分隔）→ 限制去 + 回程航空
+ */
+function skyscannerUrlForCategory(
+  category: AirlineCategory,
+  origin: string,
+  destination: string,
+  outboundDate: string,
+  returnDate: string
+): string {
+  const base = skyscannerUrl(origin, destination, outboundDate, returnDate);
+  const codes = getAirlineCodesByCategory(category).join(',');
+  const extra = [
+    'directflights=true',
+    'cabinclass=economy',
+    codes ? `oa=${codes}` : '',
+    codes ? `ia=${codes}` : ''
+  ].filter(Boolean).join('&');
+  return `${base}&${extra}`;
 }
