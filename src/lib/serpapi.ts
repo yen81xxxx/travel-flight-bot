@@ -52,11 +52,13 @@ export async function searchFlights(params: SearchParams): Promise<SearchResult>
   const { data: cached, error: cacheErr } = await cacheQuery;
 
   if (!cacheErr && cached && cached.length > 0) {
-    const outbound = cached.filter(q => q.trip_leg === 'outbound') as FlightQuote[];
-    const ret = cached.filter(q => q.trip_leg === 'return') as FlightQuote[];
+    // 只取直飛（stops=0）。舊資料可能含轉機票，這層過濾保證下游邏輯純直飛。
+    const directCached = cached.filter(q => q.stops === 0);
+    const outbound = directCached.filter(q => q.trip_leg === 'outbound') as FlightQuote[];
+    const ret = directCached.filter(q => q.trip_leg === 'return') as FlightQuote[];
     if (outbound.length > 0) {
       // 用快取裡最新一筆的 queried_at 作為「資料時間」（cached 已 desc 排序）
-      const queriedAt = (cached[0].queried_at as string | undefined) ?? new Date().toISOString();
+      const queriedAt = (directCached[0].queried_at as string | undefined) ?? new Date().toISOString();
       return { outbound, return: ret, fromCache: true, serpapiCalls: 0, queriedAt };
     }
   }
@@ -123,13 +125,14 @@ export async function searchFlights(params: SearchParams): Promise<SearchResult>
 }
 
 /**
- * 從原始 SerpApi response 裡挑「最便宜的廉航 outbound」用來查 return。
- * 拿第一段（去程第一個 leg）的航空判分類，符合 outbound 主航司的常見定義。
+ * 從原始 SerpApi response 裡挑「最便宜的廉航直飛 outbound」用來查 return。
+ * 必須直飛（flights.length === 1），確保 return list 配對的是純廉航直飛 outbound。
  */
 function pickCheapestLccFlight(flights: SerpApiFlight[]): SerpApiFlight | null {
   let best: SerpApiFlight | null = null;
   for (const f of flights) {
     if (f.price == null) continue;
+    if ((f.flights?.length ?? 0) !== 1) continue;  // 直飛 only
     const firstAirline = f.flights?.[0]?.airline ?? '';
     if (getAirlineCategory(firstAirline) !== 'lcc') continue;
     if (best == null || (f.price < (best.price ?? Number.POSITIVE_INFINITY))) best = f;
@@ -200,9 +203,10 @@ function extractQuotes(
 
   return all
     .filter(({ flight }) => {
-      // 只保留同一航段全部都是白名單航空公司的航班（避免轉機航司變成廉航以外的）
       const legs = flight.flights ?? [];
-      if (legs.length === 0) return false;
+      // 只保留「直飛」的航班（單一 leg），避免轉機票顯示成不存在的「同家來回」（例如「長榮 89,240」其實是長榮去沖繩 + ANA 接駁 HND）
+      if (legs.length !== 1) return false;
+      // 第一段（也是唯一段）必須是白名單航空公司
       const firstAirline = legs[0]?.airline ?? '';
       return isWhitelistedAirline(firstAirline);
     })
