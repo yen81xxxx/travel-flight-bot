@@ -6,6 +6,7 @@ import { getSupabase } from '@/lib/supabase';
 import { checkAllSubscriptions } from '@/lib/subscription-checker';
 import { cleanupOldRecords, getQuotaStats } from '@/lib/cleanup';
 import { buildDailyFlex } from '@/lib/flex-message';
+import { getCityAirports } from '@/config/airports';
 import type { Subscription } from '@/types';
 
 export const runtime = 'nodejs';
@@ -110,15 +111,49 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   for (const [key, group] of queryGroups) {
     const [origin, destination, outboundDate, returnDate] = key.split('|');
     try {
-      const result = await searchFlights({ origin, destination, outboundDate, returnDate });
-      totalSerpapiCalls += result.serpapiCalls;
-      if (result.fromCache) totalFromCache++;
-      const analysis = analyzeFlights(result.outbound, result.return);
+      // 多機場城市（東京 = HND + NRT）fan-out 查詢，廉航通常 HND、傳統通常 NRT
+      const destAirports = getCityAirports(destination);
+      const fanout = await Promise.all(
+        destAirports.map(async (d) => {
+          const r = await searchFlights({ origin, destination: d, outboundDate, returnDate });
+          return { destination: d, result: r, analysis: analyzeFlights(r.outbound, r.return) };
+        })
+      );
+
+      let groupSerpapiCalls = 0;
+      let groupFromCacheAll = true;
+      for (const f of fanout) {
+        groupSerpapiCalls += f.result.serpapiCalls;
+        if (!f.result.fromCache) groupFromCacheAll = false;
+      }
+      totalSerpapiCalls += groupSerpapiCalls;
+      if (groupFromCacheAll) totalFromCache++;
+
+      // 跨機場挑各分類最便宜
+      let bestLcc: { price: number; outboundAirline: string; returnAirline: string; airport: string } | null = null;
+      let bestTrad: { price: number; airline: string; airport: string } | null = null;
+      let bestCheapest: { price: number; airline: string | null; airport: string } | null = null;
+      let bestCachedAt: string | null = null;
+      for (const f of fanout) {
+        const a = f.analysis;
+        if (a.lccCombo && (!bestLcc || a.lccCombo.price < bestLcc.price)) {
+          bestLcc = { ...a.lccCombo, airport: f.destination };
+        }
+        if (a.traditionalRoundTrip && (!bestTrad || a.traditionalRoundTrip.price < bestTrad.price)) {
+          bestTrad = { ...a.traditionalRoundTrip, airport: f.destination };
+        }
+        if (a.cheapestRoundTripPrice != null && (!bestCheapest || a.cheapestRoundTripPrice < bestCheapest.price)) {
+          bestCheapest = { price: a.cheapestRoundTripPrice, airline: a.cheapestAirline, airport: f.destination };
+        }
+        if (f.result.fromCache && (!bestCachedAt || f.result.queriedAt > bestCachedAt)) {
+          bestCachedAt = f.result.queriedAt;
+        }
+      }
 
       perGroupResults.push({
-        route: `${origin}-${destination} ${outboundDate}~${returnDate}`,
-        cheapest: analysis.cheapestRoundTripPrice,
-        fromCache: result.fromCache,
+        route: `${origin}-${destination}(${destAirports.join('+')}) ${outboundDate}~${returnDate}`,
+        cheapest: bestCheapest?.price ?? null,
+        fromCache: groupFromCacheAll,
         sourceCount: group.length
       });
 
@@ -131,11 +166,11 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
               destination,
               outboundDate,
               returnDate,
-              cheapestPrice: analysis.cheapestRoundTripPrice,
-              cheapestAirline: analysis.cheapestAirline,
-              traditionalRoundTrip: analysis.traditionalRoundTrip,
-              lccCombo: analysis.lccCombo,
-              cachedAt: result.fromCache ? result.queriedAt : null,
+              cheapestPrice: bestCheapest?.price ?? null,
+              cheapestAirline: bestCheapest?.airline ?? null,
+              traditionalRoundTrip: bestTrad,
+              lccCombo: bestLcc,
+              cachedAt: groupFromCacheAll ? bestCachedAt : null,
               threshold: Number(t.sub.max_price),
               sourceId: t.source
             });
@@ -236,7 +271,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     ok: pushedFail === 0,
     // 部署版本標記 — 改卡片版面時 bump 一下，方便從 API 回應驗證新 code 是否真的上線
-    cardVersion: 'v4-direct-only-2026-05-21',
+    cardVersion: 'v5-multi-airport-2026-05-22',
     daily: {
       sourcesTargeted: targets.length,
       sourcesOptedOut: optedOut.size,

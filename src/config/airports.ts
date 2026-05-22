@@ -104,3 +104,31 @@ export function formatAirport(iata: string): string {
   if (!ap) return iata;
   return `${ap.city} (${iata})`;
 }
+
+/**
+ * 同城市的多機場群組白名單。
+ * 同一個城市有兩個以上主要國際機場時才需要列入；
+ * 例：東京有 HND（羽田）+ NRT（成田），廉航多飛 HND、全服務多飛 NRT。
+ * 這裡列的 IATA 之間會在 daily-search cron 互相 fan-out 查詢。
+ */
+const MULTI_AIRPORT_CITIES: Record<string, string[]> = {
+  '東京': ['HND', 'NRT']
+};
+
+/**
+ * 給一個機場 IATA，回傳同城市需要一起查的機場列表。
+ * - 屬於 MULTI_AIRPORT_CITIES 群組 → 回傳整組
+ * - 其他城市 → 回傳只含自己
+ */
+export function getCityAirports(iata: string): string[] {
+  const ap = getAirport(iata);
+  if (!ap) return [iata];
+  const group = MULTI_AIRPORT_CITIES[ap.city];
+  if (group && group.includes(iata)) return group;
+  return [iata];
+}
+
+/** 取得機場的城市名稱（給卡片 header 顯示用） */
+export function getCity(iata: string): string {
+  return getAirport(iata)?.city ?? iata;
+}

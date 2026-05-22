@@ -1,4 +1,4 @@
-import { formatAirport } from '@/config/airports';
+import { formatAirport, getCity, getCityAirports } from '@/config/airports';
 import { getAirlineCodesByCategory, type AirlineCategory } from '@/config/airlines';
 
 interface AlertFlexProps {
@@ -17,12 +17,15 @@ interface AlertFlexProps {
 interface TraditionalRoundTripData {
   airline: string;
   price: number;
+  /** 此價格對應的目的地機場 IATA（例：'NRT'）。多機場城市時用來標示「傳統 (NRT)」 */
+  airport?: string;
 }
 
 interface LccComboData {
   outboundAirline: string;
   returnAirline: string;
   price: number;
+  airport?: string;
 }
 
 interface DailyFlexProps {
@@ -224,10 +227,15 @@ export function buildDailyFlex(props: DailyFlexProps) {
         })()
       : null;
 
+  // 多機場城市（東京）的 header 只顯示城市名（不帶 IATA），每列再標自己的機場
+  const destLabel = getCityAirports(props.destination).length > 1
+    ? getCity(props.destination)
+    : formatAirport(props.destination);
+
   const body: Record<string, unknown>[] = [
     {
       type: 'text',
-      text: `${formatAirport(props.origin)} → ${formatAirport(props.destination)}`,
+      text: `${formatAirport(props.origin)} → ${destLabel}`,
       weight: 'bold',
       size: 'md',
       wrap: true
@@ -242,6 +250,7 @@ export function buildDailyFlex(props: DailyFlexProps) {
     lccRow(props.lccCombo, priceColor, props.origin, props.destination, props.outboundDate, props.returnDate),
     traditionalRow(props.traditionalRoundTrip, priceColor, props.origin, props.destination, props.outboundDate, props.returnDate)
   ];
+  // 註：lccRow / traditionalRow 內部會優先用 data.airport（多機場時跨機場挑最便宜的）覆寫 destination
   if (compareLine) body.push(compareLine);
   const cacheHint = props.cachedAt ? `（抓 ${formatTaipeiHmFromIso(props.cachedAt)} 的快取）` : '';
   body.push({
@@ -355,10 +364,13 @@ function lccRow(
         ? `${data!.outboundAirline} 往返`
         : `${data!.outboundAirline} 去・${data!.returnAirline} 回`)
     : '查無';
+  // 用此分類「跨機場挑出的最便宜」對應的機場（資料可能來自 HND 或 NRT）；fallback 訂閱原機場
+  const rowAirport = data?.airport ?? destination;
+  const label = `🛩 廉航${maybeAirportSuffix(destination, rowAirport)}`;
   const uri = hasData
-    ? skyscannerUrlForCategory('lcc', origin, destination, outboundDate, returnDate)
+    ? skyscannerUrlForCategory('lcc', origin, rowAirport, outboundDate, returnDate)
     : null;
-  return comboRow('🛩 廉航', hasData ? data!.price : null, airlineLabel, priceColor, uri);
+  return comboRow(label, hasData ? data!.price : null, airlineLabel, priceColor, uri);
 }
 
 /**
@@ -374,10 +386,19 @@ function traditionalRow(
 ): Record<string, unknown> {
   const hasData = data != null;
   const airlineLabel = hasData ? `${data!.airline} 往返` : '查無';
+  const rowAirport = data?.airport ?? destination;
+  const label = `🏢 傳統${maybeAirportSuffix(destination, rowAirport)}`;
   const uri = hasData
-    ? skyscannerUrlForCategory('full-service', origin, destination, outboundDate, returnDate)
+    ? skyscannerUrlForCategory('full-service', origin, rowAirport, outboundDate, returnDate)
     : null;
-  return comboRow('🏢 傳統', hasData ? data!.price : null, airlineLabel, priceColor, uri);
+  return comboRow(label, hasData ? data!.price : null, airlineLabel, priceColor, uri);
+}
+
+/**
+ * 只有「該城市有多個機場」時才加 (IATA) 後綴，避免單機場城市畫面冗餘。
+ */
+function maybeAirportSuffix(subscribedDest: string, rowAirport: string): string {
+  return getCityAirports(subscribedDest).length > 1 ? ` (${rowAirport})` : '';
 }
 
 /**
