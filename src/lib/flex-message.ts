@@ -478,16 +478,30 @@ function formatTaipeiHmFromDate(d: Date): string {
   }).format(d);
 }
 
+/**
+ * Skyscanner 官方 referrals deep-link 格式。
+ * 文件：https://developers.skyscanner.net/docs/referrals/flights-parameters
+ * 用 day-view 進入 Skyscanner，filter 參數會正確套用（之前用消費者 URL `/transport/flights/...` 不吃 filter）。
+ */
 function skyscannerUrl(origin: string, destination: string, outboundDate: string, returnDate: string): string {
-  const ymd = (d: string) => d.replace(/-/g, '').slice(2); // 2026-06-08 -> 260608
-  return `https://www.skyscanner.com.tw/transport/flights/${origin}/${destination}/${ymd(outboundDate)}/${ymd(returnDate)}/?adultsv2=1`;
+  const params = new URLSearchParams({
+    origin,
+    destination,
+    outboundDate,
+    inboundDate: returnDate,
+    adultsv2: '1',
+    locale: 'zh-TW',
+    market: 'TW',
+    currency: 'TWD'
+  });
+  return `https://skyscanner.net/g/referrals/v1/flights/day-view/?${params.toString()}`;
 }
 
 /**
- * 分類版 Skyscanner deep-link：在基礎 URL 後加上「只看直飛 + 經濟艙 + 該分類航司」的 query 參數。
- * - directflights=true → 只直飛
+ * 分類版 Skyscanner deep-link：在 referrals base 後加上「只看直飛 + 經濟艙 + 該分類航司」的 query 參數。
+ * - preferDirects=true → 只直飛（Skyscanner 官方參數名）
  * - cabinclass=economy → 經濟艙
- * - oa/ia=航司代碼（逗號分隔）→ 限制去 + 回程航空
+ * - airlines=逗號分隔代碼 → 限制航司（單一參數，不分去/回）
  */
 function skyscannerUrlForCategory(
   category: AirlineCategory,
@@ -496,13 +510,19 @@ function skyscannerUrlForCategory(
   outboundDate: string,
   returnDate: string
 ): string {
-  const base = skyscannerUrl(origin, destination, outboundDate, returnDate);
   const codes = getAirlineCodesByCategory(category).join(',');
-  const extra = [
-    'directflights=true',
-    'cabinclass=economy',
-    codes ? `oa=${codes}` : '',
-    codes ? `ia=${codes}` : ''
-  ].filter(Boolean).join('&');
-  return `${base}&${extra}`;
+  const params = new URLSearchParams({
+    origin,
+    destination,
+    outboundDate,
+    inboundDate: returnDate,
+    adultsv2: '1',
+    locale: 'zh-TW',
+    market: 'TW',
+    currency: 'TWD',
+    preferDirects: 'true',
+    cabinclass: 'economy'
+  });
+  if (codes) params.set('airlines', codes);
+  return `https://skyscanner.net/g/referrals/v1/flights/day-view/?${params.toString()}`;
 }
