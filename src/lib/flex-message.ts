@@ -359,18 +359,17 @@ function lccRow(
   returnDate: string
 ): Record<string, unknown> {
   const hasData = data != null;
+  const rowAirport = data?.airport ?? destination;
+  const airportSuffix = airportSuffixForSecondLine(destination, rowAirport);
   const airlineLabel = hasData
     ? (data!.outboundAirline === data!.returnAirline
-        ? `${data!.outboundAirline} 往返`
-        : `${data!.outboundAirline} 去・${data!.returnAirline} 回`)
+        ? `${data!.outboundAirline} 往返${airportSuffix}`
+        : `${data!.outboundAirline} 去・${data!.returnAirline} 回${airportSuffix}`)
     : '查無';
-  // 用此分類「跨機場挑出的最便宜」對應的機場（資料可能來自 HND 或 NRT）；fallback 訂閱原機場
-  const rowAirport = data?.airport ?? destination;
-  const label = `🛩 廉航${maybeAirportSuffix(destination, rowAirport)}`;
   const uri = hasData
     ? skyscannerUrlForCategory('lcc', origin, rowAirport, outboundDate, returnDate)
     : null;
-  return comboRow(label, hasData ? data!.price : null, airlineLabel, priceColor, uri);
+  return comboRow('🛩 廉航', hasData ? data!.price : null, airlineLabel, priceColor, uri);
 }
 
 /**
@@ -385,20 +384,21 @@ function traditionalRow(
   returnDate: string
 ): Record<string, unknown> {
   const hasData = data != null;
-  const airlineLabel = hasData ? `${data!.airline} 往返` : '查無';
   const rowAirport = data?.airport ?? destination;
-  const label = `🏢 傳統${maybeAirportSuffix(destination, rowAirport)}`;
+  const airportSuffix = airportSuffixForSecondLine(destination, rowAirport);
+  const airlineLabel = hasData ? `${data!.airline} 往返${airportSuffix}` : '查無';
   const uri = hasData
     ? skyscannerUrlForCategory('full-service', origin, rowAirport, outboundDate, returnDate)
     : null;
-  return comboRow(label, hasData ? data!.price : null, airlineLabel, priceColor, uri);
+  return comboRow('🏢 傳統', hasData ? data!.price : null, airlineLabel, priceColor, uri);
 }
 
 /**
- * 只有「該城市有多個機場」時才加 (IATA) 後綴，避免單機場城市畫面冗餘。
+ * 第二行（航司行）的機場後綴。例：「台灣虎航 往返・HND」。
+ * 只有多機場城市才加，避免單機場城市畫面冗餘。
  */
-function maybeAirportSuffix(subscribedDest: string, rowAirport: string): string {
-  return getCityAirports(subscribedDest).length > 1 ? ` (${rowAirport})` : '';
+function airportSuffixForSecondLine(subscribedDest: string, rowAirport: string): string {
+  return getCityAirports(subscribedDest).length > 1 ? `・${rowAirport}` : '';
 }
 
 /**
