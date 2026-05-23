@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useSessionStorage } from '@/hooks/useSessionStorage';
+import { useKnownGroupCtxs } from '@/hooks/useKnownGroupCtxs';
 import { useLiff } from '@/hooks/useLiff';
 import { Alert, Badge, Button, Card, EmptyState, Spinner } from '@/components';
 import type { Subscription } from '@/types';
@@ -18,8 +19,10 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
   const { liffReady, user } = useLiff(liffId);
   const sourceId = user?.userId ?? null;
 
-  // 群組上下文
+  // 群組上下文（當下這個 LIFF session 是從哪個群組進來的；URL 帶 ctx 才會有）
   const [groupCtxId, setGroupCtxId] = useSessionStorage<string | null>('liff_ctx', null);
+  // 使用者進過的所有群組（localStorage 持久化，跨 LIFF session 都記得）
+  const { ctxs: knownGroupCtxs, add: addKnownGroupCtx } = useKnownGroupCtxs();
 
   // 訂閱數據
   const [items, setItems] = useState<ItemWithSource[]>([]);
@@ -27,52 +30,67 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
 
-  // 初始化群組 ID
+  // 初始化群組 ID（URL → sessionStorage + localStorage）
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const ctx = params.get('ctx');
     if (ctx && (ctx.startsWith('C') || ctx.startsWith('R'))) {
       setGroupCtxId(ctx);
+      addKnownGroupCtx(ctx);
     }
-  }, [setGroupCtxId]);
+  }, [setGroupCtxId, addKnownGroupCtx]);
 
-  // 加載訂閱列表
+  // 加載訂閱列表 — 個人 + 所有已知群組（合併顯示，各自標 _source）
   useEffect(() => {
     if (!sourceId) return;
-
-    const targetSourceId = groupCtxId ?? sourceId;
     setLoading(true);
     setError(null);
 
-    fetch(`/api/subscriptions?sourceId=${encodeURIComponent(targetSourceId)}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.ok && Array.isArray(data.subscriptions)) {
-          const source: 'group' | 'personal' = groupCtxId ? 'group' : 'personal';
-          const withSource = data.subscriptions.map((sub: Subscription) => ({
-            ...sub,
-            _source: source
-          }));
-          setItems(withSource);
-        } else {
-          setError(data.error || '加載失敗');
-        }
-      })
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [sourceId, groupCtxId]);
+    // 待 fetch 的來源清單：個人 sourceId 一定 fetch；所有已知 group ctx 也都 fetch
+    const targets: { sourceId: string; type: 'personal' | 'group' }[] = [
+      { sourceId, type: 'personal' },
+      ...knownGroupCtxs.map(c => ({ sourceId: c, type: 'group' as const }))
+    ];
 
-  // 刪除訂閱
+    Promise.all(
+      targets.map(t =>
+        fetch(`/api/subscriptions?sourceId=${encodeURIComponent(t.sourceId)}`)
+          .then(r => r.json())
+          .then(data => ({ data, type: t.type }))
+          .catch(() => ({ data: { ok: false, subscriptions: [] }, type: t.type }))
+      )
+    )
+      .then(results => {
+        const merged: ItemWithSource[] = [];
+        const seenIds = new Set<number>();
+        for (const { data, type } of results) {
+          if (!data.ok || !Array.isArray(data.subscriptions)) continue;
+          for (const sub of data.subscriptions as Subscription[]) {
+            if (sub.id != null && seenIds.has(sub.id)) continue;
+            if (sub.id != null) seenIds.add(sub.id);
+            merged.push({ ...sub, _source: type });
+          }
+        }
+        setItems(merged);
+      })
+      .catch(err => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setLoading(false));
+  }, [sourceId, groupCtxId, knownGroupCtxs]);
+
+  // 刪除訂閱（合併顯示後，每筆 sub 來源不同，要用該 sub 自己的 source_id）
   const handleDelete = async (subId: number) => {
     if (!sourceId || !window.confirm('確定要取消此訂閱？')) return;
+
+    const target = items.find(i => i.id === subId);
+    const subSourceId = target?.source_id ?? groupCtxId ?? sourceId;
 
     setDeleting(subId);
     try {
       const res = await fetch(`/api/subscriptions/${subId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceId: groupCtxId ?? sourceId })
+        body: JSON.stringify({ sourceId: subSourceId })
       });
 
       const data = await res.json();
@@ -108,6 +126,8 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
   }
 
   const isGroupContext = !!groupCtxId && (groupCtxId.startsWith('C') || groupCtxId.startsWith('R'));
+  const personalCount = items.filter(i => i._source === 'personal').length;
+  const groupCount = items.filter(i => i._source === 'group').length;
 
   return (
     <>
@@ -115,7 +135,10 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
       <div className="subs-wrap">
         <header className="subs-header">
           <h1>🔔 我的訂閱</h1>
-          {isGroupContext && <Badge variant="info">群組訂閱</Badge>}
+          <div className="header-badges">
+            {personalCount > 0 && <Badge variant="info">個人 {personalCount}</Badge>}
+            {groupCount > 0 && <Badge variant="info">群組 {groupCount}</Badge>}
+          </div>
         </header>
 
         {error && <Alert type="error" closable onClose={() => setError(null)}>{error}</Alert>}
@@ -180,6 +203,9 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                           )}
 
                           <div className="sub-status">
+                            <Badge variant="info">
+                              {sub._source === 'group' ? '👥 群組' : '👤 個人'}
+                            </Badge>
                             {sub.active ? (
                               <Badge variant="success">✓ 已啟用</Badge>
                             ) : (

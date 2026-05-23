@@ -20,6 +20,17 @@ export default function TabNav({ active, liffId }: Props) {
     if (urlCtx && (urlCtx.startsWith('C') || urlCtx.startsWith('R'))) {
       setCtx(urlCtx);
       sessionStorage.setItem('liff_ctx', urlCtx);
+      // 同時記到 localStorage 的 known group ctxs（持久化），讓「我的訂閱」之後從任何入口都能撈到群組訂閱
+      try {
+        const KEY = 'liff_known_group_ctxs';
+        const raw = window.localStorage.getItem(KEY);
+        const arr: string[] = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(arr) && !arr.includes(urlCtx)) {
+          window.localStorage.setItem(KEY, JSON.stringify([...arr, urlCtx]));
+        }
+      } catch {
+        // 忽略 storage 錯誤
+      }
     } else {
       const saved = sessionStorage.getItem('liff_ctx');
       if (saved && (saved.startsWith('C') || saved.startsWith('R'))) {
