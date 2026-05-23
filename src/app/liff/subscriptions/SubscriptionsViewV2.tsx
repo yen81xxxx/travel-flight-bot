@@ -43,15 +43,19 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
 
   // 加載訂閱列表 — 個人 + 所有已知群組（合併顯示，各自標 _source）
   useEffect(() => {
-    if (!sourceId) return;
+    // 待 fetch 的來源清單：有 LIFF userId → 加個人；有任何已知群組 → 加群組
+    const targets: { sourceId: string; type: 'personal' | 'group' }[] = [];
+    if (sourceId) targets.push({ sourceId, type: 'personal' });
+    for (const c of knownGroupCtxs) targets.push({ sourceId: c, type: 'group' });
+
+    if (targets.length === 0) {
+      // 沒 userId 又沒群組 ctx → 真的什麼都查不到（例如在一般瀏覽器開無 ctx URL）
+      setItems([]);
+      return;
+    }
+
     setLoading(true);
     setError(null);
-
-    // 待 fetch 的來源清單：個人 sourceId 一定 fetch；所有已知 group ctx 也都 fetch
-    const targets: { sourceId: string; type: 'personal' | 'group' }[] = [
-      { sourceId, type: 'personal' },
-      ...knownGroupCtxs.map(c => ({ sourceId: c, type: 'group' as const }))
-    ];
 
     Promise.all(
       targets.map(t =>
