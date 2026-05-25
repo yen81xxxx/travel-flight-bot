@@ -58,9 +58,16 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://travel-flight-bot.ve
 export function buildAlertFlex(props: AlertFlexProps) {
   const drop = props.threshold - props.cheapestPrice;
   const dropPct = Math.round((drop / props.threshold) * 100);
+  // 邊界情況：當降幅 < 1%（例如 NT$ 18,538 vs 門檻 18,546，只差 NT$ 8）顯示「降價 0%」
+  // 會看起來像 bug。改成「達到目標價」+ 顯示絕對便宜金額。
+  const isAtThreshold = dropPct < 1;
+  const title = isAtThreshold ? '🎯 達到目標價' : '🔔 降價提醒';
+  const compareLine = isAtThreshold
+    ? `達到你的門檻 NT$ ${props.threshold.toLocaleString()}（便宜 NT$ ${drop.toLocaleString()}）`
+    : `比門檻 NT$ ${props.threshold.toLocaleString()} 低 ${dropPct}%`;
   return {
     type: 'flex',
-    altText: `🔔 降價提醒：${formatAirport(props.origin)} → ${formatAirport(props.destination)} NT$ ${props.cheapestPrice.toLocaleString()}`,
+    altText: `${title}：${formatAirport(props.origin)} → ${formatAirport(props.destination)} NT$ ${props.cheapestPrice.toLocaleString()}`,
     contents: {
       type: 'bubble',
       size: 'kilo',
@@ -70,7 +77,7 @@ export function buildAlertFlex(props: AlertFlexProps) {
         contents: [
           {
             type: 'text',
-            text: '🔔 降價提醒',
+            text: title,
             weight: 'bold',
             size: 'lg',
             color: '#ffffff'
@@ -134,9 +141,10 @@ export function buildAlertFlex(props: AlertFlexProps) {
           },
           {
             type: 'text',
-            text: `比門檻 NT$ ${props.threshold.toLocaleString()} 低 ${dropPct}%`,
+            text: compareLine,
             size: 'xs',
-            color: '#4ade80'
+            color: '#4ade80',
+            wrap: true
           },
           {
             type: 'box',
