@@ -15,13 +15,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
   }
   const supabase = getSupabase();
-  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const { searchParams } = new URL(req.url);
+  const days = parseInt(searchParams.get('days') ?? '7', 10);  // 預設 7 天，可 ?days=365 撈全部
+  const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
   const { data, error } = await supabase
     .from('subscriptions')
     .select('id, source_id, origin, destination, outbound_date, return_date, max_price, label, active, paused, created_at')
     .gte('created_at', since)
     .order('created_at', { ascending: false })
-    .limit(20);
+    .limit(100);
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 

@@ -56,17 +56,47 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
   const padBottom = 18;
 
   const renderChart = () => {
-    if (points.length < 2) {
-      return <div className="spark-empty">📊 此區間紀錄不足，再追蹤幾天就有走勢圖</div>;
+    // Fix A：資料點 < 3 時不畫圖（2 個點只會連成直線，不算趨勢）
+    if (points.length < 3) {
+      return (
+        <div className="spark-empty">
+          🌱 累積中（已查 {points.length} 天）
+          <div className="spark-empty-sub">再過幾天就會出現走勢圖</div>
+        </div>
+      );
     }
 
     const prices = points.map(p => p.minPrice);
     const minHistoryPrice = Math.min(...prices);
     const maxHistoryPrice = Math.max(...prices);
-    const isFlat = minHistoryPrice === maxHistoryPrice;
+    const avgPrice = prices.reduce((s, p) => s + p, 0) / prices.length;
+    // 變化幅度 < 0.5% 視為完全平
+    const variation = avgPrice > 0 ? (maxHistoryPrice - minHistoryPrice) / avgPrice : 0;
+    const isFlat = variation < 0.005;
 
-    const minP = Math.min(...prices, threshold);
-    const maxP = Math.max(...prices, threshold);
+    // Fix C：門檻價跟資料差 > 30% 時不畫進圖（避免拉長 Y 軸 + 門檻虛線變孤兒）
+    const thresholdDistance = avgPrice > 0 ? Math.abs(threshold - avgPrice) / avgPrice : Infinity;
+    const includeThresholdInChart = thresholdDistance <= 0.30;
+
+    // Y 軸範圍
+    let minP: number;
+    let maxP: number;
+    if (includeThresholdInChart) {
+      minP = Math.min(minHistoryPrice, threshold);
+      maxP = Math.max(maxHistoryPrice, threshold);
+    } else {
+      minP = minHistoryPrice;
+      maxP = maxHistoryPrice;
+    }
+
+    // Fix B：變化太小（< 5%）時擴張 Y 軸至 ±10% 範圍，避免「平的折線被 zoom 成假趨勢」
+    const currentRange = maxP - minP;
+    if (avgPrice > 0 && currentRange / avgPrice < 0.05) {
+      const half = avgPrice * 0.10;
+      minP = avgPrice - half;
+      maxP = avgPrice + half;
+    }
+
     const range = Math.max(1, maxP - minP);
 
     const xScale = (i: number) => padX + (i / (points.length - 1)) * (W - 2 * padX);
@@ -88,6 +118,9 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
     const thresholdY = yScale(threshold);
     // 門檻價跟最後價接近時不顯示門檻標籤（避免重疊）
     const thresholdNearLast = Math.abs(thresholdY - yScale(lastPrice)) < 14;
+    // 門檻離資料太遠 → 不畫圖內虛線，下方用文字交代
+    const thresholdDiff = lastPrice - threshold; // 正：目前比門檻貴，負：目前比門檻便宜
+    const thresholdDiffPct = Math.round((Math.abs(thresholdDiff) / threshold) * 100);
 
     // 智慧 textAnchor：左邊用 start、右邊用 end、中間 middle
     const anchorFor = (idx: number): 'start' | 'middle' | 'end' => {
@@ -97,9 +130,15 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
       return 'middle';
     };
 
-    // 標籤顯示策略
-    const showMinLabel = !isFlat && minIdx !== lastIdx;
-    const showMaxLabel = !isFlat && maxIdx !== lastIdx && maxIdx !== minIdx;
+    // Fix D：標籤顯示策略 — 避免 min/max 互相靠太近、避免跟 last price label 撞
+    const minDistFromLast = Math.abs(xScale(minIdx) - xScale(lastIdx));
+    const maxDistFromLast = Math.abs(xScale(maxIdx) - xScale(lastIdx));
+    const minMaxDist = Math.abs(xScale(minIdx) - xScale(maxIdx));
+    const SAFE_DIST = 36;  // 至少 36px 間距才不會撞
+    const showMinLabel = !isFlat && minIdx !== lastIdx && minDistFromLast >= SAFE_DIST;
+    const showMaxLabel = !isFlat && maxIdx !== lastIdx && maxIdx !== minIdx
+      && maxDistFromLast >= SAFE_DIST
+      && (!showMinLabel || minMaxDist >= SAFE_DIST);
 
     return (
       <>
@@ -119,15 +158,19 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
           className="spark-svg"
           onClick={() => setSelectedIdx(null)}
         >
-          {/* 門檻虛線（價格相同時跟資料線重疊，但虛線樣式可區分）*/}
-          <line
-            x1={padX} y1={thresholdY} x2={W - padX} y2={thresholdY}
-            stroke="#ff7a45" strokeWidth="1" strokeDasharray="3 3" opacity="0.5"
-          />
-          {!thresholdNearLast && (
-            <text x={padX} y={thresholdY - 3} fill="#ff7a45" fontSize="8" textAnchor="start" opacity="0.7">
-              門檻 {threshold.toLocaleString()}
-            </text>
+          {/* 門檻虛線（只在門檻價跟資料範圍接近時才畫進圖；太遠時改用圖下方文字交代）*/}
+          {includeThresholdInChart && (
+            <>
+              <line
+                x1={padX} y1={thresholdY} x2={W - padX} y2={thresholdY}
+                stroke="#ff7a45" strokeWidth="1" strokeDasharray="3 3" opacity="0.5"
+              />
+              {!thresholdNearLast && (
+                <text x={padX} y={thresholdY - 3} fill="#ff7a45" fontSize="8" textAnchor="start" opacity="0.7">
+                  門檻 {threshold.toLocaleString()}
+                </text>
+              )}
+            </>
           )}
 
           {/* 折線 */}
@@ -242,6 +285,17 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
           })()}
         </svg>
 
+        {/* 門檻離資料太遠時，圖下方文字交代 */}
+        {!includeThresholdInChart && (
+          <div className="threshold-note">
+            🎯 門檻 NT$ {threshold.toLocaleString()}
+            {thresholdDiff > 0
+              ? <span className="th-over">　目前比門檻貴 NT$ {Math.abs(thresholdDiff).toLocaleString()}（高 {thresholdDiffPct}%）</span>
+              : <span className="th-under">　目前已便宜 NT$ {Math.abs(thresholdDiff).toLocaleString()}（低 {thresholdDiffPct}%）</span>
+            }
+          </div>
+        )}
+
         {selectedIdx !== null && (
           <div className="tooltip-hint">點別處可關閉</div>
         )}
@@ -319,12 +373,29 @@ export default function Sparkline({ origin, destination, outboundDate, returnDat
         }
         .spark-empty {
           padding: 24px 10px;
-          font-size: 12px;
-          color: #5a6280;
+          font-size: 13px;
+          color: #94a3b8;
           text-align: center;
           background: rgba(255, 255, 255, 0.02);
           border-radius: 8px;
         }
+        .spark-empty-sub {
+          margin-top: 4px;
+          font-size: 11px;
+          color: #64748b;
+        }
+        .threshold-note {
+          margin-top: 8px;
+          padding: 6px 10px;
+          font-size: 11px;
+          color: #94a3b8;
+          background: rgba(255, 122, 69, 0.06);
+          border-left: 2px solid rgba(255, 122, 69, 0.4);
+          border-radius: 4px;
+          line-height: 1.5;
+        }
+        .threshold-note .th-over { color: #cbd5e1; }
+        .threshold-note .th-under { color: #4ade80; font-weight: 600; }
         .tooltip-hint {
           font-size: 10px;
           color: #5a6280;
