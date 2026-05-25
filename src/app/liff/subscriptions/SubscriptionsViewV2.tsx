@@ -7,6 +7,7 @@ import { useLiff } from '@/hooks/useLiff';
 import { Alert, Badge, Button, Card, EmptyState, Spinner } from '@/components';
 import type { Subscription } from '@/types';
 import TabNav from '../TabNav';
+import Sparkline from './Sparkline';
 
 interface Props {
   liffId: string;
@@ -216,6 +217,14 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                               <Badge variant="warning">⏸ 已暫停</Badge>
                             )}
                           </div>
+
+                          <Sparkline
+                            origin={sub.origin}
+                            destination={sub.destination}
+                            outboundDate={sub.outbound_date}
+                            returnDate={sub.return_date}
+                            threshold={Number(sub.max_price)}
+                          />
                         </div>
 
                         <Button
