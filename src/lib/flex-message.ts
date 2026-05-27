@@ -343,6 +343,183 @@ export function buildDailyFlex(props: DailyFlexProps) {
 }
 
 /**
+ * 多訂閱總表卡：一個 source 一張卡，列出所有訂閱（每訂閱一段，可點去 Skyscanner）。
+ * 取代「每個 source 只發最近一筆」的去重邏輯。
+ */
+export interface MultiSubsItem {
+  origin: string;
+  destination: string;           // 訂閱原始 dest（可能 HND，多機場時 cheapestAirport 會帶實際勝出機場）
+  outboundDate: string;
+  returnDate: string;
+  maxPrice: number;              // threshold
+  label?: string | null;
+  cheapestPrice: number | null;
+  cheapestAirport: string | null;        // 跨機場勝出的那一個
+  cheapestCategory: 'lcc' | 'full-service' | null;
+  cheapestAirline: string | null;
+  vsPrevPct: number | null;
+}
+
+interface MultiSubsDailyFlexProps {
+  items: MultiSubsItem[];
+  sourceId: string;
+  cachedAt?: string | null;
+}
+
+export function buildMultiSubsDailyFlex(props: MultiSubsDailyFlexProps) {
+  const itemBlocks: Record<string, unknown>[] = [];
+  for (let i = 0; i < props.items.length; i++) {
+    if (i > 0) itemBlocks.push({ type: 'separator', margin: 'md' });
+    itemBlocks.push(buildSubItemBlock(props.items[i]));
+  }
+
+  const footerButtons: Record<string, unknown>[] = [{
+    type: 'button',
+    style: 'secondary',
+    height: 'sm',
+    action: {
+      type: 'uri',
+      label: '📋 我的訂閱',
+      uri: subscriptionsUrlFor(props.sourceId)
+    }
+  }];
+
+  const cacheHint = props.cachedAt ? `（抓 ${formatTaipeiHmFromIso(props.cachedAt)} 的快取）` : '';
+
+  return {
+    type: 'flex',
+    altText: `今日機票 ${props.items.length} 筆訂閱`,
+    contents: {
+      type: 'bubble',
+      size: 'mega',  // 比 kilo 寬，多訂閱舒服
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          {
+            type: 'text',
+            text: `✈️ 今日機票 · ${props.items.length} 筆`,
+            weight: 'bold',
+            size: 'lg',
+            color: '#ffffff'
+          },
+          {
+            type: 'text',
+            text: `🕐 ${formatTaipeiHm()} 更新${cacheHint}`,
+            size: 'xs',
+            color: '#cbd5e1',
+            margin: 'xs',
+            wrap: true
+          }
+        ],
+        backgroundColor: '#1a2238',
+        paddingAll: '16px'
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'md',
+        contents: itemBlocks
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: footerButtons
+      }
+    }
+  };
+}
+
+/** 多訂閱總表中的單一訂閱列（整 box 可點 → Skyscanner with 該分類篩選）*/
+function buildSubItemBlock(item: MultiSubsItem): Record<string, unknown> {
+  // 跨機場勝出時顯示實際機場（例如 NRT），否則沿用訂閱原 destination
+  const showAirport = item.cheapestAirport && item.cheapestAirport !== item.destination;
+  const destCity = getCity(item.destination);
+  const destLabel = showAirport
+    ? `${destCity} (${item.cheapestAirport})`
+    : formatAirport(item.destination);
+  const routeText = `${formatAirport(item.origin)} → ${destLabel}`;
+  const dateText = `📅 ${item.outboundDate} ~ ${item.returnDate}`;
+
+  const blocks: Record<string, unknown>[] = [
+    { type: 'text', text: routeText, weight: 'bold', size: 'sm', wrap: true },
+    { type: 'text', text: dateText, size: 'xs', color: '#94a3b8' }
+  ];
+  if (item.label) {
+    blocks.push({ type: 'text', text: `📝 ${item.label}`, size: 'xs', color: '#94a3b8' });
+  }
+
+  if (item.cheapestPrice == null) {
+    blocks.push({ type: 'text', text: '❌ 查無資料', size: 'sm', color: '#cbd5e1', margin: 'sm' });
+  } else {
+    const priceColor = item.cheapestPrice <= item.maxPrice ? '#22c55e' : '#ff7a45';
+    const catIcon = item.cheapestCategory === 'lcc' ? '🛩' : item.cheapestCategory === 'full-service' ? '🏢' : '';
+    const airlineName = item.cheapestAirline ?? '';
+    const deltaSuffix = formatDeltaSuffix(item.vsPrevPct);
+
+    blocks.push({
+      type: 'box',
+      layout: 'baseline',
+      margin: 'sm',
+      contents: [
+        { type: 'text', text: 'NT$', size: 'xs', color: '#666666', flex: 0 },
+        { type: 'text', text: item.cheapestPrice.toLocaleString(), size: 'xl', weight: 'bold', color: priceColor, margin: 'xs' },
+        { type: 'text', text: `${catIcon} ${airlineName}${deltaSuffix}`, size: 'xs', color: '#94a3b8', flex: 0, margin: 'sm' }
+      ]
+    });
+
+    // 門檻比較行
+    const diff = item.cheapestPrice - item.maxPrice;
+    const diffPct = Math.round((Math.abs(diff) / item.maxPrice) * 100);
+    const isBelow = diff <= 0;
+    const thText = isBelow
+      ? `🎯 達門檻 ✓（比門檻低 ${diffPct}%）`
+      : `🎯 距離門檻還差 NT$ ${Math.abs(diff).toLocaleString()}（高 ${diffPct}%）`;
+    const thColor = isBelow ? '#22c55e' : '#94a3b8';
+    blocks.push({
+      type: 'text',
+      text: thText,
+      size: 'xs',
+      color: thColor,
+      wrap: true
+    });
+
+    blocks.push({
+      type: 'text',
+      text: '▸ 點此用 Skyscanner 訂',
+      size: 'xs',
+      color: '#60a5fa',
+      align: 'end',
+      margin: 'xs'
+    });
+  }
+
+  const block: Record<string, unknown> = {
+    type: 'box',
+    layout: 'vertical',
+    spacing: 'xs',
+    paddingAll: '6px',
+    contents: blocks
+  };
+
+  // 整 box 可點 → Skyscanner with 勝出分類的篩選
+  if (item.cheapestPrice != null && item.cheapestCategory && item.cheapestAirport) {
+    block.action = {
+      type: 'uri',
+      label: airlineLabelForAction(item),
+      uri: skyscannerUrlForCategory(item.cheapestCategory, item.origin, item.cheapestAirport, item.outboundDate, item.returnDate)
+    };
+  }
+  return block;
+}
+
+function airlineLabelForAction(item: MultiSubsItem): string {
+  const base = `${item.origin}→${item.cheapestAirport ?? item.destination}`;
+  return base.slice(0, 40);
+}
+
+/**
  * 「我的訂閱」按鈕的 URL ── 群組 source 要附 ctx 才能在 LIFF 撈到該群組的訂閱。
  */
 function subscriptionsUrlFor(sourceId?: string): string {

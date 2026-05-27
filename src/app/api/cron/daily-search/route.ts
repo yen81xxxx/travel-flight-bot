@@ -5,7 +5,7 @@ import { getLineClient } from '@/lib/line';
 import { getSupabase } from '@/lib/supabase';
 import { checkAllSubscriptions } from '@/lib/subscription-checker';
 import { cleanupOldRecords, getQuotaStats } from '@/lib/cleanup';
-import { buildDailyFlex } from '@/lib/flex-message';
+import { buildDailyFlex, buildMultiSubsDailyFlex } from '@/lib/flex-message';
 import { getCityAirports } from '@/config/airports';
 import { getAirlineCategory } from '@/config/airlines';
 import type { Subscription } from '@/types';
@@ -46,24 +46,9 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   );
 
   // ============================================
-  // 2) 每個 source 找「最近一筆訂閱」（按 outbound_date 升冪）
+  // 2) 過濾 daily_summary=false 的 source（所有 active 訂閱不去重，方案 B 後每筆都列）
   // ============================================
-  const nearestBySource = new Map<string, Subscription>();
-  for (const sub of allSubs) {
-    const existing = nearestBySource.get(sub.source_id);
-    if (!existing) {
-      nearestBySource.set(sub.source_id, sub);
-      continue;
-    }
-    const a = sub.outbound_date ?? '9999-12-31';
-    const b = existing.outbound_date ?? '9999-12-31';
-    if (a < b) nearestBySource.set(sub.source_id, sub);
-  }
-
-  // ============================================
-  // 3) 過濾 daily_summary=false 的 source
-  // ============================================
-  const allSourceIds = Array.from(nearestBySource.keys());
+  const allSourceIds = Array.from(new Set(allSubs.map(s => s.source_id)));
   const optedOut = new Set<string>();
   if (allSourceIds.length > 0) {
     const { data: settings } = await supabase
@@ -74,26 +59,27 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
       if (s.daily_summary === false) optedOut.add(s.source_id as string);
     }
   }
-  const targets: { source: string; sub: Subscription }[] = [];
-  for (const [src, sub] of nearestBySource) {
-    if (!optedOut.has(src)) targets.push({ source: src, sub });
-  }
+  const eligibleSubs = allSubs.filter(s => !optedOut.has(s.source_id));
 
   // ============================================
-  // 4) 把相同 (origin, dest, outbound, return) 合併查詢（省 SerpApi 配額）
+  // 3) 把相同 (origin, dest, outbound, return) 合併查詢（省 SerpApi 配額）
+  //    注意：這裡是「route 去重」不是「source 去重」，多筆訂閱共享同條路線查詢結果
   // ============================================
-  const queryGroups = new Map<string, typeof targets>();
-  for (const t of targets) {
+  const queryGroups = new Map<string, Subscription[]>();
+  for (const sub of eligibleSubs) {
     const key = [
-      t.sub.origin,
-      t.sub.destination,
-      t.sub.outbound_date ?? '',
-      t.sub.return_date ?? ''
+      sub.origin,
+      sub.destination,
+      sub.outbound_date ?? '',
+      sub.return_date ?? ''
     ].join('|');
     const arr = queryGroups.get(key) ?? [];
-    arr.push(t);
+    arr.push(sub);
     queryGroups.set(key, arr);
   }
+
+  // 兼容變數：targets 仍給後續 fallback 邏輯使用（targets.length === 0 才走 fallback）
+  const targets = eligibleSubs;
 
   // ============================================
   // 5) 逐組查詢 + per-source push（個別失敗不影響其他）
@@ -110,13 +96,24 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
     sourceCount: number;
   }> = [];
 
-  // 所有 queryGroups 平行跑（不再 for...of 一個個等）— 避免 60s timeout
+  // ============================================
+  // 5a) 全部 routes 平行 fetch（不在這裡 push，先把所有 route 算好存起來）
+  // ============================================
+  interface RouteResult {
+    bestLcc: { price: number; outboundAirline: string; returnAirline: string; airport: string } | null;
+    bestTrad: { price: number; airline: string; airport: string } | null;
+    bestCheapest: { price: number; airline: string | null; airport: string; category: 'lcc' | 'full-service' | null } | null;
+    bestCachedAt: string | null;
+    lccVsPrevPct: number | null;
+    tradVsPrevPct: number | null;
+    fromCacheAll: boolean;
+  }
+  const routeResults = new Map<string, RouteResult | null>();
+
   await Promise.all(Array.from(queryGroups).map(async ([key, group]) => {
     const [origin, destination, outboundDate, returnDate] = key.split('|');
     try {
-      // 多機場城市（東京 = HND + NRT）fan-out 查詢，廉航通常 HND、傳統通常 NRT
       const destAirports = getCityAirports(destination);
-      // 「昨天」最低 + 各機場 SerpApi 也平行（彼此沒依賴）
       const [previousMins, fanout] = await Promise.all([
         queryPreviousCategoryMins(supabase, origin, destAirports, outboundDate, returnDate),
         Promise.all(
@@ -136,10 +133,10 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
       totalSerpapiCalls += groupSerpapiCalls;
       if (groupFromCacheAll) totalFromCache++;
 
-      // 跨機場挑各分類最便宜
-      let bestLcc: { price: number; outboundAirline: string; returnAirline: string; airport: string } | null = null;
-      let bestTrad: { price: number; airline: string; airport: string } | null = null;
-      let bestCheapest: { price: number; airline: string | null; airport: string } | null = null;
+      // 跨機場挑各分類最便宜 + 判斷整體最便宜屬於哪一類
+      let bestLcc: RouteResult['bestLcc'] = null;
+      let bestTrad: RouteResult['bestTrad'] = null;
+      let bestCheapest: RouteResult['bestCheapest'] = null;
       let bestCachedAt: string | null = null;
       for (const f of fanout) {
         const a = f.analysis;
@@ -149,12 +146,16 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
         if (a.traditionalRoundTrip && (!bestTrad || a.traditionalRoundTrip.price < bestTrad.price)) {
           bestTrad = { ...a.traditionalRoundTrip, airport: f.destination };
         }
-        if (a.cheapestRoundTripPrice != null && (!bestCheapest || a.cheapestRoundTripPrice < bestCheapest.price)) {
-          bestCheapest = { price: a.cheapestRoundTripPrice, airline: a.cheapestAirline, airport: f.destination };
-        }
         if (f.result.fromCache && (!bestCachedAt || f.result.queriedAt > bestCachedAt)) {
           bestCachedAt = f.result.queriedAt;
         }
+      }
+      // 用「跨機場跨分類最便宜」決定 cheapest（跟原 cheapestRoundTripPrice 一致）
+      // 比較 bestLcc vs bestTrad（兩者已經是跨機場各分類最便宜的代表）
+      if (bestLcc && (!bestTrad || bestLcc.price <= bestTrad.price)) {
+        bestCheapest = { price: bestLcc.price, airline: bestLcc.outboundAirline, airport: bestLcc.airport, category: 'lcc' };
+      } else if (bestTrad) {
+        bestCheapest = { price: bestTrad.price, airline: bestTrad.airline, airport: bestTrad.airport, category: 'full-service' };
       }
 
       perGroupResults.push({
@@ -164,7 +165,6 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
         sourceCount: group.length
       });
 
-      // 算今天 vs 昨天的變化百分比（per category）
       const lccVsPrevPct = (bestLcc && previousMins.lcc != null && previousMins.lcc > 0)
         ? Math.round(((bestLcc.price - previousMins.lcc) / previousMins.lcc) * 100)
         : null;
@@ -172,37 +172,84 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
         ? Math.round(((bestTrad.price - previousMins.traditional) / previousMins.traditional) * 100)
         : null;
 
-      // push to every target in this group with their own threshold
-      await Promise.allSettled(
-        group.map(async (t) => {
-          try {
-            const flex = buildDailyFlex({
-              origin,
-              destination,
-              outboundDate,
-              returnDate,
-              cheapestPrice: bestCheapest?.price ?? null,
-              cheapestAirline: bestCheapest?.airline ?? null,
-              traditionalRoundTrip: bestTrad,
-              lccCombo: bestLcc,
-              lccVsPrevPct,
-              tradVsPrevPct,
-              cachedAt: groupFromCacheAll ? bestCachedAt : null,
-              threshold: Number(t.sub.max_price),
-              sourceId: t.source
-            });
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await client.pushMessage({ to: t.source, messages: [flex as any] });
-            pushedOk++;
-          } catch (err) {
-            console.error('[cron] push failed for', t.source, err);
-            pushedFail++;
-          }
-        })
-      );
+      routeResults.set(key, { bestLcc, bestTrad, bestCheapest, bestCachedAt, lccVsPrevPct, tradVsPrevPct, fromCacheAll: groupFromCacheAll });
     } catch (err) {
       console.error('[cron] search failed for', key, err);
-      pushedFail += group.length;
+      routeResults.set(key, null);
+    }
+  }));
+
+  // ============================================
+  // 5b) 按 source_id 分組 eligibleSubs，每個 source 發一張多訂閱總表卡
+  // ============================================
+  const subsBySource = new Map<string, Subscription[]>();
+  for (const sub of eligibleSubs) {
+    const arr = subsBySource.get(sub.source_id) ?? [];
+    arr.push(sub);
+    subsBySource.set(sub.source_id, arr);
+  }
+
+  await Promise.all(Array.from(subsBySource).map(async ([sourceId, subs]) => {
+    // 對每筆 sub 找 route 資料 + 組成 MultiSubsItem
+    const items = subs.map((sub): import('@/lib/flex-message').MultiSubsItem => {
+      const key = [sub.origin, sub.destination, sub.outbound_date ?? '', sub.return_date ?? ''].join('|');
+      const route = routeResults.get(key);
+      if (!route || !route.bestCheapest) {
+        return {
+          origin: sub.origin,
+          destination: sub.destination,
+          outboundDate: sub.outbound_date ?? '',
+          returnDate: sub.return_date ?? '',
+          maxPrice: Number(sub.max_price),
+          label: sub.label,
+          cheapestPrice: null,
+          cheapestAirport: null,
+          cheapestCategory: null,
+          cheapestAirline: null,
+          vsPrevPct: null
+        };
+      }
+      const vsPrev = route.bestCheapest.category === 'lcc' ? route.lccVsPrevPct : route.tradVsPrevPct;
+      return {
+        origin: sub.origin,
+        destination: sub.destination,
+        outboundDate: sub.outbound_date ?? '',
+        returnDate: sub.return_date ?? '',
+        maxPrice: Number(sub.max_price),
+        label: sub.label,
+        cheapestPrice: route.bestCheapest.price,
+        cheapestAirport: route.bestCheapest.airport,
+        cheapestCategory: route.bestCheapest.category,
+        cheapestAirline: route.bestCheapest.airline,
+        vsPrevPct: vsPrev
+      };
+    });
+
+    // 找這個 source 所有 routes 裡最新 cachedAt（若全部都吃快取）
+    const allCached = subs.every(sub => {
+      const key = [sub.origin, sub.destination, sub.outbound_date ?? '', sub.return_date ?? ''].join('|');
+      const r = routeResults.get(key);
+      return r?.fromCacheAll === true;
+    });
+    let combinedCachedAt: string | null = null;
+    if (allCached) {
+      for (const sub of subs) {
+        const key = [sub.origin, sub.destination, sub.outbound_date ?? '', sub.return_date ?? ''].join('|');
+        const r = routeResults.get(key);
+        if (r?.bestCachedAt && (!combinedCachedAt || r.bestCachedAt > combinedCachedAt)) {
+          combinedCachedAt = r.bestCachedAt;
+        }
+      }
+    }
+
+    try {
+      const flex = buildMultiSubsDailyFlex({ items, sourceId, cachedAt: combinedCachedAt });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await client.pushMessage({ to: sourceId, messages: [flex as any] });
+      pushedOk++;
+    } catch (err) {
+      console.error('[cron] multi-subs push failed for', sourceId, err);
+      pushedFail++;
     }
   }));
 
@@ -288,7 +335,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     ok: pushedFail === 0,
     // 部署版本標記 — 改卡片版面時 bump 一下，方便從 API 回應驗證新 code 是否真的上線
-    cardVersion: 'v15-yesterday-delta-trip-leg-fix-2026-05-27',
+    cardVersion: 'v16-multi-subs-summary-2026-05-27',
     daily: {
       sourcesTargeted: targets.length,
       sourcesOptedOut: optedOut.size,
