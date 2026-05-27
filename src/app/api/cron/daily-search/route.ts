@@ -288,7 +288,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     ok: pushedFail === 0,
     // 部署版本標記 — 改卡片版面時 bump 一下，方便從 API 回應驗證新 code 是否真的上線
-    cardVersion: 'v14-parallelize-cron-2026-05-27',
+    cardVersion: 'v15-yesterday-delta-trip-leg-fix-2026-05-27',
     daily: {
       sourcesTargeted: targets.length,
       sourcesOptedOut: optedOut.size,
@@ -318,7 +318,11 @@ function formatDate(d: Date): string {
 /**
  * 撈「昨天」（2~36 小時前）的 flight_quotes，回傳每分類的最低價。
  * 用來跟「今天」剛抓到的最低價算 delta，顯示「vs 昨日 ↓X%」。
- * 範圍開 2h~36h 是為了避開本次 cron 剛寫入的資料，並涵蓋前一次 daily run。
+ *
+ * 關鍵：必須跟今天 analyzeFlights 的 picker 邏輯一致，否則 delta 失真。
+ * - 傳統（pickTraditionalSameAirline）→ 只看 outbound list（同家來回估算）
+ * - 廉航（pickLccCombo）→ 只看 return list（去 + 回 mix-and-match 精確價）
+ * 若把 return list 的「廉航去 + 星宇回」當成傳統最低，會誤報「傳統漲了 X%」。
  */
 async function queryPreviousCategoryMins(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -334,7 +338,7 @@ async function queryPreviousCategoryMins(
 
   const { data, error } = await supabase
     .from('flight_quotes')
-    .select('airline, price, stops')
+    .select('airline, price, stops, trip_leg')
     .eq('origin', origin)
     .in('destination', destinations)
     .eq('outbound_date', outboundDate)
@@ -347,11 +351,13 @@ async function queryPreviousCategoryMins(
 
   let lccMin = Infinity;
   let tradMin = Infinity;
-  for (const q of data as { airline: string | null; price: number | null }[]) {
+  for (const q of data as { airline: string | null; price: number | null; trip_leg: string }[]) {
     if (q.price == null) continue;
     const cat = getAirlineCategory(q.airline);
-    if (cat === 'lcc' && q.price < lccMin) lccMin = q.price;
-    if (cat === 'full-service' && q.price < tradMin) tradMin = q.price;
+    // 傳統：只看 outbound list（== pickTraditionalSameAirline 來源）
+    if (cat === 'full-service' && q.trip_leg === 'outbound' && q.price < tradMin) tradMin = q.price;
+    // 廉航：只看 return list（== pickLccCombo 來源，return 已是精確來回總價）
+    if (cat === 'lcc' && q.trip_leg === 'return' && q.price < lccMin) lccMin = q.price;
   }
 
   return {
