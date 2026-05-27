@@ -110,19 +110,22 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
     sourceCount: number;
   }> = [];
 
-  for (const [key, group] of queryGroups) {
+  // 所有 queryGroups 平行跑（不再 for...of 一個個等）— 避免 60s timeout
+  await Promise.all(Array.from(queryGroups).map(async ([key, group]) => {
     const [origin, destination, outboundDate, returnDate] = key.split('|');
     try {
       // 多機場城市（東京 = HND + NRT）fan-out 查詢，廉航通常 HND、傳統通常 NRT
       const destAirports = getCityAirports(destination);
-      // 先撈「昨天」（2-36h 前）的每分類最低，待會跟今天的最低算 delta
-      const previousMins = await queryPreviousCategoryMins(supabase, origin, destAirports, outboundDate, returnDate);
-      const fanout = await Promise.all(
-        destAirports.map(async (d) => {
-          const r = await searchFlights({ origin, destination: d, outboundDate, returnDate });
-          return { destination: d, result: r, analysis: analyzeFlights(r.outbound, r.return) };
-        })
-      );
+      // 「昨天」最低 + 各機場 SerpApi 也平行（彼此沒依賴）
+      const [previousMins, fanout] = await Promise.all([
+        queryPreviousCategoryMins(supabase, origin, destAirports, outboundDate, returnDate),
+        Promise.all(
+          destAirports.map(async (d) => {
+            const r = await searchFlights({ origin, destination: d, outboundDate, returnDate });
+            return { destination: d, result: r, analysis: analyzeFlights(r.outbound, r.return) };
+          })
+        )
+      ]);
 
       let groupSerpapiCalls = 0;
       let groupFromCacheAll = true;
@@ -201,7 +204,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
       console.error('[cron] search failed for', key, err);
       pushedFail += group.length;
     }
-  }
+  }));
 
   // ============================================
   // 6) 沒訂閱的 fallback — 若 env 有設 LINE_DAILY_PUSH_TARGET，仍推一張預設 card（保留測試後門）
@@ -285,7 +288,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     ok: pushedFail === 0,
     // 部署版本標記 — 改卡片版面時 bump 一下，方便從 API 回應驗證新 code 是否真的上線
-    cardVersion: 'v13-yesterday-delta-2026-05-25',
+    cardVersion: 'v14-parallelize-cron-2026-05-27',
     daily: {
       sourcesTargeted: targets.length,
       sourcesOptedOut: optedOut.size,

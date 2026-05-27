@@ -108,7 +108,8 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
     groups.set(key, arr);
   }
 
-  for (const [key, subList] of groups) {
+  // 所有 group 平行跑（不再 for...of 一個個等）— 避免 Vercel 60s timeout
+  await Promise.all(Array.from(groups).map(async ([key, subList]) => {
     const [origin, destination, outboundDate, returnDate] = key.split('|');
     try {
       const search = await searchFlights({
@@ -121,7 +122,7 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
       const analysis = analyzeFlights(search.outbound, search.return);
       const cheapest = analysis.cheapestRoundTripPrice;
 
-      if (cheapest == null) continue;
+      if (cheapest == null) return;
 
       // 同組訂閱依 max_price 排序，逐一檢查是否該通知
       for (const sub of subList) {
@@ -194,7 +195,7 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
       console.error('[sub-checker] group', key, 'failed:', err);
       result.errors += subList.length;
     }
-  }
+  }));
 
   return result;
 }
