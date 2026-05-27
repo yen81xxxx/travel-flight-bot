@@ -7,7 +7,9 @@ import { checkAllSubscriptions } from '@/lib/subscription-checker';
 import { cleanupOldRecords, getQuotaStats } from '@/lib/cleanup';
 import { buildDailyFlex } from '@/lib/flex-message';
 import { getCityAirports } from '@/config/airports';
+import { getAirlineCategory } from '@/config/airlines';
 import type { Subscription } from '@/types';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -113,6 +115,8 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
     try {
       // 多機場城市（東京 = HND + NRT）fan-out 查詢，廉航通常 HND、傳統通常 NRT
       const destAirports = getCityAirports(destination);
+      // 先撈「昨天」（2-36h 前）的每分類最低，待會跟今天的最低算 delta
+      const previousMins = await queryPreviousCategoryMins(supabase, origin, destAirports, outboundDate, returnDate);
       const fanout = await Promise.all(
         destAirports.map(async (d) => {
           const r = await searchFlights({ origin, destination: d, outboundDate, returnDate });
@@ -157,6 +161,14 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
         sourceCount: group.length
       });
 
+      // 算今天 vs 昨天的變化百分比（per category）
+      const lccVsPrevPct = (bestLcc && previousMins.lcc != null && previousMins.lcc > 0)
+        ? Math.round(((bestLcc.price - previousMins.lcc) / previousMins.lcc) * 100)
+        : null;
+      const tradVsPrevPct = (bestTrad && previousMins.traditional != null && previousMins.traditional > 0)
+        ? Math.round(((bestTrad.price - previousMins.traditional) / previousMins.traditional) * 100)
+        : null;
+
       // push to every target in this group with their own threshold
       await Promise.allSettled(
         group.map(async (t) => {
@@ -170,6 +182,8 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
               cheapestAirline: bestCheapest?.airline ?? null,
               traditionalRoundTrip: bestTrad,
               lccCombo: bestLcc,
+              lccVsPrevPct,
+              tradVsPrevPct,
               cachedAt: groupFromCacheAll ? bestCachedAt : null,
               threshold: Number(t.sub.max_price),
               sourceId: t.source
@@ -271,7 +285,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     ok: pushedFail === 0,
     // 部署版本標記 — 改卡片版面時 bump 一下，方便從 API 回應驗證新 code 是否真的上線
-    cardVersion: 'v7-airport-on-line2-2026-05-22',
+    cardVersion: 'v13-yesterday-delta-2026-05-25',
     daily: {
       sourcesTargeted: targets.length,
       sourcesOptedOut: optedOut.size,
@@ -296,4 +310,49 @@ function addDays(d: Date, days: number): Date {
 }
 function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * 撈「昨天」（2~36 小時前）的 flight_quotes，回傳每分類的最低價。
+ * 用來跟「今天」剛抓到的最低價算 delta，顯示「vs 昨日 ↓X%」。
+ * 範圍開 2h~36h 是為了避開本次 cron 剛寫入的資料，並涵蓋前一次 daily run。
+ */
+async function queryPreviousCategoryMins(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any, 'public', any>,
+  origin: string,
+  destinations: string[],
+  outboundDate: string,
+  returnDate: string
+): Promise<{ lcc: number | null; traditional: number | null }> {
+  const now = Date.now();
+  const olderThan = new Date(now - 2 * 3600 * 1000).toISOString();
+  const newerThan = new Date(now - 36 * 3600 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from('flight_quotes')
+    .select('airline, price, stops')
+    .eq('origin', origin)
+    .in('destination', destinations)
+    .eq('outbound_date', outboundDate)
+    .eq('return_date', returnDate)
+    .eq('stops', 0)
+    .gte('queried_at', newerThan)
+    .lt('queried_at', olderThan);
+
+  if (error || !data || data.length === 0) return { lcc: null, traditional: null };
+
+  let lccMin = Infinity;
+  let tradMin = Infinity;
+  for (const q of data as { airline: string | null; price: number | null }[]) {
+    if (q.price == null) continue;
+    const cat = getAirlineCategory(q.airline);
+    if (cat === 'lcc' && q.price < lccMin) lccMin = q.price;
+    if (cat === 'full-service' && q.price < tradMin) tradMin = q.price;
+  }
+
+  return {
+    lcc: lccMin === Infinity ? null : lccMin,
+    traditional: tradMin === Infinity ? null : tradMin
+  };
 }

@@ -40,6 +40,11 @@ interface DailyFlexProps {
   // - 廉航（虎航/捷星/酷航）去 + 回最便宜組合（可不同家）
   traditionalRoundTrip?: TraditionalRoundTripData | null;
   lccCombo?: LccComboData | null;
+  // 跟「昨天」（2-36h 前）同分類最低相比的百分比變化。
+  // 正數 = 今天比較貴（漲），負數 = 今天比較便宜（跌），null = 沒有歷史可比。
+  // 顯示在分類列航司 label 旁邊：「台灣虎航 往返·HND  ↓8%」
+  lccVsPrevPct?: number | null;
+  tradVsPrevPct?: number | null;
   // 資料來自快取時的 ISO timestamp（快取被寫入的時間）。
   // 有值 → 卡片底部會加 "(抓 HH:mm 的快取)" 提醒；null/undefined → 不顯示。
   cachedAt?: string | null;
@@ -224,9 +229,10 @@ export function buildDailyFlex(props: DailyFlexProps) {
           const isBelow = diff <= 0;
           const sign = isBelow ? '低' : '高';
           const color = isBelow ? '#22c55e' : '#94a3b8';
+          // 寫「比門檻」清楚是跟門檻比，不是跟昨天的價比（跟昨天的比在分類列上的 ↓/↑ 後綴）
           return {
             type: 'text',
-            text: `🎯 你的門檻 NT$ ${props.threshold!.toLocaleString()}（目前${sign} ${Math.abs(diffPct)}%）`,
+            text: `🎯 你的門檻 NT$ ${props.threshold!.toLocaleString()}（目前比門檻${sign} ${Math.abs(diffPct)}%）`,
             size: 'xs',
             color,
             margin: 'sm',
@@ -255,8 +261,8 @@ export function buildDailyFlex(props: DailyFlexProps) {
       color: '#666666'
     },
     { type: 'separator', margin: 'md' },
-    lccRow(props.lccCombo, priceColor, props.origin, props.destination, props.outboundDate, props.returnDate),
-    traditionalRow(props.traditionalRoundTrip, priceColor, props.origin, props.destination, props.outboundDate, props.returnDate)
+    lccRow(props.lccCombo, priceColor, props.origin, props.destination, props.outboundDate, props.returnDate, props.lccVsPrevPct),
+    traditionalRow(props.traditionalRoundTrip, priceColor, props.origin, props.destination, props.outboundDate, props.returnDate, props.tradVsPrevPct)
   ];
   // 註：lccRow / traditionalRow 內部會優先用 data.airport（多機場時跨機場挑最便宜的）覆寫 destination
   if (compareLine) body.push(compareLine);
@@ -364,15 +370,17 @@ function lccRow(
   origin: string,
   destination: string,
   outboundDate: string,
-  returnDate: string
+  returnDate: string,
+  vsPrevPct: number | null | undefined
 ): Record<string, unknown> {
   const hasData = data != null;
   const rowAirport = data?.airport ?? destination;
   const airportSuffix = airportSuffixForSecondLine(destination, rowAirport);
+  const deltaSuffix = formatDeltaSuffix(vsPrevPct);
   const airlineLabel = hasData
     ? (data!.outboundAirline === data!.returnAirline
-        ? `${data!.outboundAirline} 往返${airportSuffix}`
-        : `${data!.outboundAirline} 去・${data!.returnAirline} 回${airportSuffix}`)
+        ? `${data!.outboundAirline} 往返${airportSuffix}${deltaSuffix}`
+        : `${data!.outboundAirline} 去・${data!.returnAirline} 回${airportSuffix}${deltaSuffix}`)
     : '查無';
   const uri = hasData
     ? skyscannerUrlForCategory('lcc', origin, rowAirport, outboundDate, returnDate)
@@ -389,16 +397,28 @@ function traditionalRow(
   origin: string,
   destination: string,
   outboundDate: string,
-  returnDate: string
+  returnDate: string,
+  vsPrevPct: number | null | undefined
 ): Record<string, unknown> {
   const hasData = data != null;
   const rowAirport = data?.airport ?? destination;
   const airportSuffix = airportSuffixForSecondLine(destination, rowAirport);
-  const airlineLabel = hasData ? `${data!.airline} 往返${airportSuffix}` : '查無';
+  const deltaSuffix = formatDeltaSuffix(vsPrevPct);
+  const airlineLabel = hasData ? `${data!.airline} 往返${airportSuffix}${deltaSuffix}` : '查無';
   const uri = hasData
     ? skyscannerUrlForCategory('full-service', origin, rowAirport, outboundDate, returnDate)
     : null;
   return comboRow('🏢 傳統', hasData ? data!.price : null, airlineLabel, priceColor, uri);
+}
+
+/**
+ * 把「vs 昨日」百分比格式化成「  ↓8%」或「  ↑3%」附在 airline label 後。
+ * 變化 < 1% 視為無感，不顯示。
+ */
+function formatDeltaSuffix(pct: number | null | undefined): string {
+  if (pct == null || Math.abs(pct) < 1) return '';
+  if (pct < 0) return `　↓${Math.abs(pct)}%`;  // 跌 = 好消息
+  return `　↑${pct}%`;                          // 漲
 }
 
 /**
