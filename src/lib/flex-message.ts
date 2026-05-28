@@ -469,13 +469,15 @@ function buildSubItemBlock(item: MultiSubsItem): Record<string, unknown> {
       ]
     });
 
-    // 門檻比較行
+    // 目標價比較行：先絕對金額後括號百分比
+    // 例：「🎯 比目標價低 NT$ 22（0%）」「🎯 比目標價高 NT$ 250（2%）」
     const diff = item.cheapestPrice - item.maxPrice;
     const diffPct = Math.round((Math.abs(diff) / item.maxPrice) * 100);
     const isBelow = diff <= 0;
+    const diffAbs = Math.abs(diff).toLocaleString();
     const thText = isBelow
-      ? `🎯 達門檻 ✓（比門檻低 ${diffPct}%）`
-      : `🎯 距離門檻還差 NT$ ${Math.abs(diff).toLocaleString()}（高 ${diffPct}%）`;
+      ? `🎯 比目標價低 NT$ ${diffAbs}（${diffPct}%）`
+      : `🎯 比目標價高 NT$ ${diffAbs}（${diffPct}%）`;
     const thColor = isBelow ? '#22c55e' : '#94a3b8';
     blocks.push({
       type: 'text',
