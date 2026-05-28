@@ -1,9 +1,11 @@
 import type { WebhookEvent } from '@line/bot-sdk';
-import { getSourceId, pushText, replyText } from './line';
+import { getSourceId, pushText, replyText, replyFlex } from './line';
 import { getState, setState, resetState } from './state';
 import { searchFlights } from './serpapi';
 import { analyzeFlights, formatAnalysisForLine } from './flights';
 import { getSupabase } from './supabase';
+import { buildHistoryFlex } from './flex-message';
+import { getAirlineCodesByCategory, type AirlineCategory } from '@/config/airlines';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://travel-flight-bot.vercel.app';
 
@@ -80,7 +82,148 @@ function getSubscriptionsUrl(): string {
   return `${APP_URL}/liff/subscriptions`;
 }
 
+/**
+ * 處理 postback 事件（多訂閱卡片每列點下去 → 查歷史走勢）
+ */
+async function handlePostback(event: WebhookEvent): Promise<void> {
+  if (event.type !== 'postback') return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dataStr = (event as any).postback?.data as string | undefined;
+  const replyToken = (event as { replyToken?: string }).replyToken;
+  if (!dataStr || !replyToken) return;
+
+  const params = new URLSearchParams(dataStr);
+  const action = params.get('a');
+  if (action !== 'h') return;  // 未知 action 暫不處理
+
+  const origin = params.get('o');
+  const destination = params.get('d');
+  const outboundDate = params.get('out');
+  const returnDate = params.get('ret');
+  const max = params.get('max');
+  const cat = params.get('cat') as AirlineCategory | null;
+  const winAirport = params.get('win');
+
+  if (!origin || !destination || !outboundDate || !returnDate || !max || !cat || !winAirport) {
+    await replyText(replyToken, '⚠️ 歷史查詢參數不完整');
+    return;
+  }
+
+  try {
+    // 查歷史最低價（複用 /api/subscriptions/history 邏輯，內部直接打 DB）
+    const points = await fetchHistoryPoints(origin, destination, outboundDate, returnDate, 30);
+    // 多機場：歷史也要把同城所有機場資料納入（東京 = HND + NRT）
+    const { getCityAirports } = await import('@/config/airports');
+    const allAirports = getCityAirports(destination);
+    let combinedPoints = points;
+    if (allAirports.length > 1) {
+      const extras = await Promise.all(
+        allAirports.filter(a => a !== destination).map(a => fetchHistoryPoints(origin, a, outboundDate, returnDate, 30))
+      );
+      // 合併：同日取所有機場最低
+      const byDay = new Map<string, number>();
+      for (const arr of [points, ...extras]) {
+        for (const p of arr) {
+          const prev = byDay.get(p.date);
+          if (prev == null || p.minPrice < prev) byDay.set(p.date, p.minPrice);
+        }
+      }
+      combinedPoints = Array.from(byDay.entries())
+        .map(([date, minPrice]) => ({ date, minPrice }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    // 建 Skyscanner URL（用勝出機場 + 勝出分類）
+    const skyscannerUrl = buildSkyscannerUrlForCategory(cat, origin, winAirport, outboundDate, returnDate);
+    const airlineLabel = cat === 'lcc' ? '🛩 廉航' : '🏢 傳統';
+
+    const flex = buildHistoryFlex({
+      origin,
+      destination,
+      outboundDate,
+      returnDate,
+      points: combinedPoints,
+      threshold: Number(max),
+      skyscannerUrl,
+      airlineLabel
+    });
+    await replyFlex(replyToken, flex);
+  } catch (err) {
+    console.error('[bot-handler] postback history failed:', err);
+    try { await replyText(replyToken, '❌ 查詢歷史失敗，請稍後再試'); } catch { /* ignore */ }
+  }
+}
+
+/**
+ * 直接查 DB 取得每日最低價（mirror /api/subscriptions/history）
+ */
+async function fetchHistoryPoints(
+  origin: string,
+  destination: string,
+  outboundDate: string,
+  returnDate: string,
+  days: number
+): Promise<{ date: string; minPrice: number }[]> {
+  const supabase = getSupabase();
+  const since = new Date(Date.now() - days * 86400_000).toISOString();
+  const { data } = await supabase
+    .from('flight_quotes')
+    .select('queried_at, price')
+    .eq('origin', origin)
+    .eq('destination', destination)
+    .eq('outbound_date', outboundDate)
+    .eq('return_date', returnDate)
+    .eq('stops', 0)
+    .gte('queried_at', since)
+    .not('price', 'is', null);
+  if (!data) return [];
+  const byDay = new Map<string, number[]>();
+  for (const r of data as { queried_at: string; price: number }[]) {
+    const day = r.queried_at.slice(0, 10);
+    const arr = byDay.get(day) ?? [];
+    arr.push(Number(r.price));
+    byDay.set(day, arr);
+  }
+  return Array.from(byDay.entries())
+    .map(([date, prices]) => ({ date, minPrice: Math.min(...prices) }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * 跟 flex-message.ts 的 skyscannerUrlForCategory 同邏輯，但 bot-handler 需要獨立呼叫。
+ * 抽出來避免 flex-message export 太多內部 helper。
+ */
+function buildSkyscannerUrlForCategory(
+  category: AirlineCategory,
+  origin: string,
+  destination: string,
+  outboundDate: string,
+  returnDate: string
+): string {
+  const codes = getAirlineCodesByCategory(category).join(',');
+  const params = new URLSearchParams({
+    origin,
+    destination,
+    outboundDate,
+    inboundDate: returnDate,
+    adultsv2: '1',
+    locale: 'zh-TW',
+    market: 'TW',
+    currency: 'TWD',
+    preferDirects: 'true',
+    cabinclass: 'economy'
+  });
+  if (codes) params.set('airlines', codes);
+  return `https://skyscanner.net/g/referrals/v1/flights/day-view/?${params.toString()}`;
+}
+
 export async function handleEvent(event: WebhookEvent): Promise<void> {
+  // Postback：多訂閱卡片點某列 → 回歷史走勢卡片
+  if (event.type === 'postback') {
+    await handlePostback(event);
+    return;
+  }
+
   // 群組/聊天室加入時打招呼
   if (event.type === 'join') {
     const replyToken = (event as { replyToken?: string }).replyToken;

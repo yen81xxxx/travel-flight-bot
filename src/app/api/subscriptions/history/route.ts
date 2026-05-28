@@ -44,26 +44,20 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
-  // 將 outbound + return 各自最便宜加總，按日聚合
-  const byDay = new Map<string, { outbound: number[]; return: number[] }>();
+  // SerpApi 規格：outbound entries 的 price 已經是「估算來回總價」，return entries 也是「精確來回總價」。
+  // 所以 daily 最便宜 = min(所有 outbound + return entries 的 price)，不要再相加（之前 bug 顯示 43k-44k）。
+  const byDay = new Map<string, number[]>();
   for (const r of (rows ?? [])) {
     const day = (r.queried_at as string).slice(0, 10);
-    const acc = byDay.get(day) ?? { outbound: [], return: [] };
-    if (r.trip_leg === 'outbound') acc.outbound.push(Number(r.price));
-    else if (r.trip_leg === 'return') acc.return.push(Number(r.price));
-    byDay.set(day, acc);
+    const arr = byDay.get(day) ?? [];
+    arr.push(Number(r.price));
+    byDay.set(day, arr);
   }
 
   const points: DayPoint[] = [];
-  for (const [day, acc] of byDay) {
-    const minOut = acc.outbound.length ? Math.min(...acc.outbound) : null;
-    const minRet = acc.return.length ? Math.min(...acc.return) : null;
-    let total: number | null = null;
-    if (minOut != null && minRet != null) total = minOut + minRet;
-    else if (minOut != null && acc.return.length === 0) total = minOut; // round-trip combined case
-    if (total != null) {
-      points.push({ date: day, minPrice: total });
-    }
+  for (const [day, prices] of byDay) {
+    if (prices.length === 0) continue;
+    points.push({ date: day, minPrice: Math.min(...prices) });
   }
 
   points.sort((a, b) => a.date.localeCompare(b.date));

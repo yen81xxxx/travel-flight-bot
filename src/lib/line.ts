@@ -37,6 +37,18 @@ export async function replyText(replyToken: string, text: string): Promise<void>
 }
 
 /**
+ * Reply 一張 Flex Message（postback / 訊息事件回覆用）
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function replyFlex(replyToken: string, flex: any): Promise<void> {
+  const client = getLineClient();
+  await client.replyMessage({
+    replyToken,
+    messages: [flex]
+  });
+}
+
+/**
  * 從錯誤物件提取 HTTP 狀態碼（支援 statusCode 或 status 屬性）
  */
 function extractErrorStatus(err: unknown): number | null {

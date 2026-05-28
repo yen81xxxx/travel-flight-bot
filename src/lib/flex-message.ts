@@ -489,7 +489,7 @@ function buildSubItemBlock(item: MultiSubsItem): Record<string, unknown> {
 
     blocks.push({
       type: 'text',
-      text: '▸ 點此用 Skyscanner 訂',
+      text: '▸ 點此看歷史走勢',
       size: 'xs',
       color: '#60a5fa',
       align: 'end',
@@ -505,12 +505,24 @@ function buildSubItemBlock(item: MultiSubsItem): Record<string, unknown> {
     contents: blocks
   };
 
-  // 整 box 可點 → Skyscanner with 勝出分類的篩選
+  // 整 box 可點 → postback 觸發歷史走勢卡片（在 LINE 內回，不開瀏覽器）
   if (item.cheapestPrice != null && item.cheapestCategory && item.cheapestAirport) {
+    // data 用 URL encoded，控制在 300 bytes 內
+    const data = new URLSearchParams({
+      a: 'h',                                  // action = history
+      o: item.origin,
+      d: item.destination,                     // 訂閱原始 dest（顯示用）
+      out: item.outboundDate,
+      ret: item.returnDate,
+      max: String(item.maxPrice),
+      cat: item.cheapestCategory,              // lcc / full-service
+      win: item.cheapestAirport                // 勝出機場（給 Skyscanner URL 用）
+    }).toString();
     block.action = {
-      type: 'uri',
+      type: 'postback',
       label: airlineLabelForAction(item),
-      uri: skyscannerUrlForCategory(item.cheapestCategory, item.origin, item.cheapestAirport, item.outboundDate, item.returnDate)
+      data,
+      displayText: `查 ${item.origin}→${item.destination} 歷史走勢`
     };
   }
   return block;
@@ -519,6 +531,186 @@ function buildSubItemBlock(item: MultiSubsItem): Record<string, unknown> {
 function airlineLabelForAction(item: MultiSubsItem): string {
   const base = `${item.origin}→${item.cheapestAirport ?? item.destination}`;
   return base.slice(0, 40);
+}
+
+/**
+ * 歷史走勢卡片（postback 觸發）— 一張 LINE 內顯示的價格走勢，不開瀏覽器。
+ * 列出最近 N 天每日最低價、min/max/趨勢統計、底部一顆 Skyscanner 訂票按鈕。
+ */
+export interface HistoryFlexProps {
+  origin: string;
+  destination: string;          // 訂閱原始 dest（顯示用，例：HND）
+  outboundDate: string;
+  returnDate: string;
+  points: { date: string; minPrice: number }[];  // 按日期升冪
+  threshold: number;
+  skyscannerUrl: string;
+  airlineLabel?: string;        // e.g. "🛩 廉航" / "🏢 傳統"
+}
+
+export function buildHistoryFlex(props: HistoryFlexProps) {
+  const { points, threshold, skyscannerUrl } = props;
+  const hasData = points.length > 0;
+
+  // 取最近 14 天避免卡片過長
+  const recent = points.slice(-14);
+  const prices = recent.map(p => p.minPrice);
+  const minPrice = hasData ? Math.min(...prices) : 0;
+  const maxPrice = hasData ? Math.max(...prices) : 0;
+  const lastPrice = hasData ? prices[prices.length - 1] : 0;
+  const firstPrice = hasData ? prices[0] : 0;
+  const trendDiff = lastPrice - firstPrice;
+  const trendPct = firstPrice > 0 ? Math.round((trendDiff / firstPrice) * 100) : 0;
+  const trendIcon = trendDiff > 0 ? '↑' : trendDiff < 0 ? '↓' : '→';
+  const trendColor = trendDiff > 0 ? '#f87171' : trendDiff < 0 ? '#4ade80' : '#94a3b8';
+
+  const destCity = getCity(props.destination);
+  const routeText = `${formatAirport(props.origin)} → ${formatAirport(props.destination)}`;
+  const dateText = `📅 ${props.outboundDate} ~ ${props.returnDate}`;
+
+  const bodyContents: Record<string, unknown>[] = [
+    { type: 'text', text: routeText, weight: 'bold', size: 'md', wrap: true },
+    { type: 'text', text: dateText, size: 'xs', color: '#94a3b8' },
+    { type: 'separator', margin: 'md' }
+  ];
+
+  if (!hasData) {
+    bodyContents.push({
+      type: 'text',
+      text: '📊 尚無歷史資料',
+      size: 'sm',
+      color: '#94a3b8',
+      align: 'center',
+      margin: 'md'
+    });
+    bodyContents.push({
+      type: 'text',
+      text: '再等幾天 cron 累積後就能看走勢',
+      size: 'xs',
+      color: '#64748b',
+      align: 'center'
+    });
+  } else {
+    bodyContents.push({
+      type: 'text',
+      text: `近 ${recent.length} 天最低價`,
+      size: 'xs',
+      color: '#94a3b8',
+      margin: 'md'
+    });
+    // 每日一行
+    for (let i = 0; i < recent.length; i++) {
+      const p = recent[i];
+      const isToday = i === recent.length - 1;
+      const isMin = p.minPrice === minPrice;
+      const isMax = p.minPrice === maxPrice && minPrice !== maxPrice;
+      const tag = isToday ? '★今日' : isMin ? '↓最低' : isMax ? '↑最高' : '';
+      const tagColor = isToday ? '#60a5fa' : isMin ? '#4ade80' : isMax ? '#f87171' : '#94a3b8';
+      const isBelowTh = p.minPrice <= threshold;
+      const priceColor = isBelowTh ? '#22c55e' : '#cbd5e1';
+      bodyContents.push({
+        type: 'box',
+        layout: 'baseline',
+        margin: 'sm',
+        contents: [
+          { type: 'text', text: p.date.slice(5), size: 'xs', color: '#94a3b8', flex: 2 },
+          { type: 'text', text: `NT$ ${p.minPrice.toLocaleString()}`, size: 'sm', weight: 'bold', color: priceColor, flex: 4, align: 'end' },
+          { type: 'text', text: tag, size: 'xs', color: tagColor, flex: 3, align: 'end' }
+        ]
+      });
+    }
+    bodyContents.push({ type: 'separator', margin: 'md' });
+    // 統計
+    const minDate = recent.find(p => p.minPrice === minPrice)?.date.slice(5) ?? '';
+    const maxDate = recent.find(p => p.minPrice === maxPrice)?.date.slice(5) ?? '';
+    bodyContents.push({
+      type: 'text',
+      text: `📉 最低 NT$ ${minPrice.toLocaleString()}（${minDate}）`,
+      size: 'xs',
+      color: '#4ade80',
+      margin: 'sm',
+      wrap: true
+    });
+    if (minPrice !== maxPrice) {
+      bodyContents.push({
+        type: 'text',
+        text: `📈 最高 NT$ ${maxPrice.toLocaleString()}（${maxDate}）`,
+        size: 'xs',
+        color: '#f87171',
+        wrap: true
+      });
+    }
+    bodyContents.push({
+      type: 'text',
+      text: `${trendIcon} 趨勢 ${trendDiff === 0 ? '持平' : `${trendDiff > 0 ? '漲' : '跌'} ${Math.abs(trendPct)}%`}（首日 NT$ ${firstPrice.toLocaleString()} → 今日 NT$ ${lastPrice.toLocaleString()}）`,
+      size: 'xs',
+      color: trendColor,
+      wrap: true
+    });
+    // 目標價狀態
+    const diff = lastPrice - threshold;
+    const isBelowTh = diff <= 0;
+    const thColor = isBelowTh ? '#22c55e' : '#94a3b8';
+    bodyContents.push({
+      type: 'text',
+      text: isBelowTh
+        ? `🎯 目標價 NT$ ${threshold.toLocaleString()} — 已達 ✓`
+        : `🎯 目標價 NT$ ${threshold.toLocaleString()} — 還差 NT$ ${Math.abs(diff).toLocaleString()}`,
+      size: 'xs',
+      color: thColor,
+      wrap: true,
+      margin: 'sm'
+    });
+  }
+
+  // 標題使用城市名
+  void destCity;
+  return {
+    type: 'flex',
+    altText: `📊 ${routeText} 歷史價格`,
+    contents: {
+      type: 'bubble',
+      size: 'mega',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          {
+            type: 'text',
+            text: `📊 歷史價格走勢${props.airlineLabel ? ` · ${props.airlineLabel}` : ''}`,
+            weight: 'bold',
+            size: 'lg',
+            color: '#ffffff',
+            wrap: true
+          }
+        ],
+        backgroundColor: '#1a2238',
+        paddingAll: '16px'
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: bodyContents
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'sm',
+        contents: [{
+          type: 'button',
+          style: 'primary',
+          color: '#ff7a45',
+          height: 'sm',
+          action: {
+            type: 'uri',
+            label: '🛒 用 Skyscanner 訂',
+            uri: skyscannerUrl
+          }
+        }]
+      }
+    }
+  };
 }
 
 /**
