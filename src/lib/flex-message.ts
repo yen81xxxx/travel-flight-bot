@@ -419,7 +419,7 @@ function buildOverviewBubble(count: number, sourceId: string, cachedAt?: string 
   };
 }
 
-/** Carousel 第 2~N 張：每筆訂閱一個 bubble */
+/** Carousel 第 2~N 張：每筆訂閱一個 bubble（hero 動態渲染城市主題圖）*/
 function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, unknown> {
   const showAirport = item.cheapestAirport && item.cheapestAirport !== item.destination;
   const destCity = getCity(item.destination);
@@ -429,15 +429,30 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
   const routeText = `${formatAirport(item.origin)} → ${destLabel}`;
   const dateText = `📅 ${item.outboundDate.slice(5)} ~ ${item.returnDate.slice(5)}`;
 
+  // Hero：動態 OG 圖（依目的地城市套漸層 + emoji + 路線/價格/航司疊字）
+  const heroAirport = item.cheapestAirport ?? item.destination;
+  const heroParams = new URLSearchParams({ o: item.origin, d: heroAirport });
+  if (item.cheapestPrice != null) heroParams.set('p', String(item.cheapestPrice));
+  if (item.cheapestAirline) heroParams.set('a', item.cheapestAirline);
+  const heroUrl = `${APP_URL}/api/og/sub-hero?${heroParams.toString()}`;
+  const hero = {
+    type: 'image',
+    url: heroUrl,
+    size: 'full',
+    aspectRatio: '1.91:1',
+    aspectMode: 'cover'
+  };
+
+  // Header 只剩日期（hero 已經把路線+價格秀出來）
   const header = {
     type: 'box',
     layout: 'vertical',
     contents: [
-      { type: 'text', text: routeText, weight: 'bold', size: 'md', color: '#ffffff', wrap: true },
-      { type: 'text', text: dateText, size: 'xs', color: '#cbd5e1', margin: 'xs' }
+      { type: 'text', text: routeText, weight: 'bold', size: 'sm', color: '#94a3b8', wrap: true },
+      { type: 'text', text: dateText, size: 'xs', color: '#94a3b8', margin: 'xs' }
     ],
-    backgroundColor: '#1a2238',
-    paddingAll: '12px'
+    paddingAll: '10px',
+    paddingBottom: '4px'
   };
 
   const bodyContents: Record<string, unknown>[] = [];
@@ -549,6 +564,7 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
   return {
     type: 'bubble',
     size: 'kilo',
+    hero,
     header,
     body,
     footer: {
@@ -691,14 +707,25 @@ export function buildHistoryFlex(props: HistoryFlexProps) {
     });
   }
 
-  // 標題使用城市名
+  // Hero：OG 動態圖（路線 + 最新最低價）
   void destCity;
+  const heroParams = new URLSearchParams({ o: props.origin, d: props.destination });
+  if (hasData) heroParams.set('p', String(lastPrice));
+  const heroUrl = `${APP_URL}/api/og/sub-hero?${heroParams.toString()}`;
+
   return {
     type: 'flex',
     altText: `📊 ${routeText} 歷史價格`,
     contents: {
       type: 'bubble',
       size: 'mega',
+      hero: {
+        type: 'image',
+        url: heroUrl,
+        size: 'full',
+        aspectRatio: '1.91:1',
+        aspectMode: 'cover'
+      },
       header: {
         type: 'box',
         layout: 'vertical',
