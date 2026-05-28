@@ -367,110 +367,112 @@ interface MultiSubsDailyFlexProps {
 }
 
 export function buildMultiSubsDailyFlex(props: MultiSubsDailyFlexProps) {
-  const itemBlocks: Record<string, unknown>[] = [];
-  for (let i = 0; i < props.items.length; i++) {
-    if (i > 0) itemBlocks.push({ type: 'separator', margin: 'md' });
-    itemBlocks.push(buildSubItemBlock(props.items[i]));
-  }
-
-  const footerButtons: Record<string, unknown>[] = [{
-    type: 'button',
-    style: 'secondary',
-    height: 'sm',
-    action: {
-      type: 'uri',
-      label: '📋 我的訂閱',
-      uri: subscriptionsUrlFor(props.sourceId)
-    }
-  }];
-
-  const cacheHint = props.cachedAt ? `（抓 ${formatTaipeiHmFromIso(props.cachedAt)} 的快取）` : '';
+  // Carousel 上限 12 個 bubble — 1 個總覽 + 11 個訂閱（夠用）
+  const overviewBubble = buildOverviewBubble(props.items.length, props.sourceId, props.cachedAt);
+  const subBubbles = props.items.slice(0, 11).map(item => buildSubBubble(item, props.sourceId));
 
   return {
     type: 'flex',
     altText: `今日機票 ${props.items.length} 筆訂閱`,
     contents: {
-      type: 'bubble',
-      size: 'mega',  // 比 kilo 寬，多訂閱舒服
-      header: {
-        type: 'box',
-        layout: 'vertical',
-        contents: [
-          {
-            type: 'text',
-            text: `✈️ 今日機票 · ${props.items.length} 筆`,
-            weight: 'bold',
-            size: 'lg',
-            color: '#ffffff'
-          },
-          {
-            type: 'text',
-            text: `🕐 ${formatTaipeiHm()} 更新${cacheHint}`,
-            size: 'xs',
-            color: '#cbd5e1',
-            margin: 'xs',
-            wrap: true
-          }
-        ],
-        backgroundColor: '#1a2238',
-        paddingAll: '16px'
-      },
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        spacing: 'md',
-        contents: itemBlocks
-      },
-      footer: {
-        type: 'box',
-        layout: 'vertical',
-        spacing: 'sm',
-        contents: footerButtons
-      }
+      type: 'carousel',
+      contents: [overviewBubble, ...subBubbles]
     }
   };
 }
 
-/** 多訂閱總表中的單一訂閱列（整 box 可點 → Skyscanner with 該分類篩選）*/
-function buildSubItemBlock(item: MultiSubsItem): Record<string, unknown> {
-  // 跨機場勝出時顯示實際機場（例如 NRT），否則沿用訂閱原 destination
+/** Carousel 第一張：總覽 bubble */
+function buildOverviewBubble(count: number, sourceId: string, cachedAt?: string | null): Record<string, unknown> {
+  const cacheHint = cachedAt ? `（抓 ${formatTaipeiHmFromIso(cachedAt)} 的快取）` : '';
+  return {
+    type: 'bubble',
+    size: 'kilo',
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: [
+        { type: 'text', text: '✈️', size: '4xl', align: 'center' },
+        { type: 'text', text: '今日機票', weight: 'bold', size: 'xl', align: 'center', color: '#1a2238' },
+        { type: 'text', text: `${count} 筆訂閱`, size: 'lg', align: 'center', color: '#666666' },
+        { type: 'separator', margin: 'lg' },
+        { type: 'text', text: '👉 左右滑動切換各訂閱', size: 'sm', align: 'center', color: '#94a3b8', margin: 'lg', wrap: true },
+        { type: 'text', text: `🕐 ${formatTaipeiHm()} 更新${cacheHint}`, size: 'xs', color: '#94a3b8', align: 'center', wrap: true }
+      ]
+    },
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: [{
+        type: 'button',
+        style: 'primary',
+        color: '#1a2238',
+        height: 'sm',
+        action: {
+          type: 'uri',
+          label: '📋 管理我的訂閱',
+          uri: subscriptionsUrlFor(sourceId)
+        }
+      }]
+    }
+  };
+}
+
+/** Carousel 第 2~N 張：每筆訂閱一個 bubble */
+function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, unknown> {
   const showAirport = item.cheapestAirport && item.cheapestAirport !== item.destination;
   const destCity = getCity(item.destination);
   const destLabel = showAirport
     ? `${destCity} (${item.cheapestAirport})`
     : formatAirport(item.destination);
   const routeText = `${formatAirport(item.origin)} → ${destLabel}`;
-  const dateText = `📅 ${item.outboundDate} ~ ${item.returnDate}`;
+  const dateText = `📅 ${item.outboundDate.slice(5)} ~ ${item.returnDate.slice(5)}`;
 
-  const blocks: Record<string, unknown>[] = [
-    { type: 'text', text: routeText, weight: 'bold', size: 'sm', wrap: true },
-    { type: 'text', text: dateText, size: 'xs', color: '#94a3b8' }
-  ];
+  const header = {
+    type: 'box',
+    layout: 'vertical',
+    contents: [
+      { type: 'text', text: routeText, weight: 'bold', size: 'md', color: '#ffffff', wrap: true },
+      { type: 'text', text: dateText, size: 'xs', color: '#cbd5e1', margin: 'xs' }
+    ],
+    backgroundColor: '#1a2238',
+    paddingAll: '12px'
+  };
+
+  const bodyContents: Record<string, unknown>[] = [];
   if (item.label) {
-    blocks.push({ type: 'text', text: `📝 ${item.label}`, size: 'xs', color: '#94a3b8' });
+    bodyContents.push({ type: 'text', text: `📝 ${item.label}`, size: 'xs', color: '#94a3b8' });
   }
 
   if (item.cheapestPrice == null) {
-    blocks.push({ type: 'text', text: '❌ 查無資料', size: 'sm', color: '#cbd5e1', margin: 'sm' });
+    bodyContents.push({ type: 'text', text: '❌ 查無資料', size: 'sm', color: '#cbd5e1', margin: 'sm' });
   } else {
     const priceColor = item.cheapestPrice <= item.maxPrice ? '#22c55e' : '#ff7a45';
-    const catIcon = item.cheapestCategory === 'lcc' ? '🛩' : item.cheapestCategory === 'full-service' ? '🏢' : '';
-    const airlineName = item.cheapestAirline ?? '';
+    const catIcon = item.cheapestCategory === 'lcc' ? '🛩' : '🏢';
+    const airlineLabel = `${catIcon} ${item.cheapestAirline ?? '—'}`;
     const deltaSuffix = formatDeltaSuffix(item.vsPrevPct);
 
-    blocks.push({
+    // 航司 + delta
+    bodyContents.push({
+      type: 'text',
+      text: `${airlineLabel}${deltaSuffix}`,
+      size: 'sm',
+      color: '#666666'
+    });
+
+    // 大字價格
+    bodyContents.push({
       type: 'box',
       layout: 'baseline',
-      margin: 'sm',
+      margin: 'md',
       contents: [
-        { type: 'text', text: 'NT$', size: 'xs', color: '#666666', flex: 0 },
-        { type: 'text', text: item.cheapestPrice.toLocaleString(), size: 'xl', weight: 'bold', color: priceColor, margin: 'xs' },
-        { type: 'text', text: `${catIcon} ${airlineName}${deltaSuffix}`, size: 'xs', color: '#94a3b8', flex: 0, margin: 'sm' }
+        { type: 'text', text: 'NT$', size: 'sm', color: '#666666', flex: 0 },
+        { type: 'text', text: item.cheapestPrice.toLocaleString(), size: '3xl', weight: 'bold', color: priceColor, margin: 'sm' }
       ]
     });
 
-    // 目標價比較行：先絕對金額後括號百分比
-    // 例：「🎯 比目標價低 NT$ 22（0%）」「🎯 比目標價高 NT$ 250（2%）」
+    // 目標價比較
     const diff = item.cheapestPrice - item.maxPrice;
     const diffPct = Math.round((Math.abs(diff) / item.maxPrice) * 100);
     const isBelow = diff <= 0;
@@ -479,58 +481,83 @@ function buildSubItemBlock(item: MultiSubsItem): Record<string, unknown> {
       ? `🎯 比目標價低 NT$ ${diffAbs}（${diffPct}%）`
       : `🎯 比目標價高 NT$ ${diffAbs}（${diffPct}%）`;
     const thColor = isBelow ? '#22c55e' : '#94a3b8';
-    blocks.push({
+    bodyContents.push({
       type: 'text',
       text: thText,
       size: 'xs',
       color: thColor,
-      wrap: true
-    });
-
-    blocks.push({
-      type: 'text',
-      text: '▸ 點此看歷史走勢',
-      size: 'xs',
-      color: '#60a5fa',
-      align: 'end',
-      margin: 'xs'
+      wrap: true,
+      margin: 'sm'
     });
   }
 
-  const block: Record<string, unknown> = {
+  const body = {
     type: 'box',
     layout: 'vertical',
     spacing: 'xs',
-    paddingAll: '6px',
-    contents: blocks
+    contents: bodyContents
   };
 
-  // 整 box 可點 → postback 觸發歷史走勢卡片（在 LINE 內回，不開瀏覽器）
+  const footerContents: Record<string, unknown>[] = [];
   if (item.cheapestPrice != null && item.cheapestCategory && item.cheapestAirport) {
-    // data 用 URL encoded，控制在 300 bytes 內
-    const data = new URLSearchParams({
-      a: 'h',                                  // action = history
+    // 看歷史走勢 postback
+    const histData = new URLSearchParams({
+      a: 'h',
       o: item.origin,
-      d: item.destination,                     // 訂閱原始 dest（顯示用）
+      d: item.destination,
       out: item.outboundDate,
       ret: item.returnDate,
       max: String(item.maxPrice),
-      cat: item.cheapestCategory,              // lcc / full-service
-      win: item.cheapestAirport                // 勝出機場（給 Skyscanner URL 用）
+      cat: item.cheapestCategory,
+      win: item.cheapestAirport
     }).toString();
-    block.action = {
-      type: 'postback',
-      label: airlineLabelForAction(item),
-      data,
-      displayText: `查 ${item.origin}→${item.destination} 歷史走勢`
-    };
+    footerContents.push({
+      type: 'button',
+      style: 'primary',
+      color: '#60a5fa',
+      height: 'sm',
+      action: {
+        type: 'postback',
+        label: '📊 看歷史走勢',
+        data: histData,
+        displayText: `查 ${item.origin}→${item.destination} 歷史走勢`
+      }
+    });
+    footerContents.push({
+      type: 'button',
+      style: 'secondary',
+      height: 'sm',
+      action: {
+        type: 'uri',
+        label: '🛒 Skyscanner',
+        uri: skyscannerUrlForCategory(item.cheapestCategory, item.origin, item.cheapestAirport, item.outboundDate, item.returnDate)
+      }
+    });
+  } else {
+    footerContents.push({
+      type: 'button',
+      style: 'secondary',
+      height: 'sm',
+      action: {
+        type: 'uri',
+        label: '📋 管理訂閱',
+        uri: subscriptionsUrlFor(sourceId)
+      }
+    });
   }
-  return block;
-}
 
-function airlineLabelForAction(item: MultiSubsItem): string {
-  const base = `${item.origin}→${item.cheapestAirport ?? item.destination}`;
-  return base.slice(0, 40);
+  return {
+    type: 'bubble',
+    size: 'kilo',
+    header,
+    body,
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      contents: footerContents
+    }
+  };
 }
 
 /**

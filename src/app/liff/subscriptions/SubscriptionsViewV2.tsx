@@ -83,6 +83,77 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
       .finally(() => setLoading(false));
   }, [sourceId, groupCtxId, knownGroupCtxs]);
 
+  // 分享訂閱給朋友（用 liff.shareTargetPicker）
+  const handleShare = async (sub: ItemWithSource) => {
+    try {
+      const { default: liff } = await import('@line/liff');
+      // 沒登入或不在 LINE 內 → 給 fallback 提示
+      if (!liff.isInClient() && typeof window !== 'undefined') {
+        alert('請從 LINE 內開啟才能分享給朋友');
+        return;
+      }
+      if (typeof (liff as { shareTargetPicker?: unknown }).shareTargetPicker !== 'function') {
+        alert('你的 LIFF 版本不支援分享');
+        return;
+      }
+      const route = `${sub.origin}→${sub.destination}`;
+      const dates = `${sub.outbound_date ?? ''}~${sub.return_date ?? ''}`;
+      const flexMsg = {
+        type: 'flex' as const,
+        altText: `✈️ 我在追 ${route} ${dates}`,
+        contents: {
+          type: 'bubble' as const,
+          size: 'kilo' as const,
+          header: {
+            type: 'box' as const,
+            layout: 'vertical' as const,
+            backgroundColor: '#1a2238',
+            paddingAll: '12px',
+            contents: [
+              { type: 'text' as const, text: '✈️ 我發現一條好航線', weight: 'bold' as const, size: 'md' as const, color: '#ffffff' }
+            ]
+          },
+          body: {
+            type: 'box' as const,
+            layout: 'vertical' as const,
+            spacing: 'sm' as const,
+            contents: [
+              { type: 'text' as const, text: route, weight: 'bold' as const, size: 'lg' as const, color: '#1a2238' },
+              { type: 'text' as const, text: `📅 ${dates}`, size: 'sm' as const, color: '#666666' },
+              { type: 'text' as const, text: `🎯 我設的目標價 NT$ ${Number(sub.max_price).toLocaleString()}`, size: 'sm' as const, color: '#22c55e', wrap: true, margin: 'md' as const },
+              { type: 'text' as const, text: '也想追同條航線？加我們的 bot 就會每天通知最低價', size: 'xs' as const, color: '#94a3b8', wrap: true, margin: 'md' as const }
+            ]
+          },
+          footer: {
+            type: 'box' as const,
+            layout: 'vertical' as const,
+            contents: [
+              {
+                type: 'button' as const,
+                style: 'primary' as const,
+                color: '#1a2238',
+                height: 'sm' as const,
+                action: {
+                  type: 'uri' as const,
+                  label: '👉 加 bot 開始追',
+                  uri: typeof window !== 'undefined' ? window.location.origin + '/liff/search' : 'https://travel-flight-bot.vercel.app/liff/search'
+                }
+              }
+            ]
+          }
+        }
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (liff as any).shareTargetPicker([flexMsg], { isMultiple: true });
+      if (result && result.status === 'success') {
+        // user shared successfully — no need to alert (LINE 已自帶 toast)
+      }
+    } catch (err) {
+      console.error('share failed:', err);
+      alert('分享失敗：' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
   // 刪除訂閱（合併顯示後，每筆 sub 來源不同，要用該 sub 自己的 source_id）
   const handleDelete = async (subId: number) => {
     if (!sourceId || !window.confirm('確定要取消此訂閱？')) return;
@@ -227,14 +298,25 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                           />
                         </div>
 
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          onClick={() => sub.id && handleDelete(sub.id)}
-                          disabled={deleting === sub.id}
-                        >
-                          {deleting === sub.id ? '⏳' : '✕'}
-                        </Button>
+                        <div className="sub-actions">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => handleShare(sub)}
+                            title="分享給朋友"
+                          >
+                            📤
+                          </Button>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => sub.id && handleDelete(sub.id)}
+                            disabled={deleting === sub.id}
+                            title="取消訂閱"
+                          >
+                            {deleting === sub.id ? '⏳' : '✕'}
+                          </Button>
+                        </div>
                       </div>
                     </Card>
                   ))}
@@ -344,6 +426,13 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
             display: flex;
             flex-direction: column;
             gap: 10px;
+          }
+
+          .sub-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex-shrink: 0;
           }
 
           .sub-dates {
