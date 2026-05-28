@@ -604,7 +604,8 @@ export function buildHistoryFlex(props: HistoryFlexProps) {
       const isToday = i === recent.length - 1;
       const isMin = p.minPrice === minPrice;
       const isMax = p.minPrice === maxPrice && minPrice !== maxPrice;
-      const tag = isToday ? '★今日' : isMin ? '↓最低' : isMax ? '↑最高' : '';
+      // tag 不能是空字串（LINE 會 400），中間平常日子用全形空白占位
+      const tag = isToday ? '★今日' : isMin ? '↓最低' : isMax ? '↑最高' : '　';
       const tagColor = isToday ? '#60a5fa' : isMin ? '#4ade80' : isMax ? '#f87171' : '#94a3b8';
       const isBelowTh = p.minPrice <= threshold;
       const priceColor = isBelowTh ? '#22c55e' : '#cbd5e1';
