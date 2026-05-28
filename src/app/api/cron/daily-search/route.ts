@@ -112,71 +112,81 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
 
   await Promise.all(Array.from(queryGroups).map(async ([key, group]) => {
     const [origin, destination, outboundDate, returnDate] = key.split('|');
-    try {
-      const destAirports = getCityAirports(destination);
-      const [previousMins, fanout] = await Promise.all([
-        queryPreviousCategoryMins(supabase, origin, destAirports, outboundDate, returnDate),
-        Promise.all(
-          destAirports.map(async (d) => {
-            const r = await searchFlights({ origin, destination: d, outboundDate, returnDate });
-            return { destination: d, result: r, analysis: analyzeFlights(r.outbound, r.return) };
-          })
-        )
-      ]);
+    const MAX_ATTEMPTS = 2;
+    let lastErr: unknown = null;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        const destAirports = getCityAirports(destination);
+        const [previousMins, fanout] = await Promise.all([
+          queryPreviousCategoryMins(supabase, origin, destAirports, outboundDate, returnDate),
+          Promise.all(
+            destAirports.map(async (d) => {
+              const r = await searchFlights({ origin, destination: d, outboundDate, returnDate });
+              return { destination: d, result: r, analysis: analyzeFlights(r.outbound, r.return) };
+            })
+          )
+        ]);
 
-      let groupSerpapiCalls = 0;
-      let groupFromCacheAll = true;
-      for (const f of fanout) {
-        groupSerpapiCalls += f.result.serpapiCalls;
-        if (!f.result.fromCache) groupFromCacheAll = false;
-      }
-      totalSerpapiCalls += groupSerpapiCalls;
-      if (groupFromCacheAll) totalFromCache++;
-
-      // 跨機場挑各分類最便宜 + 判斷整體最便宜屬於哪一類
-      let bestLcc: RouteResult['bestLcc'] = null;
-      let bestTrad: RouteResult['bestTrad'] = null;
-      let bestCheapest: RouteResult['bestCheapest'] = null;
-      let bestCachedAt: string | null = null;
-      for (const f of fanout) {
-        const a = f.analysis;
-        if (a.lccCombo && (!bestLcc || a.lccCombo.price < bestLcc.price)) {
-          bestLcc = { ...a.lccCombo, airport: f.destination };
+        let groupSerpapiCalls = 0;
+        let groupFromCacheAll = true;
+        for (const f of fanout) {
+          groupSerpapiCalls += f.result.serpapiCalls;
+          if (!f.result.fromCache) groupFromCacheAll = false;
         }
-        if (a.traditionalRoundTrip && (!bestTrad || a.traditionalRoundTrip.price < bestTrad.price)) {
-          bestTrad = { ...a.traditionalRoundTrip, airport: f.destination };
+        totalSerpapiCalls += groupSerpapiCalls;
+        if (groupFromCacheAll) totalFromCache++;
+
+        // 跨機場挑各分類最便宜 + 判斷整體最便宜屬於哪一類
+        let bestLcc: RouteResult['bestLcc'] = null;
+        let bestTrad: RouteResult['bestTrad'] = null;
+        let bestCheapest: RouteResult['bestCheapest'] = null;
+        let bestCachedAt: string | null = null;
+        for (const f of fanout) {
+          const a = f.analysis;
+          if (a.lccCombo && (!bestLcc || a.lccCombo.price < bestLcc.price)) {
+            bestLcc = { ...a.lccCombo, airport: f.destination };
+          }
+          if (a.traditionalRoundTrip && (!bestTrad || a.traditionalRoundTrip.price < bestTrad.price)) {
+            bestTrad = { ...a.traditionalRoundTrip, airport: f.destination };
+          }
+          if (f.result.fromCache && (!bestCachedAt || f.result.queriedAt > bestCachedAt)) {
+            bestCachedAt = f.result.queriedAt;
+          }
         }
-        if (f.result.fromCache && (!bestCachedAt || f.result.queriedAt > bestCachedAt)) {
-          bestCachedAt = f.result.queriedAt;
+        // 用「跨機場跨分類最便宜」決定 cheapest（跟原 cheapestRoundTripPrice 一致）
+        if (bestLcc && (!bestTrad || bestLcc.price <= bestTrad.price)) {
+          bestCheapest = { price: bestLcc.price, airline: bestLcc.outboundAirline, airport: bestLcc.airport, category: 'lcc' };
+        } else if (bestTrad) {
+          bestCheapest = { price: bestTrad.price, airline: bestTrad.airline, airport: bestTrad.airport, category: 'full-service' };
+        }
+
+        perGroupResults.push({
+          route: `${origin}-${destination}(${destAirports.join('+')}) ${outboundDate}~${returnDate}`,
+          cheapest: bestCheapest?.price ?? null,
+          fromCache: groupFromCacheAll,
+          sourceCount: group.length
+        });
+
+        const lccVsPrevPct = (bestLcc && previousMins.lcc != null && previousMins.lcc > 0)
+          ? Math.round(((bestLcc.price - previousMins.lcc) / previousMins.lcc) * 100)
+          : null;
+        const tradVsPrevPct = (bestTrad && previousMins.traditional != null && previousMins.traditional > 0)
+          ? Math.round(((bestTrad.price - previousMins.traditional) / previousMins.traditional) * 100)
+          : null;
+
+        routeResults.set(key, { bestLcc, bestTrad, bestCheapest, bestCachedAt, lccVsPrevPct, tradVsPrevPct, fromCacheAll: groupFromCacheAll });
+        return;  // 成功 → 跳出 retry 迴圈
+      } catch (err) {
+        lastErr = err;
+        if (attempt < MAX_ATTEMPTS) {
+          console.warn(`[cron] route ${key} attempt ${attempt} failed, retrying (cache likely warm from prev attempt):`, err);
+          await new Promise(r => setTimeout(r, 500));  // 500ms backoff
+          continue;
         }
       }
-      // 用「跨機場跨分類最便宜」決定 cheapest（跟原 cheapestRoundTripPrice 一致）
-      // 比較 bestLcc vs bestTrad（兩者已經是跨機場各分類最便宜的代表）
-      if (bestLcc && (!bestTrad || bestLcc.price <= bestTrad.price)) {
-        bestCheapest = { price: bestLcc.price, airline: bestLcc.outboundAirline, airport: bestLcc.airport, category: 'lcc' };
-      } else if (bestTrad) {
-        bestCheapest = { price: bestTrad.price, airline: bestTrad.airline, airport: bestTrad.airport, category: 'full-service' };
-      }
-
-      perGroupResults.push({
-        route: `${origin}-${destination}(${destAirports.join('+')}) ${outboundDate}~${returnDate}`,
-        cheapest: bestCheapest?.price ?? null,
-        fromCache: groupFromCacheAll,
-        sourceCount: group.length
-      });
-
-      const lccVsPrevPct = (bestLcc && previousMins.lcc != null && previousMins.lcc > 0)
-        ? Math.round(((bestLcc.price - previousMins.lcc) / previousMins.lcc) * 100)
-        : null;
-      const tradVsPrevPct = (bestTrad && previousMins.traditional != null && previousMins.traditional > 0)
-        ? Math.round(((bestTrad.price - previousMins.traditional) / previousMins.traditional) * 100)
-        : null;
-
-      routeResults.set(key, { bestLcc, bestTrad, bestCheapest, bestCachedAt, lccVsPrevPct, tradVsPrevPct, fromCacheAll: groupFromCacheAll });
-    } catch (err) {
-      console.error('[cron] search failed for', key, err);
-      routeResults.set(key, null);
     }
+    console.error(`[cron] route ${key} failed after ${MAX_ATTEMPTS} attempts:`, lastErr);
+    routeResults.set(key, null);
   }));
 
   // ============================================
@@ -335,7 +345,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     ok: pushedFail === 0,
     // 部署版本標記 — 改卡片版面時 bump 一下，方便從 API 回應驗證新 code 是否真的上線
-    cardVersion: 'v16-multi-subs-summary-2026-05-27',
+    cardVersion: 'v17-cron-retry-2026-05-28',
     daily: {
       sourcesTargeted: targets.length,
       sourcesOptedOut: optedOut.size,
