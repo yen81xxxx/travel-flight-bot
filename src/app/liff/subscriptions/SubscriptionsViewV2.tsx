@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSessionStorage } from '@/hooks/useSessionStorage';
 import { useKnownGroupCtxs } from '@/hooks/useKnownGroupCtxs';
 import { useLiff } from '@/hooks/useLiff';
-import { Alert, Badge, Button, Card, EmptyState, Spinner } from '@/components';
+import { Alert, Badge, Button, EmptyState, Spinner } from '@/components';
 import type { Subscription } from '@/types';
 import TabNav from '../TabNav';
 import Sparkline from './Sparkline';
@@ -212,7 +212,7 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
 
                 <div className="subs-cards">
                   {subs.map(sub => (
-                    <Card key={sub.id}>
+                    <div key={sub.id} className="ios-row">
                       <div className="route-visualization">
                         <div className="airport-code">{sub.origin?.slice(0, 3).toUpperCase()}</div>
                         <svg className="route-svg" viewBox="0 0 100 40">
@@ -286,7 +286,7 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                           </Button>
                         </div>
                       </div>
-                    </Card>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -294,59 +294,110 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
           </div>
         )}
 
+        <style jsx global>{`
+          /* iOS Dark Mode design tokens */
+          :root {
+            --ios-bg: #000000;
+            --ios-bg-secondary: #1c1c1e;
+            --ios-bg-tertiary: #2c2c2e;
+            --ios-bg-grouped: #1c1c1e;
+            --ios-separator: rgba(84, 84, 88, 0.65);
+            --ios-separator-opaque: #38383a;
+            --ios-label: #ffffff;
+            --ios-label-secondary: rgba(235, 235, 245, 0.6);
+            --ios-label-tertiary: rgba(235, 235, 245, 0.3);
+            --ios-blue: #0a84ff;
+            --ios-green: #30d158;
+            --ios-orange: #ff9f0a;
+            --ios-red: #ff453a;
+            --ios-yellow: #ffd60a;
+            --ios-purple: #bf5af2;
+            --ios-pink: #ff375f;
+          }
+          body {
+            background: var(--ios-bg);
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'PingFang TC', 'Helvetica Neue', sans-serif;
+            color: var(--ios-label);
+            -webkit-font-smoothing: antialiased;
+          }
+        `}</style>
         <style jsx>{`
           .subs-wrap {
-            max-width: 600px;
+            max-width: 640px;
             margin: 0 auto;
-            padding: 16px;
-            padding-bottom: 80px;
-            background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%);
+            padding: 24px 16px 96px;
+            background: #000000;
             min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'PingFang TC', sans-serif;
           }
 
           .subs-header {
-            margin-bottom: 28px;
+            margin-bottom: 32px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 12px;
-            background: linear-gradient(135deg, #001a4d 0%, #1a3a66 100%);
-            border-radius: 16px;
-            padding: 28px;
-            border: 1px solid rgba(0, 102, 255, 0.3);
-            box-shadow: 0 8px 32px rgba(0, 102, 255, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            padding: 4px 4px 0;
           }
 
           .subs-header h1 {
-            font-size: 28px;
-            font-weight: 800;
+            font-size: 34px;
+            font-weight: 700;
             margin: 0;
             color: #ffffff;
-            letter-spacing: -0.5px;
+            letter-spacing: 0.37px;
+            line-height: 41px;
+          }
+
+          .header-badges {
+            display: flex;
+            gap: 6px;
           }
 
           .subs-list {
             display: flex;
             flex-direction: column;
-            gap: 24px;
+            gap: 28px;
           }
 
           .route-group {
-            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
           }
 
           .route-title {
-            font-size: 16px;
-            font-weight: 700;
-            margin: 0 0 12px;
-            color: #1f2937;
-            letter-spacing: -0.3px;
+            font-size: 13px;
+            font-weight: 400;
+            margin: 0 0 8px 12px;
+            color: rgba(235, 235, 245, 0.6);
+            letter-spacing: -0.08px;
+            text-transform: uppercase;
           }
 
           .subs-cards {
+            background: #1c1c1e;
+            border-radius: 14px;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+          }
+
+          .ios-row {
+            padding: 16px;
+            position: relative;
+          }
+          .ios-row::after {
+            content: '';
+            position: absolute;
+            left: 16px;
+            right: 0;
+            bottom: 0;
+            height: 0.5px;
+            background: rgba(84, 84, 88, 0.65);
+          }
+          .ios-row:last-child::after {
+            display: none;
           }
 
           .route-visualization {
@@ -354,126 +405,133 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
             align-items: center;
             justify-content: space-between;
             gap: 8px;
-            padding: 12px;
-            background: linear-gradient(135deg, #f0f4ff 0%, #e8f0ff 100%);
-            border-radius: 8px;
+            padding: 10px 14px;
+            background: rgba(120, 120, 128, 0.16);
+            border-radius: 10px;
             margin-bottom: 12px;
-            border: 1px solid #d9e3ff;
           }
 
           .airport-code {
-            font-size: 12px;
-            font-weight: 800;
-            color: #0066ff;
+            font-size: 13px;
+            font-weight: 600;
+            color: #0a84ff;
             min-width: 32px;
             text-align: center;
-            font-family: 'Courier New', monospace;
+            letter-spacing: 0.5px;
+            font-family: 'SF Mono', SFMono-Regular, ui-monospace, monospace;
           }
 
           .route-svg {
             flex: 1;
-            height: 30px;
-            color: #0066ff;
-            opacity: 0.7;
+            height: 28px;
+            color: rgba(10, 132, 255, 0.5);
           }
 
           .sub-item {
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
+            align-items: stretch;
             gap: 12px;
-            transition: all 0.2s ease;
-          }
-
-          .sub-item:hover {
-            transform: translateX(2px);
           }
 
           .sub-info {
             flex: 1;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 12px;
+            min-width: 0;
           }
 
           .sub-actions {
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 8px;
             flex-shrink: 0;
+            justify-content: flex-start;
           }
 
           .sub-dates {
             display: flex;
-            gap: 8px;
+            gap: 6px;
             flex-wrap: wrap;
           }
 
           .date-badge {
-            font-size: 11px;
-            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-            color: #0369a1;
-            padding: 6px 12px;
+            font-size: 13px;
+            background: rgba(120, 120, 128, 0.24);
+            color: rgba(235, 235, 245, 0.9);
+            padding: 4px 10px;
             border-radius: 6px;
-            font-weight: 600;
-            border: 1px solid rgba(3, 105, 161, 0.2);
-            box-shadow: 0 1px 3px rgba(3, 105, 161, 0.1);
+            font-weight: 500;
+            letter-spacing: -0.08px;
           }
 
           .sub-price {
             display: flex;
-            align-items: center;
+            align-items: baseline;
             justify-content: space-between;
-            padding: 12px;
-            background: linear-gradient(135deg, #fff7ed 0%, #ffecdc 100%);
-            border-radius: 8px;
+            padding: 8px 0;
           }
 
           .price-label {
-            font-size: 12px;
-            color: #92400e;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            font-size: 13px;
+            color: rgba(235, 235, 245, 0.6);
+            font-weight: 400;
+            letter-spacing: -0.08px;
           }
 
           .price-value {
-            font-size: 20px;
-            font-weight: 800;
-            background: linear-gradient(135deg, #ff7a45 0%, #ff6b35 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            font-size: 22px;
+            font-weight: 600;
+            color: #ffffff;
+            letter-spacing: 0.35px;
+            font-feature-settings: 'tnum' 1;
           }
 
           .sub-label {
             font-size: 13px;
-            color: #666;
-            padding: 8px 12px;
-            background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
-            border: 1px solid #e0e7ff;
+            color: rgba(235, 235, 245, 0.6);
+            padding: 6px 10px;
+            background: rgba(120, 120, 128, 0.16);
             border-radius: 6px;
             max-width: 100%;
             word-break: break-word;
+            font-weight: 400;
           }
 
           .sub-status {
             display: flex;
             gap: 6px;
+            flex-wrap: wrap;
+          }
+
+          /* Apple-style buttons override (sub-actions only) */
+          .sub-actions :global(button) {
+            background: rgba(120, 120, 128, 0.24) !important;
+            color: #ffffff !important;
+            border: none !important;
+            border-radius: 8px !important;
+            padding: 6px 12px !important;
+            font-size: 13px !important;
+            font-weight: 500 !important;
+            min-height: 32px !important;
+            letter-spacing: -0.08px !important;
+            transition: opacity 0.2s ease !important;
+          }
+          .sub-actions :global(button:hover) {
+            opacity: 0.7;
+          }
+          .sub-actions :global(button:disabled) {
+            opacity: 0.4;
           }
 
           @media (max-width: 640px) {
             .subs-wrap {
-              padding: 12px;
+              padding: 16px 12px 96px;
             }
-
-            .subs-header {
-              flex-direction: column;
-              align-items: flex-start;
-            }
-
-            .sub-item {
-              flex-direction: column;
+            .subs-header h1 {
+              font-size: 28px;
+              line-height: 34px;
             }
           }
         `}</style>

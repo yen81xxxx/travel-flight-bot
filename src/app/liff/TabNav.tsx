@@ -63,37 +63,39 @@ export default function TabNav({ active, liffId }: Props) {
       <style jsx>{`
         .tabnav {
           display: flex;
-          gap: 6px;
-          padding: 8px;
-          background: #0a0e1a;
-          border-bottom: 1px solid rgba(255,255,255,0.06);
+          gap: 4px;
+          padding: 8px 12px 10px;
+          background: rgba(0, 0, 0, 0.78);
+          backdrop-filter: saturate(180%) blur(20px);
+          -webkit-backdrop-filter: saturate(180%) blur(20px);
+          border-bottom: 0.5px solid rgba(84, 84, 88, 0.65);
           position: sticky;
           top: 0;
           z-index: 100;
-          font-family: -apple-system, BlinkMacSystemFont, 'PingFang TC', sans-serif;
+          font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'PingFang TC', sans-serif;
         }
         .tab {
           flex: 1;
-          padding: 10px 6px;
+          padding: 8px 4px;
           text-align: center;
           font-size: 13px;
-          font-weight: 600;
-          color: #7e88a8;
-          border-radius: 8px;
+          font-weight: 500;
+          color: rgba(235, 235, 245, 0.6);
+          border-radius: 10px;
           text-decoration: none;
-          background: rgba(255, 255, 255, 0.02);
-          border: 1px solid transparent;
-          transition: all 0.15s;
+          background: transparent;
+          letter-spacing: -0.08px;
+          transition: all 0.2s ease;
           white-space: nowrap;
+          -webkit-tap-highlight-color: transparent;
         }
         .tab:hover {
-          background: rgba(255, 255, 255, 0.04);
-          color: #cdd5f0;
+          color: #ffffff;
         }
         .tab.active {
-          background: rgba(255, 122, 69, 0.15);
-          color: #ff7a45;
-          border-color: rgba(255, 122, 69, 0.4);
+          background: rgba(120, 120, 128, 0.32);
+          color: #ffffff;
+          font-weight: 600;
         }
       `}</style>
     </nav>
