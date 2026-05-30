@@ -83,6 +83,44 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
       .finally(() => setLoading(false));
   }, [sourceId, groupCtxId, knownGroupCtxs]);
 
+  // 改目標價（彈出 prompt 輸入新價，呼 PATCH /api/subscriptions）
+  const handleEditPrice = async (sub: ItemWithSource) => {
+    if (sub.id == null) return;
+    const current = Number(sub.max_price);
+    const input = window.prompt(
+      `修改「${sub.origin}→${sub.destination}」目標價（當前 NT$ ${current.toLocaleString()}）\n\n` +
+      '輸入新的目標價（NT$）：',
+      String(current)
+    );
+    if (input == null) return;  // user cancelled
+    const newPrice = parseInt(input.replace(/[^0-9]/g, ''), 10);
+    if (isNaN(newPrice) || newPrice <= 0) {
+      alert('請輸入大於 0 的數字');
+      return;
+    }
+    if (newPrice === current) return;  // no change
+
+    const subSourceId = sub.source_id ?? groupCtxId ?? sourceId;
+    try {
+      const res = await fetch('/api/subscriptions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: sub.id, sourceId: subSourceId, maxPrice: newPrice })
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        alert('改價失敗：' + (data.error ?? '未知錯誤'));
+        return;
+      }
+      // 更新 local state（避免要重 fetch 整列）
+      setItems(prev => prev.map(item =>
+        item.id === sub.id ? { ...item, max_price: newPrice } : item
+      ));
+    } catch (err) {
+      alert('改價失敗：' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
   // 分享訂閱給朋友（用 liff.shareTargetPicker）
   const handleShare = async (sub: ItemWithSource) => {
     try {
@@ -299,6 +337,14 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                         </div>
 
                         <div className="sub-actions">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => handleEditPrice(sub)}
+                            title="改目標價"
+                          >
+                            ✏️
+                          </Button>
                           <Button
                             variant="secondary"
                             size="sm"
