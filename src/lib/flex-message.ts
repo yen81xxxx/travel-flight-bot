@@ -548,6 +548,26 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
         uri: skyscannerUrlForCategory(item.cheapestCategory, item.origin, item.cheapestAirport, item.outboundDate, item.returnDate)
       }
     });
+    // ↪ 分享按鈕（彎曲箭頭符號跟 LINE 原生分享一致）
+    const shareParams = new URLSearchParams({
+      o: item.origin,
+      d: item.destination,
+      out: item.outboundDate,
+      ret: item.returnDate,
+      max: String(item.maxPrice),
+      p: String(item.cheapestPrice),
+    });
+    if (item.cheapestAirline) shareParams.set('a', item.cheapestAirline);
+    footerContents.push({
+      type: 'button',
+      style: 'link',
+      height: 'sm',
+      action: {
+        type: 'uri',
+        label: '↪ 分享給朋友',
+        uri: `${APP_URL}/liff/share?${shareParams.toString()}`
+      }
+    });
   } else {
     footerContents.push({
       type: 'button',
