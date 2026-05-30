@@ -17,7 +17,7 @@ type ItemWithSource = Subscription & { _source: 'personal' | 'group' };
 
 export default function SubscriptionsViewV2({ liffId }: Props) {
   // LIFF 初始化
-  const { liffReady, user } = useLiff(liffId);
+  const { liffReady, user, isInLine } = useLiff(liffId);
   const sourceId = user?.userId ?? null;
 
   // 群組上下文（當下這個 LIFF session 是從哪個群組進來的；URL 帶 ctx 才會有）
@@ -341,17 +341,18 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                             variant="secondary"
                             size="sm"
                             onClick={() => handleEditPrice(sub)}
-                            title="改目標價"
+                            title="修改目標價"
                           >
-                            ✏️
+                            ✏️ 改價
                           </Button>
                           <Button
                             variant="secondary"
                             size="sm"
                             onClick={() => handleShare(sub)}
-                            title="分享給朋友"
+                            disabled={!isInLine}
+                            title={isInLine ? '分享給 LINE 朋友' : '需從 LINE App 內開啟才能分享'}
                           >
-                            📤
+                            📤 {isInLine ? '分享' : '分享(需 LINE)'}
                           </Button>
                           <Button
                             variant="danger"
@@ -360,7 +361,7 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                             disabled={deleting === sub.id}
                             title="取消訂閱"
                           >
-                            {deleting === sub.id ? '⏳' : '✕'}
+                            {deleting === sub.id ? '⏳' : '✕ 取消'}
                           </Button>
                         </div>
                       </div>
