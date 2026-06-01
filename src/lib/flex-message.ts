@@ -632,46 +632,42 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
 
 /**
  * 歷史走勢卡片（postback 觸發）— 一張 LINE 內顯示的價格走勢，不開瀏覽器。
- * 列出最近 N 天每日最低價、min/max/趨勢統計、底部一顆 Skyscanner 訂票按鈕。
+ * 同時顯示廉航 + 傳統兩條歷史線（每日各自最低），底部 Skyscanner 訂票按鈕。
  */
 export interface HistoryFlexProps {
   origin: string;
   destination: string;          // 訂閱原始 dest（顯示用，例：HND）
   outboundDate: string;
   returnDate: string;
-  points: { date: string; minPrice: number }[];  // 按日期升冪
+  lccPoints: { date: string; minPrice: number }[];   // 廉航每日最低（按日期升冪）
+  tradPoints: { date: string; minPrice: number }[];  // 傳統每日最低（按日期升冪）
   threshold: number;
   skyscannerUrl: string;
-  airlineLabel?: string;        // e.g. "🛩 廉航" / "🏢 傳統"
 }
 
 export function buildHistoryFlex(props: HistoryFlexProps) {
-  const { points, threshold, skyscannerUrl } = props;
-  const hasData = points.length > 0;
+  const { lccPoints, tradPoints, threshold, skyscannerUrl } = props;
 
-  // 取最近 14 天避免卡片過長
-  const recent = points.slice(-14);
-  const prices = recent.map(p => p.minPrice);
-  const minPrice = hasData ? Math.min(...prices) : 0;
-  const maxPrice = hasData ? Math.max(...prices) : 0;
-  const lastPrice = hasData ? prices[prices.length - 1] : 0;
-  const firstPrice = hasData ? prices[0] : 0;
-  const trendDiff = lastPrice - firstPrice;
-  const trendPct = firstPrice > 0 ? Math.round((trendDiff / firstPrice) * 100) : 0;
-  const trendIcon = trendDiff > 0 ? '↑' : trendDiff < 0 ? '↓' : '→';
-  const trendColor = trendDiff > 0 ? '#f87171' : trendDiff < 0 ? '#4ade80' : '#94a3b8';
+  // 取所有出現的日期（兩分類各自最近 14 天的聯集）
+  const allDates = new Set<string>();
+  for (const p of lccPoints.slice(-14)) allDates.add(p.date);
+  for (const p of tradPoints.slice(-14)) allDates.add(p.date);
+  const dates = Array.from(allDates).sort();
 
-  const destCity = getCity(props.destination);
+  const lccByDate = new Map(lccPoints.map(p => [p.date, p.minPrice]));
+  const tradByDate = new Map(tradPoints.map(p => [p.date, p.minPrice]));
+
+  const hasAny = dates.length > 0;
   const routeText = `${formatAirport(props.origin)} → ${formatAirport(props.destination)}`;
-  const dateText = `📅 ${props.outboundDate} ~ ${props.returnDate}`;
+  const dateRangeText = `📅 ${props.outboundDate} ~ ${props.returnDate}`;
 
   const bodyContents: Record<string, unknown>[] = [
     { type: 'text', text: routeText, weight: 'bold', size: 'md', wrap: true },
-    { type: 'text', text: dateText, size: 'xs', color: '#94a3b8' },
+    { type: 'text', text: dateRangeText, size: 'xs', color: '#94a3b8' },
     { type: 'separator', margin: 'md' }
   ];
 
-  if (!hasData) {
+  if (!hasAny) {
     bodyContents.push({
       type: 'text',
       text: '📊 尚無歷史資料',
@@ -688,80 +684,100 @@ export function buildHistoryFlex(props: HistoryFlexProps) {
       align: 'center'
     });
   } else {
+    // 表頭：日期 / 廉航 / 傳統
     bodyContents.push({
-      type: 'text',
-      text: `近 ${recent.length} 天最低價`,
-      size: 'xs',
-      color: '#94a3b8',
-      margin: 'md'
+      type: 'box',
+      layout: 'baseline',
+      margin: 'md',
+      contents: [
+        { type: 'text', text: '日期', size: 'xs', color: '#94a3b8', flex: 2 },
+        { type: 'text', text: '🛩 廉航', size: 'xs', color: '#94a3b8', flex: 4, align: 'end' },
+        { type: 'text', text: '🏢 傳統', size: 'xs', color: '#94a3b8', flex: 4, align: 'end' }
+      ]
     });
+    bodyContents.push({ type: 'separator', margin: 'sm' });
+
+    // 算 min/max 找最低/最高 highlight
+    const lccPrices = lccPoints.slice(-14).map(p => p.minPrice);
+    const tradPrices = tradPoints.slice(-14).map(p => p.minPrice);
+    const lccMin = lccPrices.length ? Math.min(...lccPrices) : null;
+    const lccMax = lccPrices.length > 1 ? Math.max(...lccPrices) : null;
+    const tradMin = tradPrices.length ? Math.min(...tradPrices) : null;
+    const tradMax = tradPrices.length > 1 ? Math.max(...tradPrices) : null;
+
     // 每日一行
-    for (let i = 0; i < recent.length; i++) {
-      const p = recent[i];
-      const isToday = i === recent.length - 1;
-      const isMin = p.minPrice === minPrice;
-      const isMax = p.minPrice === maxPrice && minPrice !== maxPrice;
-      // tag 不能是空字串（LINE 會 400），中間平常日子用全形空白占位
-      const tag = isToday ? '★今日' : isMin ? '↓最低' : isMax ? '↑最高' : '　';
-      const tagColor = isToday ? '#60a5fa' : isMin ? '#4ade80' : isMax ? '#f87171' : '#94a3b8';
-      const isBelowTh = p.minPrice <= threshold;
-      const priceColor = isBelowTh ? '#22c55e' : '#cbd5e1';
+    for (let i = 0; i < dates.length; i++) {
+      const day = dates[i];
+      const isToday = i === dates.length - 1;
+      const lcc = lccByDate.get(day);
+      const trad = tradByDate.get(day);
+
+      const cellText = (p: number | undefined, min: number | null, max: number | null) => {
+        if (p == null) return { text: '—', color: '#64748b' };
+        const isMin = p === min && min !== max;
+        const isMax = p === max && min !== max;
+        const prefix = isMin ? '↓' : isMax ? '↑' : '';
+        const color = isToday ? '#60a5fa' : isMin ? '#4ade80' : isMax ? '#f87171' : (p <= threshold ? '#22c55e' : '#cbd5e1');
+        return { text: `${prefix}${p.toLocaleString()}`, color };
+      };
+      const lccCell = cellText(lcc, lccMin, lccMax);
+      const tradCell = cellText(trad, tradMin, tradMax);
+
+      const dateLabel = isToday ? `★${day.slice(5)}` : day.slice(5);
+      const dateColor = isToday ? '#60a5fa' : '#94a3b8';
+
       bodyContents.push({
         type: 'box',
         layout: 'baseline',
-        margin: 'sm',
+        margin: 'xs',
         contents: [
-          { type: 'text', text: p.date.slice(5), size: 'xs', color: '#94a3b8', flex: 2 },
-          { type: 'text', text: `NT$ ${p.minPrice.toLocaleString()}`, size: 'sm', weight: 'bold', color: priceColor, flex: 4, align: 'end' },
-          { type: 'text', text: tag, size: 'xs', color: tagColor, flex: 3, align: 'end' }
+          { type: 'text', text: dateLabel, size: 'xs', color: dateColor, flex: 2 },
+          { type: 'text', text: lccCell.text, size: 'xs', weight: 'bold', color: lccCell.color, flex: 4, align: 'end' },
+          { type: 'text', text: tradCell.text, size: 'xs', weight: 'bold', color: tradCell.color, flex: 4, align: 'end' }
         ]
       });
     }
+
     bodyContents.push({ type: 'separator', margin: 'md' });
-    // 統計
-    const minDate = recent.find(p => p.minPrice === minPrice)?.date.slice(5) ?? '';
-    const maxDate = recent.find(p => p.minPrice === maxPrice)?.date.slice(5) ?? '';
-    bodyContents.push({
-      type: 'text',
-      text: `📉 最低 NT$ ${minPrice.toLocaleString()}（${minDate}）`,
-      size: 'xs',
-      color: '#4ade80',
-      margin: 'sm',
-      wrap: true
-    });
-    if (minPrice !== maxPrice) {
+
+    // 統計區
+    if (lccMin != null) {
+      const lastLcc = lccPoints[lccPoints.length - 1].minPrice;
+      const lccDiff = lastLcc - threshold;
       bodyContents.push({
         type: 'text',
-        text: `📈 最高 NT$ ${maxPrice.toLocaleString()}（${maxDate}）`,
+        text: `🛩 廉航：今日 NT$ ${lastLcc.toLocaleString()}　|　${lccDiff <= 0 ? '比目標低' : '比目標高'} NT$ ${Math.abs(lccDiff).toLocaleString()}`,
         size: 'xs',
-        color: '#f87171',
+        color: lccDiff <= 0 ? '#22c55e' : '#94a3b8',
+        wrap: true,
+        margin: 'sm'
+      });
+    } else {
+      bodyContents.push({ type: 'text', text: '🛩 廉航：無歷史資料', size: 'xs', color: '#64748b', margin: 'sm' });
+    }
+    if (tradMin != null) {
+      const lastTrad = tradPoints[tradPoints.length - 1].minPrice;
+      const tradDiff = lastTrad - threshold;
+      bodyContents.push({
+        type: 'text',
+        text: `🏢 傳統：今日 NT$ ${lastTrad.toLocaleString()}　|　${tradDiff <= 0 ? '比目標低' : '比目標高'} NT$ ${Math.abs(tradDiff).toLocaleString()}`,
+        size: 'xs',
+        color: tradDiff <= 0 ? '#22c55e' : '#94a3b8',
         wrap: true
       });
+    } else {
+      bodyContents.push({ type: 'text', text: '🏢 傳統：無歷史資料', size: 'xs', color: '#64748b' });
     }
     bodyContents.push({
       type: 'text',
-      text: `${trendIcon} 趨勢 ${trendDiff === 0 ? '持平' : `${trendDiff > 0 ? '漲' : '跌'} ${Math.abs(trendPct)}%`}（首日 NT$ ${firstPrice.toLocaleString()} → 今日 NT$ ${lastPrice.toLocaleString()}）`,
+      text: `🎯 目標價 NT$ ${threshold.toLocaleString()}`,
       size: 'xs',
-      color: trendColor,
+      color: '#94a3b8',
+      margin: 'sm',
       wrap: true
-    });
-    // 目標價狀態
-    const diff = lastPrice - threshold;
-    const isBelowTh = diff <= 0;
-    const thColor = isBelowTh ? '#22c55e' : '#94a3b8';
-    bodyContents.push({
-      type: 'text',
-      text: isBelowTh
-        ? `🎯 目標價 NT$ ${threshold.toLocaleString()} — 已達 ✓`
-        : `🎯 目標價 NT$ ${threshold.toLocaleString()} — 還差 NT$ ${Math.abs(diff).toLocaleString()}`,
-      size: 'xs',
-      color: thColor,
-      wrap: true,
-      margin: 'sm'
     });
   }
 
-  void destCity;
   return {
     type: 'flex',
     altText: `📊 ${routeText} 歷史價格`,
@@ -774,7 +790,7 @@ export function buildHistoryFlex(props: HistoryFlexProps) {
         contents: [
           {
             type: 'text',
-            text: `📊 歷史價格走勢${props.airlineLabel ? ` · ${props.airlineLabel}` : ''}`,
+            text: '📊 歷史價格走勢',
             weight: 'bold',
             size: 'lg',
             color: '#ffffff',

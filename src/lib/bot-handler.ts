@@ -5,7 +5,7 @@ import { searchFlights } from './serpapi';
 import { analyzeFlights, formatAnalysisForLine } from './flights';
 import { getSupabase } from './supabase';
 import { buildHistoryFlex } from './flex-message';
-import { getAirlineCodesByCategory, type AirlineCategory } from '@/config/airlines';
+import { getAirlineCodesByCategory, getAirlineCategory, type AirlineCategory } from '@/config/airlines';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://travel-flight-bot.vercel.app';
 
@@ -110,42 +110,41 @@ async function handlePostback(event: WebhookEvent): Promise<void> {
   }
 
   try {
-    // 查歷史最低價（複用 /api/subscriptions/history 邏輯，內部直接打 DB）
-    const points = await fetchHistoryPoints(origin, destination, outboundDate, returnDate, 30);
-    // 多機場：歷史也要把同城所有機場資料納入（東京 = HND + NRT）
+    // 同城所有機場（東京 = HND + NRT）一起撈
     const { getCityAirports } = await import('@/config/airports');
     const allAirports = getCityAirports(destination);
-    let combinedPoints = points;
-    if (allAirports.length > 1) {
-      const extras = await Promise.all(
-        allAirports.filter(a => a !== destination).map(a => fetchHistoryPoints(origin, a, outboundDate, returnDate, 30))
-      );
-      // 合併：同日取所有機場最低
-      const byDay = new Map<string, number>();
-      for (const arr of [points, ...extras]) {
-        for (const p of arr) {
-          const prev = byDay.get(p.date);
-          if (prev == null || p.minPrice < prev) byDay.set(p.date, p.minPrice);
-        }
+    // 按分類分別撈歷史最低，跨機場以 min 合併
+    const perAirport = await Promise.all(
+      allAirports.map(a => fetchHistoryByCategory(origin, a, outboundDate, returnDate, 30))
+    );
+    const lccByDay = new Map<string, number>();
+    const tradByDay = new Map<string, number>();
+    for (const result of perAirport) {
+      for (const p of result.lcc) {
+        const prev = lccByDay.get(p.date);
+        if (prev == null || p.minPrice < prev) lccByDay.set(p.date, p.minPrice);
       }
-      combinedPoints = Array.from(byDay.entries())
-        .map(([date, minPrice]) => ({ date, minPrice }))
-        .sort((a, b) => a.date.localeCompare(b.date));
+      for (const p of result.traditional) {
+        const prev = tradByDay.get(p.date);
+        if (prev == null || p.minPrice < prev) tradByDay.set(p.date, p.minPrice);
+      }
     }
+    const sortByDate = (m: Map<string, number>) =>
+      Array.from(m.entries()).map(([date, minPrice]) => ({ date, minPrice }))
+        .sort((a, b) => a.date.localeCompare(b.date));
 
-    // 建 Skyscanner URL（用勝出機場 + 勝出分類）
+    // Skyscanner URL（用勝出機場 + 勝出分類）
     const skyscannerUrl = buildSkyscannerUrlForCategory(cat, origin, winAirport, outboundDate, returnDate);
-    const airlineLabel = cat === 'lcc' ? '🛩 廉航' : '🏢 傳統';
 
     const flex = buildHistoryFlex({
       origin,
       destination,
       outboundDate,
       returnDate,
-      points: combinedPoints,
+      lccPoints: sortByDate(lccByDay),
+      tradPoints: sortByDate(tradByDay),
       threshold: Number(max),
-      skyscannerUrl,
-      airlineLabel
+      skyscannerUrl
     });
     await replyFlex(replyToken, flex);
   } catch (err) {
@@ -155,20 +154,27 @@ async function handlePostback(event: WebhookEvent): Promise<void> {
 }
 
 /**
- * 直接查 DB 取得每日最低價（mirror /api/subscriptions/history）
+ * 直接查 DB 按分類撈每日最低價（LCC + Traditional 各一份）。
+ * trip_leg 的考量：
+ *  - 廉航：用 return list（== pickLccCombo 來源，精確 combo 來回價）
+ *  - 傳統：用 outbound list（== pickTraditionalSameAirline 來源，同家來回估算）
+ *  - 跟 cron 的 queryPreviousCategoryMins 邏輯一致，避免比錯對象
  */
-async function fetchHistoryPoints(
+async function fetchHistoryByCategory(
   origin: string,
   destination: string,
   outboundDate: string,
   returnDate: string,
   days: number
-): Promise<{ date: string; minPrice: number }[]> {
+): Promise<{
+  lcc: { date: string; minPrice: number }[];
+  traditional: { date: string; minPrice: number }[];
+}> {
   const supabase = getSupabase();
   const since = new Date(Date.now() - days * 86400_000).toISOString();
   const { data } = await supabase
     .from('flight_quotes')
-    .select('queried_at, price')
+    .select('queried_at, price, airline, trip_leg')
     .eq('origin', origin)
     .eq('destination', destination)
     .eq('outbound_date', outboundDate)
@@ -176,17 +182,32 @@ async function fetchHistoryPoints(
     .eq('stops', 0)
     .gte('queried_at', since)
     .not('price', 'is', null);
-  if (!data) return [];
-  const byDay = new Map<string, number[]>();
-  for (const r of data as { queried_at: string; price: number }[]) {
+  if (!data) return { lcc: [], traditional: [] };
+
+  const lccByDay = new Map<string, number[]>();
+  const tradByDay = new Map<string, number[]>();
+  for (const r of data as { queried_at: string; price: number; airline: string | null; trip_leg: string }[]) {
+    if (r.price == null) continue;
+    const cat = getAirlineCategory(r.airline);
+    if (cat == null) continue;
     const day = r.queried_at.slice(0, 10);
-    const arr = byDay.get(day) ?? [];
-    arr.push(Number(r.price));
-    byDay.set(day, arr);
+    if (cat === 'lcc' && r.trip_leg === 'return') {
+      const arr = lccByDay.get(day) ?? [];
+      arr.push(Number(r.price));
+      lccByDay.set(day, arr);
+    } else if (cat === 'full-service' && r.trip_leg === 'outbound') {
+      const arr = tradByDay.get(day) ?? [];
+      arr.push(Number(r.price));
+      tradByDay.set(day, arr);
+    }
   }
-  return Array.from(byDay.entries())
-    .map(([date, prices]) => ({ date, minPrice: Math.min(...prices) }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const toPoints = (m: Map<string, number[]>) =>
+    Array.from(m.entries())
+      .map(([date, prices]) => ({ date, minPrice: Math.min(...prices) }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+  return { lcc: toPoints(lccByDay), traditional: toPoints(tradByDay) };
 }
 
 /**
