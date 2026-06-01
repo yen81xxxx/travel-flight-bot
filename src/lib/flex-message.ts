@@ -437,9 +437,9 @@ function buildOverviewBubble(count: number, sourceId: string, cachedAt?: string 
 
 /**
  * 卡片內單一分類列（廉航 or 傳統）：兩段組成
- *   行 1：🛩 廉航 (HND)     NT$ 13,414
- *   行 2：           台灣虎航 往返 ↓5%
- * 沒資料時顯示「— 查無」
+ *   行 1：🛩 廉航 (HND)     NT$ 13,414  ↓5%
+ *   行 2：   比目標價低 NT$ 9,614（40%）
+ * 沒資料時行 1 顯示「— 查無」，無行 2
  */
 function buildCategoryRowsForBubble(
   icon: string,
@@ -465,15 +465,16 @@ function buildCategoryRowsForBubble(
 
   const priceColor = data.price <= maxPrice ? '#22c55e' : '#ff7a45';
   const deltaSuffix = formatDeltaSuffix(data.vsPrevPct);
-  // LCC mix-and-match 顯示「虎航 去・捷星 回」；同家或傳統顯示「X 往返」
-  let airlineText: string;
-  if ('airline' in data) {
-    airlineText = `${data.airline} 往返`;
-  } else if (data.outboundAirline === data.returnAirline) {
-    airlineText = `${data.outboundAirline} 往返`;
-  } else {
-    airlineText = `${data.outboundAirline} 去・${data.returnAirline} 回`;
-  }
+
+  // 目標價比較（per category）
+  const diff = data.price - maxPrice;
+  const diffPct = Math.round((Math.abs(diff) / maxPrice) * 100);
+  const isBelow = diff <= 0;
+  const diffAbs = Math.abs(diff).toLocaleString();
+  const thText = isBelow
+    ? `比目標價低 NT$ ${diffAbs}（${diffPct}%）`
+    : `比目標價高 NT$ ${diffAbs}（${diffPct}%）`;
+  const thColor = isBelow ? '#22c55e' : '#94a3b8';
 
   return [
     {
@@ -482,15 +483,17 @@ function buildCategoryRowsForBubble(
       margin: 'md',
       contents: [
         { type: 'text', text: labelText, size: 'sm', color: '#666666', flex: 4 },
-        { type: 'text', text: `NT$ ${data.price.toLocaleString()}`, size: 'md', weight: 'bold', color: priceColor, flex: 5, align: 'end' }
+        { type: 'text', text: `NT$ ${data.price.toLocaleString()}${deltaSuffix}`, size: 'md', weight: 'bold', color: priceColor, flex: 5, align: 'end' }
       ]
     },
     {
       type: 'text',
-      text: `${airlineText}${deltaSuffix}`,
+      text: thText,
       size: 'xs',
-      color: '#94a3b8',
-      align: 'end'
+      color: thColor,
+      align: 'end',
+      margin: 'xs',
+      wrap: true
     }
   ];
 }
@@ -525,28 +528,12 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
   if (item.cheapestPrice == null) {
     bodyContents.push({ type: 'text', text: '❌ 查無資料', size: 'sm', color: '#cbd5e1', margin: 'sm' });
   } else {
-    // 廉航列
+    // 廉航 + 自己的目標價比較
     bodyContents.push(...buildCategoryRowsForBubble('🛩', '廉航', item.lcc, item.maxPrice, item.destination));
-    // 傳統列
+    // 兩段中間細分隔，視覺上分開
+    bodyContents.push({ type: 'separator', margin: 'md', color: '#e5e7eb' });
+    // 傳統 + 自己的目標價比較
     bodyContents.push(...buildCategoryRowsForBubble('🏢', '傳統', item.traditional, item.maxPrice, item.destination));
-
-    // 目標價比較（用跨類最低）
-    const diff = item.cheapestPrice - item.maxPrice;
-    const diffPct = Math.round((Math.abs(diff) / item.maxPrice) * 100);
-    const isBelow = diff <= 0;
-    const diffAbs = Math.abs(diff).toLocaleString();
-    const thText = isBelow
-      ? `🎯 比目標價低 NT$ ${diffAbs}（${diffPct}%）`
-      : `🎯 比目標價高 NT$ ${diffAbs}（${diffPct}%）`;
-    const thColor = isBelow ? '#22c55e' : '#94a3b8';
-    bodyContents.push({
-      type: 'text',
-      text: thText,
-      size: 'xs',
-      color: thColor,
-      wrap: true,
-      margin: 'md'
-    });
   }
 
   const body = {
