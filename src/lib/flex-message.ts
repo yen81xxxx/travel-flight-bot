@@ -505,30 +505,16 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
   const routeText = `${formatAirport(item.origin)} → ${destLabel}`;
   const dateText = `📅 ${item.outboundDate.slice(5)} ~ ${item.returnDate.slice(5)}`;
 
-  // Hero：動態 OG 圖（依目的地城市套漸層 + emoji + 路線/價格/航司疊字）
-  const heroAirport = item.cheapestAirport ?? item.destination;
-  const heroParams = new URLSearchParams({ o: item.origin, d: heroAirport });
-  if (item.cheapestPrice != null) heroParams.set('p', String(item.cheapestPrice));
-  if (item.cheapestAirline) heroParams.set('a', item.cheapestAirline);
-  const heroUrl = `${APP_URL}/api/og/sub-hero?${heroParams.toString()}`;
-  const hero = {
-    type: 'image',
-    url: heroUrl,
-    size: 'full',
-    aspectRatio: '1.91:1',
-    aspectMode: 'cover'
-  };
-
-  // Header 只剩日期（hero 已經把路線+價格秀出來）
+  // Header：路線 + 日期（大字一目了然，無 hero 重複問題）
   const header = {
     type: 'box',
     layout: 'vertical',
+    backgroundColor: '#1c1c1e',
+    paddingAll: '14px',
     contents: [
-      { type: 'text', text: routeText, weight: 'bold', size: 'sm', color: '#94a3b8', wrap: true },
+      { type: 'text', text: routeText, weight: 'bold', size: 'md', color: '#ffffff', wrap: true },
       { type: 'text', text: dateText, size: 'xs', color: '#94a3b8', margin: 'xs' }
-    ],
-    paddingAll: '10px',
-    paddingBottom: '4px'
+    ]
   };
 
   const bodyContents: Record<string, unknown>[] = [];
@@ -641,7 +627,6 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
   return {
     type: 'bubble',
     size: 'kilo',
-    hero,
     header,
     body,
     footer: {
@@ -784,25 +769,13 @@ export function buildHistoryFlex(props: HistoryFlexProps) {
     });
   }
 
-  // Hero：OG 動態圖（路線 + 最新最低價）
   void destCity;
-  const heroParams = new URLSearchParams({ o: props.origin, d: props.destination });
-  if (hasData) heroParams.set('p', String(lastPrice));
-  const heroUrl = `${APP_URL}/api/og/sub-hero?${heroParams.toString()}`;
-
   return {
     type: 'flex',
     altText: `📊 ${routeText} 歷史價格`,
     contents: {
       type: 'bubble',
       size: 'mega',
-      hero: {
-        type: 'image',
-        url: heroUrl,
-        size: 'full',
-        aspectRatio: '1.91:1',
-        aspectMode: 'cover'
-      },
       header: {
         type: 'box',
         layout: 'vertical',
