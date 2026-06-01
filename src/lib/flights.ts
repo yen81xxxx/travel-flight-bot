@@ -12,6 +12,12 @@ export interface MixedAirlineCombo {
   outboundAirline: string;
   returnAirline: string;
   price: number;
+  /**
+   * true 表示這個價格是「去程估算」而非「精確配對的來回總價」。
+   * 發生在 return list 沒廉航資料時 (e.g. 首個 outbound 不是 LCC) 的 fallback。
+   * UI 應該顯示「（估算）」提示使用者實際訂票可能差幾百元。
+   */
+  isEstimate: boolean;
 }
 
 export interface FlightAnalysis {
@@ -108,18 +114,21 @@ function pickLccCombo(outbound: FlightQuote[], ret: FlightQuote[]): MixedAirline
 
   const cheapestLccRet = pickCheapestLcc(ret);
   if (cheapestLccRet && cheapestLccRet.price != null && cheapestLccRet.airline) {
+    // 精確：return list 已是「LCC 去 + LCC 回」配對的精確來回總價
     return {
       outboundAirline: cheapestLccOut.airline!,
       returnAirline: cheapestLccRet.airline,
-      price: cheapestLccRet.price
+      price: cheapestLccRet.price,
+      isEstimate: false
     };
   }
 
-  // fallback：沒有廉航回程資料，用去程估算（同家來回）
+  // fallback：沒有廉航回程資料 → 用去程的估算（同家來回）；標 isEstimate=true
   return {
     outboundAirline: cheapestLccOut.airline!,
     returnAirline: cheapestLccOut.airline!,
-    price: cheapestLccOut.price!
+    price: cheapestLccOut.price!,
+    isEstimate: true
   };
 }
 

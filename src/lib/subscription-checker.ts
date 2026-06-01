@@ -4,7 +4,7 @@ import { analyzeFlights } from './flights';
 import { pushText } from './line';
 import { buildAlertFlex } from './flex-message';
 import { getLineClient } from './line';
-import { formatAirport } from '@/config/airports';
+import { formatAirport, getCityAirports } from '@/config/airports';
 import type { Subscription } from '@/types';
 
 interface CheckResult {
@@ -112,15 +112,26 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
   await Promise.all(Array.from(groups).map(async ([key, subList]) => {
     const [origin, destination, outboundDate, returnDate] = key.split('|');
     try {
-      const search = await searchFlights({
-        origin,
-        destination,
-        outboundDate,
-        returnDate
-      });
-      result.serpapiCalls += search.serpapiCalls;
-      const analysis = analyzeFlights(search.outbound, search.return);
-      const cheapest = analysis.cheapestRoundTripPrice;
+      // 多機場城市（東京 = HND + NRT）fan-out — 跟 daily-search 一致
+      const destAirports = getCityAirports(destination);
+      const fanout = await Promise.all(
+        destAirports.map(async d => {
+          const s = await searchFlights({ origin, destination: d, outboundDate, returnDate });
+          return { destination: d, result: s, analysis: analyzeFlights(s.outbound, s.return) };
+        })
+      );
+      for (const f of fanout) result.serpapiCalls += f.result.serpapiCalls;
+
+      // 跨機場挑最便宜的 analysis（給 alert flex 用）
+      let analysis = fanout[0].analysis;
+      let cheapest = analysis.cheapestRoundTripPrice;
+      for (const f of fanout.slice(1)) {
+        const p = f.analysis.cheapestRoundTripPrice;
+        if (p != null && (cheapest == null || p < cheapest)) {
+          analysis = f.analysis;
+          cheapest = p;
+        }
+      }
 
       if (cheapest == null) return;
 

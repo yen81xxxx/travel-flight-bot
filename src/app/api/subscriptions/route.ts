@@ -90,7 +90,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     dedupQuery = dedupQuery.is('return_date', null);
   }
 
-  const { data: existing } = await dedupQuery.maybeSingle();
+  // 用 limit(1) 防止舊資料有重複 row 時 maybeSingle 拋例外（PGRST116）
+  const { data: existingArr } = await dedupQuery.order('id', { ascending: true }).limit(1);
+  const existing = existingArr?.[0] ?? null;
 
   if (existing) {
     const { error } = await supabase

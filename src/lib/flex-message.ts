@@ -366,6 +366,7 @@ export interface MultiSubsItem {
     outboundAirline: string;
     returnAirline: string;
     vsPrevPct: number | null;
+    isEstimate?: boolean;  // true → 來源是去程估算（非精確配對）
   } | null;
   // 傳統航空分類詳細（同家來回）
   traditional?: {
@@ -464,6 +465,9 @@ function buildCategoryRowsForBubble(
   }
 
   const priceColor = data.price <= maxPrice ? '#22c55e' : '#ff7a45';
+  // 廉航 fallback 是「去程估算」，加 ＊ 標示提醒實際訂票價可能差幾百元
+  const isEst = 'isEstimate' in data && data.isEstimate === true;
+  const priceText = `NT$ ${data.price.toLocaleString()}${isEst ? '＊' : ''}`;
 
   // 目標價比較（per category）
   const diff = data.price - maxPrice;
@@ -488,7 +492,7 @@ function buildCategoryRowsForBubble(
       margin: 'md',
       contents: [
         { type: 'text', text: labelText, size: 'sm', color: '#666666', flex: 4 },
-        { type: 'text', text: `NT$ ${data.price.toLocaleString()}`, size: 'md', weight: 'bold', color: priceColor, flex: 5, align: 'end' }
+        { type: 'text', text: priceText, size: 'md', weight: 'bold', color: priceColor, flex: 5, align: 'end' }
       ]
     },
     {

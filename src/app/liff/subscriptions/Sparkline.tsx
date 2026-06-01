@@ -15,11 +15,13 @@ interface Point {
   minPrice: number;
 }
 
-type RangeKey = 7 | 30 | 365;
+// flight_quotes 表保留 30 天（cleanup.ts），所以最多顯示到 30 天區間
+// 之前還有「1 年」選項但實際 ≤ 30 天，會誤導使用者
+type RangeKey = 7 | 14 | 30;
 const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
   { key: 7, label: '7 天' },
-  { key: 30, label: '30 天' },
-  { key: 365, label: '1 年' }
+  { key: 14, label: '14 天' },
+  { key: 30, label: '30 天' }
 ];
 
 /**

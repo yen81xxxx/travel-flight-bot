@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
+import { getCityAirports } from '@/config/airports';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,11 +29,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const supabase = getSupabase();
   const since = new Date(Date.now() - days * 86400_000).toISOString();
 
+  // 多機場城市（東京 = HND + NRT）合併，跟 bot 的歷史 flex 邏輯一致
+  const allAirports = getCityAirports(destination);
   let query = supabase
     .from('flight_quotes')
     .select('queried_at, price, trip_leg, outbound_date, return_date')
     .eq('origin', origin)
-    .eq('destination', destination)
+    .in('destination', allAirports)
+    .eq('stops', 0)
     .gte('queried_at', since)
     .not('price', 'is', null);
 

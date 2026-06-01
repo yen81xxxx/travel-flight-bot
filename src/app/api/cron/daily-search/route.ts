@@ -102,7 +102,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   // 5a) 全部 routes 平行 fetch（不在這裡 push，先把所有 route 算好存起來）
   // ============================================
   interface RouteResult {
-    bestLcc: { price: number; outboundAirline: string; returnAirline: string; airport: string } | null;
+    bestLcc: { price: number; outboundAirline: string; returnAirline: string; airport: string; isEstimate: boolean } | null;
     bestTrad: { price: number; airline: string; airport: string } | null;
     bestCheapest: { price: number; airline: string | null; airport: string; category: 'lcc' | 'full-service' | null } | null;
     bestCachedAt: string | null;
@@ -239,7 +239,8 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
           airport: route.bestLcc.airport,
           outboundAirline: route.bestLcc.outboundAirline,
           returnAirline: route.bestLcc.returnAirline,
-          vsPrevPct: route.lccVsPrevPct
+          vsPrevPct: route.lccVsPrevPct,
+          isEstimate: route.bestLcc.isEstimate
         } : null,
         traditional: route.bestTrad ? {
           price: route.bestTrad.price,
@@ -360,7 +361,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     ok: pushedFail === 0,
     // 部署版本標記 — 改卡片版面時 bump 一下，方便從 API 回應驗證新 code 是否真的上線
-    cardVersion: 'v29-fix-4-critical-bugs-2026-06-01',
+    cardVersion: 'v30-fix-5-high-bugs-2026-06-01',
     daily: {
       sourcesTargeted: targets.length,
       sourcesOptedOut: optedOut.size,
