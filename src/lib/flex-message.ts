@@ -464,16 +464,21 @@ function buildCategoryRowsForBubble(
   }
 
   const priceColor = data.price <= maxPrice ? '#22c55e' : '#ff7a45';
-  const deltaSuffix = formatDeltaSuffix(data.vsPrevPct);
 
   // 目標價比較（per category）
   const diff = data.price - maxPrice;
   const diffPct = Math.round((Math.abs(diff) / maxPrice) * 100);
   const isBelow = diff <= 0;
   const diffAbs = Math.abs(diff).toLocaleString();
-  const thText = isBelow
+  const thBase = isBelow
     ? `比目標價低 NT$ ${diffAbs}（${diffPct}%）`
     : `比目標價高 NT$ ${diffAbs}（${diffPct}%）`;
+  // vs 昨日 delta 加在目標價比較行尾（變化 < 1% 不顯示）
+  const deltaPct = data.vsPrevPct;
+  let deltaSegment = '';
+  if (deltaPct != null && Math.abs(deltaPct) >= 1) {
+    deltaSegment = deltaPct < 0 ? ` · 較昨日 ↓${Math.abs(deltaPct)}%` : ` · 較昨日 ↑${deltaPct}%`;
+  }
   const thColor = isBelow ? '#22c55e' : '#94a3b8';
 
   return [
@@ -483,12 +488,12 @@ function buildCategoryRowsForBubble(
       margin: 'md',
       contents: [
         { type: 'text', text: labelText, size: 'sm', color: '#666666', flex: 4 },
-        { type: 'text', text: `NT$ ${data.price.toLocaleString()}${deltaSuffix}`, size: 'md', weight: 'bold', color: priceColor, flex: 5, align: 'end' }
+        { type: 'text', text: `NT$ ${data.price.toLocaleString()}`, size: 'md', weight: 'bold', color: priceColor, flex: 5, align: 'end' }
       ]
     },
     {
       type: 'text',
-      text: thText,
+      text: `${thBase}${deltaSegment}`,
       size: 'xs',
       color: thColor,
       align: 'end',
