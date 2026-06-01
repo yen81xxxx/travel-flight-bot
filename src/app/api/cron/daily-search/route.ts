@@ -42,7 +42,9 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
     .eq('active', true)
     .eq('paused', false);
   const allSubs = ((rawSubs ?? []) as Subscription[]).filter(s =>
-    !s.outbound_date || s.outbound_date >= today
+    // 必須有 outbound_date 且未過期；沒日期或未來無效日期的訂閱直接跳過
+    // （之前用 ?? '' 會把空字串送進 SerpApi → 400 → 每天浪費 retry 配額）
+    !!s.outbound_date && !!s.return_date && s.outbound_date >= today
   );
 
   // ============================================
@@ -358,7 +360,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     ok: pushedFail === 0,
     // 部署版本標記 — 改卡片版面時 bump 一下，方便從 API 回應驗證新 code 是否真的上線
-    cardVersion: 'v28-history-both-categories-2026-06-01',
+    cardVersion: 'v29-fix-4-critical-bugs-2026-06-01',
     daily: {
       sourcesTargeted: targets.length,
       sourcesOptedOut: optedOut.size,

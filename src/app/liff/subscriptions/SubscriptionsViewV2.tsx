@@ -131,11 +131,9 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
 
     setDeleting(subId);
     try {
-      const res = await fetch(`/api/subscriptions/${subId}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceId: subSourceId })
-      });
+      // 後端 API 用 query params，不是 path style
+      const url = `/api/subscriptions?id=${subId}&sourceId=${encodeURIComponent(subSourceId)}`;
+      const res = await fetch(url, { method: 'DELETE' });
 
       const data = await res.json();
       if (data.ok) {

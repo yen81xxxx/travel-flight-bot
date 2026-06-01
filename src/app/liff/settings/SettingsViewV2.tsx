@@ -15,8 +15,18 @@ export default function SettingsViewV2({ liffId }: Props) {
   const { liffReady, user } = useLiff(liffId);
   const sourceId = user?.userId ?? null;
 
-  // 群組上下文
-  const [groupCtxId] = useSessionStorage<string | null>('liff_ctx', null);
+  // 群組上下文（從 URL ?ctx= 或 sessionStorage 取）
+  const [groupCtxId, setGroupCtxId] = useSessionStorage<string | null>('liff_ctx', null);
+
+  // 初始化 ctx：先看 URL 再 fallback sessionStorage
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const ctx = params.get('ctx');
+    if (ctx && (ctx.startsWith('C') || ctx.startsWith('R'))) {
+      setGroupCtxId(ctx);
+    }
+  }, [setGroupCtxId]);
 
   // 設定狀態
   const [quietStart, setQuietStart] = useState('22:00');
@@ -37,15 +47,19 @@ export default function SettingsViewV2({ liffId }: Props) {
     const targetSourceId = groupCtxId ?? sourceId;
     setError(null);
 
-    fetch(`/api/settings?sourceId=${encodeURIComponent(targetSourceId)}`)
+    fetch(`/api/notification-settings?sourceId=${encodeURIComponent(targetSourceId)}`)
       .then(r => r.json())
       .then(data => {
         if (data.ok && data.settings) {
-          setQuietStart(data.settings.quietStart || '22:00');
-          setQuietEnd(data.settings.quietEnd || '08:00');
-          setQuietEnabled(data.settings.quietEnabled !== false);
-          setDailySummary(data.settings.dailySummary !== false);
-          setPriceAlerts(data.settings.priceAlerts !== false);
+          // API 回 snake_case，前端用 camelCase
+          const s = data.settings;
+          // quietStart/quietEnd 為 null 代表「靜音關閉」
+          const hasQuiet = s.quiet_start != null && s.quiet_end != null;
+          setQuietStart(s.quiet_start || '22:00');
+          setQuietEnd(s.quiet_end || '08:00');
+          setQuietEnabled(hasQuiet);
+          setDailySummary(s.daily_summary !== false);
+          setPriceAlerts(s.price_alerts !== false);
         }
       })
       .catch(err => setError(err.message));
@@ -61,14 +75,14 @@ export default function SettingsViewV2({ liffId }: Props) {
 
     try {
       const targetSourceId = groupCtxId ?? sourceId;
-      const res = await fetch('/api/settings', {
+      // quietEnabled === false → start/end 送 null 才能讓 sub-checker 真的不擋
+      const res = await fetch('/api/notification-settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sourceId: targetSourceId,
-          quietStart,
-          quietEnd,
-          quietEnabled,
+          quietStart: quietEnabled ? quietStart : null,
+          quietEnd: quietEnabled ? quietEnd : null,
           dailySummary,
           priceAlerts
         })
