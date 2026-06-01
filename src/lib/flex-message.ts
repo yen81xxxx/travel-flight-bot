@@ -353,11 +353,27 @@ export interface MultiSubsItem {
   returnDate: string;
   maxPrice: number;              // threshold
   label?: string | null;
+  // 跨類最低（用來決定 hero 圖、目標價比較、預設 footer 動作）
   cheapestPrice: number | null;
-  cheapestAirport: string | null;        // 跨機場勝出的那一個
+  cheapestAirport: string | null;
   cheapestCategory: 'lcc' | 'full-service' | null;
   cheapestAirline: string | null;
   vsPrevPct: number | null;
+  // 廉航分類詳細（mix-and-match 組合）
+  lcc?: {
+    price: number;
+    airport: string;
+    outboundAirline: string;
+    returnAirline: string;
+    vsPrevPct: number | null;
+  } | null;
+  // 傳統航空分類詳細（同家來回）
+  traditional?: {
+    price: number;
+    airport: string;
+    airline: string;
+    vsPrevPct: number | null;
+  } | null;
 }
 
 interface MultiSubsDailyFlexProps {
@@ -419,6 +435,66 @@ function buildOverviewBubble(count: number, sourceId: string, cachedAt?: string 
   };
 }
 
+/**
+ * 卡片內單一分類列（廉航 or 傳統）：兩段組成
+ *   行 1：🛩 廉航 (HND)     NT$ 13,414
+ *   行 2：           台灣虎航 往返 ↓5%
+ * 沒資料時顯示「— 查無」
+ */
+function buildCategoryRowsForBubble(
+  icon: string,
+  label: string,
+  data: MultiSubsItem['lcc'] | MultiSubsItem['traditional'] | null | undefined,
+  maxPrice: number,
+  subscribedDest: string
+): Record<string, unknown>[] {
+  const showAirport = data?.airport && data.airport !== subscribedDest;
+  const labelText = showAirport ? `${icon} ${label} (${data!.airport})` : `${icon} ${label}`;
+
+  if (!data) {
+    return [{
+      type: 'box',
+      layout: 'baseline',
+      margin: 'md',
+      contents: [
+        { type: 'text', text: labelText, size: 'sm', color: '#666666', flex: 4 },
+        { type: 'text', text: '— 查無', size: 'sm', color: '#cbd5e1', flex: 5, align: 'end' }
+      ]
+    }];
+  }
+
+  const priceColor = data.price <= maxPrice ? '#22c55e' : '#ff7a45';
+  const deltaSuffix = formatDeltaSuffix(data.vsPrevPct);
+  // LCC mix-and-match 顯示「虎航 去・捷星 回」；同家或傳統顯示「X 往返」
+  let airlineText: string;
+  if ('airline' in data) {
+    airlineText = `${data.airline} 往返`;
+  } else if (data.outboundAirline === data.returnAirline) {
+    airlineText = `${data.outboundAirline} 往返`;
+  } else {
+    airlineText = `${data.outboundAirline} 去・${data.returnAirline} 回`;
+  }
+
+  return [
+    {
+      type: 'box',
+      layout: 'baseline',
+      margin: 'md',
+      contents: [
+        { type: 'text', text: labelText, size: 'sm', color: '#666666', flex: 4 },
+        { type: 'text', text: `NT$ ${data.price.toLocaleString()}`, size: 'md', weight: 'bold', color: priceColor, flex: 5, align: 'end' }
+      ]
+    },
+    {
+      type: 'text',
+      text: `${airlineText}${deltaSuffix}`,
+      size: 'xs',
+      color: '#94a3b8',
+      align: 'end'
+    }
+  ];
+}
+
 /** Carousel 第 2~N 張：每筆訂閱一個 bubble（hero 動態渲染城市主題圖）*/
 function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, unknown> {
   const showAirport = item.cheapestAirport && item.cheapestAirport !== item.destination;
@@ -463,31 +539,12 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
   if (item.cheapestPrice == null) {
     bodyContents.push({ type: 'text', text: '❌ 查無資料', size: 'sm', color: '#cbd5e1', margin: 'sm' });
   } else {
-    const priceColor = item.cheapestPrice <= item.maxPrice ? '#22c55e' : '#ff7a45';
-    const catIcon = item.cheapestCategory === 'lcc' ? '🛩' : '🏢';
-    const airlineLabel = `${catIcon} ${item.cheapestAirline ?? '—'}`;
-    const deltaSuffix = formatDeltaSuffix(item.vsPrevPct);
+    // 廉航列
+    bodyContents.push(...buildCategoryRowsForBubble('🛩', '廉航', item.lcc, item.maxPrice, item.destination));
+    // 傳統列
+    bodyContents.push(...buildCategoryRowsForBubble('🏢', '傳統', item.traditional, item.maxPrice, item.destination));
 
-    // 航司 + delta
-    bodyContents.push({
-      type: 'text',
-      text: `${airlineLabel}${deltaSuffix}`,
-      size: 'sm',
-      color: '#666666'
-    });
-
-    // 大字價格
-    bodyContents.push({
-      type: 'box',
-      layout: 'baseline',
-      margin: 'md',
-      contents: [
-        { type: 'text', text: 'NT$', size: 'sm', color: '#666666', flex: 0 },
-        { type: 'text', text: item.cheapestPrice.toLocaleString(), size: '3xl', weight: 'bold', color: priceColor, margin: 'sm' }
-      ]
-    });
-
-    // 目標價比較
+    // 目標價比較（用跨類最低）
     const diff = item.cheapestPrice - item.maxPrice;
     const diffPct = Math.round((Math.abs(diff) / item.maxPrice) * 100);
     const isBelow = diff <= 0;
@@ -502,7 +559,7 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
       size: 'xs',
       color: thColor,
       wrap: true,
-      margin: 'sm'
+      margin: 'md'
     });
   }
 

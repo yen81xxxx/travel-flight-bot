@@ -231,7 +231,20 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
         cheapestAirport: route.bestCheapest.airport,
         cheapestCategory: route.bestCheapest.category,
         cheapestAirline: route.bestCheapest.airline,
-        vsPrevPct: vsPrev
+        vsPrevPct: vsPrev,
+        lcc: route.bestLcc ? {
+          price: route.bestLcc.price,
+          airport: route.bestLcc.airport,
+          outboundAirline: route.bestLcc.outboundAirline,
+          returnAirline: route.bestLcc.returnAirline,
+          vsPrevPct: route.lccVsPrevPct
+        } : null,
+        traditional: route.bestTrad ? {
+          price: route.bestTrad.price,
+          airport: route.bestTrad.airport,
+          airline: route.bestTrad.airline,
+          vsPrevPct: route.tradVsPrevPct
+        } : null
       };
     });
 
@@ -345,7 +358,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     ok: pushedFail === 0,
     // 部署版本標記 — 改卡片版面時 bump 一下，方便從 API 回應驗證新 code 是否真的上線
-    cardVersion: 'v23-share-in-line-2026-05-28',
+    cardVersion: 'v24-restore-dual-category-2026-05-28',
     daily: {
       sourcesTargeted: targets.length,
       sourcesOptedOut: optedOut.size,
