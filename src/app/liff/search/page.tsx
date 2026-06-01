@@ -1,5 +1,6 @@
 import { TW_ORIGINS, JP_DESTINATIONS } from '@/config/airports';
 import SearchFormV2 from './SearchFormV2';
+import RedirectGate from './RedirectGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,10 +13,12 @@ export default function LiffSearchPage() {
   const liffId = process.env.NEXT_PUBLIC_LIFF_ID ?? '';
 
   return (
-    <SearchFormV2
-      liffId={liffId}
-      twAirports={TW_ORIGINS}
-      jpAirports={JP_DESTINATIONS}
-    />
+    <RedirectGate>
+      <SearchFormV2
+        liffId={liffId}
+        twAirports={TW_ORIGINS}
+        jpAirports={JP_DESTINATIONS}
+      />
+    </RedirectGate>
   );
 }

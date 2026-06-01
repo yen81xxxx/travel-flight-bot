@@ -587,8 +587,12 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
         uri: skyscannerUrlForCategory(item.cheapestCategory, item.origin, item.cheapestAirport, item.outboundDate, item.returnDate)
       }
     });
-    // ↪ 分享按鈕（彎曲箭頭符號跟 LINE 原生分享一致）
+    // ↪ 分享按鈕：用 LIFF deep link 才會在 LINE 內 in-app browser 開
+    // （直接 vercel.app URL 會跳外部瀏覽器 → liff.isInClient() false → 分享失敗）
+    // RedirectGate 會在 LIFF endpoint 攔截 goto=share 後 client-side replace 到 /liff/share
+    const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID;
     const shareParams = new URLSearchParams({
+      goto: 'share',
       o: item.origin,
       d: item.destination,
       out: item.outboundDate,
@@ -597,6 +601,10 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
       p: String(item.cheapestPrice),
     });
     if (item.cheapestAirline) shareParams.set('a', item.cheapestAirline);
+    // 沒設 LIFF_ID 就退回原本（這條情境基本不會發生，但 typecheck 友善）
+    const shareUri = LIFF_ID
+      ? `https://liff.line.me/${LIFF_ID}?${shareParams.toString()}`
+      : `${APP_URL}/liff/share?${shareParams.toString()}`;
     footerContents.push({
       type: 'button',
       style: 'link',
@@ -604,7 +612,7 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
       action: {
         type: 'uri',
         label: '↪ 分享給朋友',
-        uri: `${APP_URL}/liff/share?${shareParams.toString()}`
+        uri: shareUri
       }
     });
   } else {
