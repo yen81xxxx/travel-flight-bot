@@ -608,35 +608,10 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
         displayText: `查 ${item.origin}→${item.destination} 歷史走勢`
       }
     });
-    // Skyscanner 按鈕已移到 body 內每個分類底下（避免使用者不知道是用哪個分類的篩選）
-    // ↪ 分享按鈕：用 LIFF deep link 才會在 LINE 內 in-app browser 開
-    // （直接 vercel.app URL 會跳外部瀏覽器 → liff.isInClient() false → 分享失敗）
-    // RedirectGate 會在 LIFF endpoint 攔截 goto=share 後 client-side replace 到 /liff/share
-    const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID;
-    const shareParams = new URLSearchParams({
-      goto: 'share',
-      o: item.origin,
-      d: item.destination,
-      out: item.outboundDate,
-      ret: item.returnDate,
-      max: String(item.maxPrice),
-      p: String(item.cheapestPrice),
-    });
-    if (item.cheapestAirline) shareParams.set('a', item.cheapestAirline);
-    // 沒設 LIFF_ID 就退回原本（這條情境基本不會發生，但 typecheck 友善）
-    const shareUri = LIFF_ID
-      ? `https://liff.line.me/${LIFF_ID}?${shareParams.toString()}`
-      : `${APP_URL}/liff/share?${shareParams.toString()}`;
-    footerContents.push({
-      type: 'button',
-      style: 'link',
-      height: 'sm',
-      action: {
-        type: 'uri',
-        label: '↪ 分享給朋友',
-        uri: shareUri
-      }
-    });
+    // Skyscanner 按鈕已移到 body 內每個分類底下
+    // 分享按鈕暫移除：liff.shareTargetPicker 在 LINE in-app browser 內仍判 isInClient false
+    // 原因疑似 LIFF channel scope 未配置 + LIFF auth flow 在 deep link 場景不穩。
+    // /liff/share 頁面保留，等之後重做時可用。
   } else {
     footerContents.push({
       type: 'button',
