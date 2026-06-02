@@ -7,7 +7,6 @@ import { useLiff } from '@/hooks/useLiff';
 import { Alert, Badge, Button, EmptyState, Spinner } from '@/components';
 import type { Subscription } from '@/types';
 import TabNav from '../TabNav';
-import Sparkline from './Sparkline';
 
 interface Props {
   liffId: string;
@@ -30,6 +29,13 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
+
+  // 改價 modal 狀態
+  const [editingSub, setEditingSub] = useState<ItemWithSource | null>(null);
+  const [editMainPrice, setEditMainPrice] = useState<string>('');
+  const [editTradEnabled, setEditTradEnabled] = useState<boolean>(false);
+  const [editTradPrice, setEditTradPrice] = useState<string>('');
+  const [editSaving, setEditSaving] = useState<boolean>(false);
 
   // 初始化群組 ID（URL → sessionStorage + localStorage）
   useEffect(() => {
@@ -83,53 +89,41 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
       .finally(() => setLoading(false));
   }, [sourceId, groupCtxId, knownGroupCtxs]);
 
-  // 改目標價（兩階段 prompt：主目標價 → 是否「傳統航空另設」）
-  const handleEditPrice = async (sub: ItemWithSource) => {
+  // 改目標價 — 開啟 modal（取代 native prompt + confirm 串接，UI 直觀看到「傳統另設」勾選）
+  const openEditModal = (sub: ItemWithSource) => {
     if (sub.id == null) return;
     const current = Number(sub.max_price);
     const currentTrad = sub.max_price_traditional != null ? Number(sub.max_price_traditional) : null;
+    setEditingSub(sub);
+    setEditMainPrice(String(current));
+    setEditTradEnabled(currentTrad != null);
+    setEditTradPrice(String(currentTrad ?? Math.round(current * 2)));  // 預設建議 主×2（符合 LCC vs FS 量級差）
+  };
 
-    // 第 1 階段：主目標價（廉航 + 傳統的 fallback）
-    const input = window.prompt(
-      `修改「${sub.origin}→${sub.destination}」主目標價` +
-      `\n（廉航 + 傳統未另設時都用此值，當前 NT$ ${current.toLocaleString()}）\n\n` +
-      '輸入新的主目標價（NT$）：',
-      String(current)
-    );
-    if (input == null) return;
-    const newPrice = parseInt(input.replace(/[^0-9]/g, ''), 10);
+  const closeEditModal = () => {
+    if (editSaving) return;
+    setEditingSub(null);
+  };
+
+  const submitEditPrice = async () => {
+    if (!editingSub || editingSub.id == null) return;
+    const newPrice = parseInt(editMainPrice.replace(/[^0-9]/g, ''), 10);
     if (isNaN(newPrice) || newPrice <= 0) {
-      alert('請輸入大於 0 的數字');
+      alert('主目標價：請輸入大於 0 的數字');
       return;
     }
-
-    // 第 2 階段：是否要為傳統航空另設目標價
-    let newTradPrice: number | null | undefined = undefined;  // undefined = 不變
-    const askTrad = window.confirm(
-      `傳統航空 (星宇/長榮) 是否另設目標價？\n\n` +
-      `OK = 另設（會接著問價格）\n取消 = 跟隨主目標價 NT$ ${newPrice.toLocaleString()}`
-    );
-    if (askTrad) {
-      const tradInput = window.prompt(
-        `傳統航空目標價（當前 ${currentTrad != null ? 'NT$ ' + currentTrad.toLocaleString() : '跟隨主目標'}）\n\n` +
-        '輸入金額（NT$）：',
-        String(currentTrad ?? Math.round(newPrice * 2))  // 預設建議 主×2 (符合 LCC vs FS 量級差)
-      );
-      if (tradInput == null) return;
-      const tradVal = parseInt(tradInput.replace(/[^0-9]/g, ''), 10);
+    let newTradPrice: number | null = null;
+    if (editTradEnabled) {
+      const tradVal = parseInt(editTradPrice.replace(/[^0-9]/g, ''), 10);
       if (isNaN(tradVal) || tradVal <= 0) {
-        alert('請輸入大於 0 的數字');
+        alert('傳統目標價：請輸入大於 0 的數字');
         return;
       }
       newTradPrice = tradVal;
-    } else {
-      // 不另設：明確清掉舊的「傳統另設」值（送 null）
-      newTradPrice = null;
     }
-
-    if (newPrice === current && newTradPrice === currentTrad) return;  // no change
-
+    const sub = editingSub;
     const subSourceId = sub.source_id ?? groupCtxId ?? sourceId;
+    setEditSaving(true);
     try {
       const res = await fetch('/api/subscriptions', {
         method: 'PATCH',
@@ -138,7 +132,7 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
           id: sub.id,
           sourceId: subSourceId,
           maxPrice: newPrice,
-          maxPriceTraditional: newTradPrice
+          maxPriceTraditional: newTradPrice  // null = 跟隨主目標
         })
       });
       const data = await res.json();
@@ -146,12 +140,14 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
         alert('改價失敗：' + (data.error ?? '未知錯誤'));
         return;
       }
-      // 更新 local state（避免要重 fetch 整列）
       setItems(prev => prev.map(item =>
         item.id === sub.id ? { ...item, max_price: newPrice, max_price_traditional: newTradPrice } : item
       ));
+      setEditingSub(null);
     } catch (err) {
       alert('改價失敗：' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -295,20 +291,13 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                             )}
                           </div>
 
-                          <Sparkline
-                            origin={sub.origin}
-                            destination={sub.destination}
-                            outboundDate={sub.outbound_date}
-                            returnDate={sub.return_date}
-                            threshold={Number(sub.max_price)}
-                          />
                         </div>
 
                         <div className="sub-actions">
                           <Button
                             variant="secondary"
                             size="sm"
-                            onClick={() => handleEditPrice(sub)}
+                            onClick={() => openEditModal(sub)}
                             title="修改目標價"
                           >
                             ✏️ 改價
@@ -329,6 +318,78 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {editingSub && (
+          <div className="edit-modal-backdrop" onClick={closeEditModal}>
+            <div className="edit-modal" onClick={e => e.stopPropagation()}>
+              <div className="edit-modal-header">
+                <h2>修改目標價</h2>
+                <div className="edit-modal-route">
+                  ✈️ {editingSub.origin} → {editingSub.destination}
+                </div>
+              </div>
+
+              <div className="edit-modal-body">
+                <div className="edit-field">
+                  <label htmlFor="edit-main-price">主目標價 (NT$)</label>
+                  <div className="edit-field-hint">廉航 + 傳統未另設時都用此值</div>
+                  <input
+                    id="edit-main-price"
+                    type="text"
+                    inputMode="numeric"
+                    value={editMainPrice}
+                    onChange={e => setEditMainPrice(e.target.value)}
+                    placeholder="例如 15000"
+                    autoFocus
+                  />
+                </div>
+
+                <label className="edit-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={editTradEnabled}
+                    onChange={e => setEditTradEnabled(e.target.checked)}
+                  />
+                  <span>傳統航空另設目標價</span>
+                </label>
+
+                {editTradEnabled && (
+                  <div className="edit-field">
+                    <label htmlFor="edit-trad-price">傳統航空目標價 (NT$)</label>
+                    <div className="edit-field-hint">星宇 / 長榮 / 華航 等用此值</div>
+                    <input
+                      id="edit-trad-price"
+                      type="text"
+                      inputMode="numeric"
+                      value={editTradPrice}
+                      onChange={e => setEditTradPrice(e.target.value)}
+                      placeholder="例如 27000"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="edit-modal-actions">
+                <button
+                  type="button"
+                  className="edit-btn-cancel"
+                  onClick={closeEditModal}
+                  disabled={editSaving}
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  className="edit-btn-save"
+                  onClick={submitEditPrice}
+                  disabled={editSaving}
+                >
+                  {editSaving ? '儲存中…' : '儲存'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -561,6 +622,135 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
           }
           .sub-actions :global(button:disabled) {
             opacity: 0.4;
+          }
+
+          /* iOS-style modal */
+          .edit-modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+          }
+          .edit-modal {
+            background: #1c1c1e;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 360px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            border: 0.5px solid rgba(84, 84, 88, 0.65);
+          }
+          .edit-modal-header {
+            padding: 18px 20px 12px;
+            text-align: center;
+            border-bottom: 0.5px solid rgba(84, 84, 88, 0.65);
+          }
+          .edit-modal-header h2 {
+            font-size: 17px;
+            font-weight: 600;
+            color: #ffffff;
+            margin: 0 0 4px;
+            letter-spacing: -0.41px;
+          }
+          .edit-modal-route {
+            font-size: 13px;
+            color: rgba(235, 235, 245, 0.6);
+            letter-spacing: -0.08px;
+          }
+          .edit-modal-body {
+            padding: 16px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+          }
+          .edit-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+          }
+          .edit-field label {
+            font-size: 13px;
+            font-weight: 500;
+            color: rgba(235, 235, 245, 0.9);
+            letter-spacing: -0.08px;
+          }
+          .edit-field-hint {
+            font-size: 11px;
+            color: rgba(235, 235, 245, 0.45);
+            letter-spacing: -0.06px;
+            margin-bottom: 4px;
+          }
+          .edit-field input[type="text"] {
+            background: rgba(120, 120, 128, 0.24);
+            border: none;
+            border-radius: 10px;
+            padding: 12px 14px;
+            color: #ffffff;
+            font-size: 17px;
+            font-weight: 500;
+            font-feature-settings: 'tnum' 1;
+            outline: none;
+            transition: background 0.15s ease;
+          }
+          .edit-field input[type="text"]:focus {
+            background: rgba(120, 120, 128, 0.36);
+          }
+          .edit-checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: rgba(120, 120, 128, 0.16);
+            border-radius: 10px;
+            cursor: pointer;
+            user-select: none;
+          }
+          .edit-checkbox-row input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            accent-color: #0a84ff;
+            margin: 0;
+            cursor: pointer;
+          }
+          .edit-checkbox-row span {
+            font-size: 15px;
+            color: #ffffff;
+            letter-spacing: -0.24px;
+          }
+          .edit-modal-actions {
+            display: flex;
+            border-top: 0.5px solid rgba(84, 84, 88, 0.65);
+          }
+          .edit-modal-actions button {
+            flex: 1;
+            background: transparent;
+            border: none;
+            padding: 14px;
+            font-size: 17px;
+            color: #0a84ff;
+            cursor: pointer;
+            letter-spacing: -0.41px;
+            transition: background 0.15s ease;
+          }
+          .edit-modal-actions button:hover:not(:disabled) {
+            background: rgba(120, 120, 128, 0.16);
+          }
+          .edit-modal-actions button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+          }
+          .edit-btn-cancel {
+            color: rgba(235, 235, 245, 0.6) !important;
+            border-right: 0.5px solid rgba(84, 84, 88, 0.65) !important;
+          }
+          .edit-btn-save {
+            font-weight: 600 !important;
           }
 
           @media (max-width: 640px) {
