@@ -251,8 +251,8 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                   <header className="route-header">
                     <div className="route-cities">
                       <span className="route-city">{originCity}</span>
-                      <svg className="route-plane-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <path d="M2.5 19.5L21.5 12 2.5 4.5l1 6L17 12 3.5 13.5l-1 6z" fill="currentColor" />
+                      <svg className="route-plane-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M21 16v-2l-8-5V3.5C13 2.67 12.33 2 11.5 2S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="currentColor" />
                       </svg>
                       <span className="route-city">{destCity}</span>
                     </div>
@@ -308,23 +308,32 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                           )}
 
                           <div className="price-block">
-                            <div className="price-main">
-                              <div className="price-main-left">
-                                <div className="price-main-label">目標價</div>
-                                <div className="price-main-hint">廉航 / 傳統 fallback</div>
+                            <div className="price-row price-row-main">
+                              <div className="price-row-label">
+                                {sub.max_price_traditional != null ? (
+                                  <>
+                                    <span className="price-tag price-tag-lcc">廉航</span>
+                                    <span className="price-row-hint">虎航 / 樂桃 / 捷星 / 酷航</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="price-row-title">目標價</span>
+                                    <span className="price-row-hint">廉航 / 傳統 共用</span>
+                                  </>
+                                )}
                               </div>
-                              <div className="price-main-value">
+                              <div className="price-row-value price-row-value-main">
                                 <span className="ccy">NT$</span>
                                 {sub.max_price.toLocaleString()}
                               </div>
                             </div>
                             {sub.max_price_traditional != null && (
-                              <div className="price-trad">
-                                <div className="price-trad-label">
-                                  <span className="price-trad-tag">傳統</span>
-                                  星宇 / 長榮 / 華航
+                              <div className="price-row price-row-trad">
+                                <div className="price-row-label">
+                                  <span className="price-tag price-tag-trad">傳統</span>
+                                  <span className="price-row-hint">星宇 / 長榮 / 華航</span>
                                 </div>
-                                <div className="price-trad-value">
+                                <div className="price-row-value price-row-value-trad">
                                   <span className="ccy">NT$</span>
                                   {Number(sub.max_price_traditional).toLocaleString()}
                                 </div>
@@ -684,85 +693,83 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
           .price-block {
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 0;
             padding: 14px;
             background: rgba(120, 120, 128, 0.10);
             border-radius: 12px;
           }
-          .price-main {
+          .price-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 12px;
+            padding: 4px 0;
           }
-          .price-main-left {
+          .price-row-trad {
+            padding-top: 12px;
+            margin-top: 8px;
+            border-top: 0.5px dashed rgba(235, 235, 245, 0.14);
+          }
+          .price-row-label {
             display: flex;
-            flex-direction: column;
-            gap: 2px;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
           }
-          .price-main-label {
+          .price-row-title {
             font-size: 13px;
             font-weight: 600;
             color: #ffffff;
             letter-spacing: -0.08px;
           }
-          .price-main-hint {
+          .price-row-hint {
             font-size: 11px;
-            color: rgba(235, 235, 245, 0.45);
+            color: rgba(235, 235, 245, 0.5);
             letter-spacing: -0.06px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
           }
-          .price-main-value {
-            font-size: 24px;
+          .price-tag {
+            font-size: 10px;
             font-weight: 700;
-            color: #ffffff;
-            letter-spacing: -0.3px;
+            padding: 3px 7px;
+            border-radius: 5px;
+            letter-spacing: 0.5px;
+            flex-shrink: 0;
+          }
+          .price-tag-lcc {
+            color: #64d2ff;
+            background: rgba(100, 210, 255, 0.16);
+          }
+          .price-tag-trad {
+            color: #ffd60a;
+            background: rgba(255, 214, 10, 0.14);
+          }
+          .price-row-value {
             font-feature-settings: 'tnum' 1;
             display: flex;
             align-items: baseline;
             gap: 4px;
             white-space: nowrap;
+          }
+          .price-row-value-main {
+            font-size: 24px;
+            font-weight: 700;
+            color: #ffffff;
+            letter-spacing: -0.3px;
+          }
+          .price-row-value-trad {
+            font-size: 18px;
+            font-weight: 600;
+            color: rgba(235, 235, 245, 0.88);
+            letter-spacing: -0.2px;
           }
           .ccy {
             font-size: 12px;
             font-weight: 500;
             color: rgba(235, 235, 245, 0.55);
             letter-spacing: 0.4px;
-          }
-          .price-trad {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            padding-top: 12px;
-            border-top: 0.5px dashed rgba(235, 235, 245, 0.12);
-          }
-          .price-trad-label {
-            font-size: 12px;
-            color: rgba(235, 235, 245, 0.6);
-            letter-spacing: -0.06px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-          }
-          .price-trad-tag {
-            font-size: 10px;
-            font-weight: 700;
-            color: #ffd60a;
-            background: rgba(255, 214, 10, 0.14);
-            padding: 2px 6px;
-            border-radius: 4px;
-            letter-spacing: 0.5px;
-          }
-          .price-trad-value {
-            font-size: 17px;
-            font-weight: 600;
-            color: rgba(235, 235, 245, 0.88);
-            font-feature-settings: 'tnum' 1;
-            letter-spacing: -0.2px;
-            display: flex;
-            align-items: baseline;
-            gap: 4px;
-            white-space: nowrap;
           }
 
           /* note */
@@ -984,10 +991,10 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
             .route-cities {
               font-size: 18px;
             }
-            .price-main-value {
+            .price-row-value-main {
               font-size: 22px;
             }
-            .price-trad-value {
+            .price-row-value-trad {
               font-size: 16px;
             }
             .sub-card {
