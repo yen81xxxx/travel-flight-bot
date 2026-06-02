@@ -213,6 +213,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
           outboundDate: sub.outbound_date ?? '',
           returnDate: sub.return_date ?? '',
           maxPrice: Number(sub.max_price),
+          maxPriceTraditional: sub.max_price_traditional != null ? Number(sub.max_price_traditional) : null,
           label: sub.label,
           cheapestPrice: null,
           cheapestAirport: null,
@@ -228,6 +229,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
         outboundDate: sub.outbound_date ?? '',
         returnDate: sub.return_date ?? '',
         maxPrice: Number(sub.max_price),
+        maxPriceTraditional: sub.max_price_traditional != null ? Number(sub.max_price_traditional) : null,
         label: sub.label,
         cheapestPrice: route.bestCheapest.price,
         cheapestAirport: route.bestCheapest.airport,
@@ -361,7 +363,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     ok: pushedFail === 0,
     // 部署版本標記 — 改卡片版面時 bump 一下，方便從 API 回應驗證新 code 是否真的上線
-    cardVersion: 'v35-remove-share-button-2026-06-01',
+    cardVersion: 'v36-per-category-target-price-2026-06-01',
     daily: {
       sourcesTargeted: targets.length,
       sourcesOptedOut: optedOut.size,

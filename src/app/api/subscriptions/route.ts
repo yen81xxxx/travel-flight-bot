@@ -15,6 +15,7 @@ const PostBody = z.object({
   origin: z.enum(VALID_IATA as [string, ...string[]]),
   destination: z.enum(VALID_IATA as [string, ...string[]]),
   maxPrice: z.number().positive(),
+  maxPriceTraditional: z.number().positive().nullable().optional(),
   outboundDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   label: z.string().optional()
@@ -99,6 +100,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       .from('subscriptions')
       .update({
         max_price: body.maxPrice,
+        max_price_traditional: body.maxPriceTraditional ?? null,
         outbound_date: body.outboundDate ?? null,
         return_date: body.returnDate ?? null,
         label: body.label ?? null
@@ -137,6 +139,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       outbound_date: body.outboundDate ?? null,
       return_date: body.returnDate ?? null,
       max_price: body.maxPrice,
+      max_price_traditional: body.maxPriceTraditional ?? null,
       label: body.label ?? null,
       paused: false
     })
@@ -215,7 +218,9 @@ const PatchBody = z.object({
   sourceId: z.string(),
   paused: z.boolean().optional(),
   label: z.string().nullable().optional(),
-  maxPrice: z.number().positive().optional()
+  maxPrice: z.number().positive().optional(),
+  // null 表示清掉「傳統另設」，回到跟隨 max_price
+  maxPriceTraditional: z.number().positive().nullable().optional()
 });
 export async function PATCH(req: NextRequest): Promise<NextResponse> {
   let body: z.infer<typeof PatchBody>;
@@ -230,6 +235,7 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
   if (body.paused !== undefined) update.paused = body.paused;
   if (body.label !== undefined) update.label = body.label;
   if (body.maxPrice !== undefined) update.max_price = body.maxPrice;
+  if (body.maxPriceTraditional !== undefined) update.max_price_traditional = body.maxPriceTraditional;
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ ok: false, error: 'no fields to update' }, { status: 400 });

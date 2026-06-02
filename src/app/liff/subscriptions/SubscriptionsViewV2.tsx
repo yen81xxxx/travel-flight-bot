@@ -83,29 +83,63 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
       .finally(() => setLoading(false));
   }, [sourceId, groupCtxId, knownGroupCtxs]);
 
-  // 改目標價（彈出 prompt 輸入新價，呼 PATCH /api/subscriptions）
+  // 改目標價（兩階段 prompt：主目標價 → 是否「傳統航空另設」）
   const handleEditPrice = async (sub: ItemWithSource) => {
     if (sub.id == null) return;
     const current = Number(sub.max_price);
+    const currentTrad = sub.max_price_traditional != null ? Number(sub.max_price_traditional) : null;
+
+    // 第 1 階段：主目標價（廉航 + 傳統的 fallback）
     const input = window.prompt(
-      `修改「${sub.origin}→${sub.destination}」目標價（當前 NT$ ${current.toLocaleString()}）\n\n` +
-      '輸入新的目標價（NT$）：',
+      `修改「${sub.origin}→${sub.destination}」主目標價` +
+      `\n（廉航 + 傳統未另設時都用此值，當前 NT$ ${current.toLocaleString()}）\n\n` +
+      '輸入新的主目標價（NT$）：',
       String(current)
     );
-    if (input == null) return;  // user cancelled
+    if (input == null) return;
     const newPrice = parseInt(input.replace(/[^0-9]/g, ''), 10);
     if (isNaN(newPrice) || newPrice <= 0) {
       alert('請輸入大於 0 的數字');
       return;
     }
-    if (newPrice === current) return;  // no change
+
+    // 第 2 階段：是否要為傳統航空另設目標價
+    let newTradPrice: number | null | undefined = undefined;  // undefined = 不變
+    const askTrad = window.confirm(
+      `傳統航空 (星宇/長榮) 是否另設目標價？\n\n` +
+      `OK = 另設（會接著問價格）\n取消 = 跟隨主目標價 NT$ ${newPrice.toLocaleString()}`
+    );
+    if (askTrad) {
+      const tradInput = window.prompt(
+        `傳統航空目標價（當前 ${currentTrad != null ? 'NT$ ' + currentTrad.toLocaleString() : '跟隨主目標'}）\n\n` +
+        '輸入金額（NT$）：',
+        String(currentTrad ?? Math.round(newPrice * 2))  // 預設建議 主×2 (符合 LCC vs FS 量級差)
+      );
+      if (tradInput == null) return;
+      const tradVal = parseInt(tradInput.replace(/[^0-9]/g, ''), 10);
+      if (isNaN(tradVal) || tradVal <= 0) {
+        alert('請輸入大於 0 的數字');
+        return;
+      }
+      newTradPrice = tradVal;
+    } else {
+      // 不另設：明確清掉舊的「傳統另設」值（送 null）
+      newTradPrice = null;
+    }
+
+    if (newPrice === current && newTradPrice === currentTrad) return;  // no change
 
     const subSourceId = sub.source_id ?? groupCtxId ?? sourceId;
     try {
       const res = await fetch('/api/subscriptions', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: sub.id, sourceId: subSourceId, maxPrice: newPrice })
+        body: JSON.stringify({
+          id: sub.id,
+          sourceId: subSourceId,
+          maxPrice: newPrice,
+          maxPriceTraditional: newTradPrice
+        })
       });
       const data = await res.json();
       if (!data.ok) {
@@ -114,7 +148,7 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
       }
       // 更新 local state（避免要重 fetch 整列）
       setItems(prev => prev.map(item =>
-        item.id === sub.id ? { ...item, max_price: newPrice } : item
+        item.id === sub.id ? { ...item, max_price: newPrice, max_price_traditional: newTradPrice } : item
       ));
     } catch (err) {
       alert('改價失敗：' + (err instanceof Error ? err.message : String(err)));
@@ -236,9 +270,15 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                           </div>
 
                           <div className="sub-price">
-                            <span className="price-label">預設通知價格</span>
+                            <span className="price-label">主目標價</span>
                             <span className="price-value">NT$ {sub.max_price.toLocaleString()}</span>
                           </div>
+                          {sub.max_price_traditional != null && (
+                            <div className="sub-price">
+                              <span className="price-label">傳統航空</span>
+                              <span className="price-value">NT$ {Number(sub.max_price_traditional).toLocaleString()}</span>
+                            </div>
+                          )}
 
                           {sub.label && (
                             <div className="sub-label">📝 {sub.label}</div>

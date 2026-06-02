@@ -351,7 +351,8 @@ export interface MultiSubsItem {
   destination: string;           // 訂閱原始 dest（可能 HND，多機場時 cheapestAirport 會帶實際勝出機場）
   outboundDate: string;
   returnDate: string;
-  maxPrice: number;              // threshold
+  maxPrice: number;              // 主目標價（廉航 + 傳統的 fallback）
+  maxPriceTraditional?: number | null;  // 傳統航空另設目標價（null = 跟隨 maxPrice）
   label?: string | null;
   // 跨類最低（用來決定 hero 圖、目標價比較、預設 footer 動作）
   cheapestPrice: number | null;
@@ -568,12 +569,13 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
   if (item.cheapestPrice == null) {
     bodyContents.push({ type: 'text', text: '❌ 查無資料', size: 'sm', color: '#cbd5e1', margin: 'sm' });
   } else {
-    // 廉航 + 自己的目標價比較 + Skyscanner 廉航按鈕
+    // 廉航：用主目標價 maxPrice
     bodyContents.push(...buildCategoryRowsForBubble('🛩', '廉航', item.lcc, item.maxPrice, item.origin, item.outboundDate, item.returnDate));
     // 兩段中間細分隔，視覺上分開
     bodyContents.push({ type: 'separator', margin: 'md', color: '#e5e7eb' });
-    // 傳統 + 自己的目標價比較 + Skyscanner 傳統按鈕
-    bodyContents.push(...buildCategoryRowsForBubble('🏢', '傳統', item.traditional, item.maxPrice, item.origin, item.outboundDate, item.returnDate));
+    // 傳統：用 maxPriceTraditional 或 fallback 到 maxPrice
+    const tradTarget = item.maxPriceTraditional ?? item.maxPrice;
+    bodyContents.push(...buildCategoryRowsForBubble('🏢', '傳統', item.traditional, tradTarget, item.origin, item.outboundDate, item.returnDate));
   }
 
   const body = {

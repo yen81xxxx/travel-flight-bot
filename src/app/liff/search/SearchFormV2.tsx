@@ -59,6 +59,9 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
   const subscribeForm = useForm(
     { customMaxPrice: session.state.customMaxPrice, subLabel: session.state.subLabel }
   );
+  // 「傳統航空另設目標價」可選
+  const [enableTradTarget, setEnableTradTarget] = useState(false);
+  const [tradMaxPrice, setTradMaxPrice] = useState('');
 
   // API 狀態
   const [loading, setLoading] = useState(false);
@@ -215,6 +218,17 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
       return;
     }
 
+    // 傳統另設目標價（可選）
+    let tradPrice: number | null = null;
+    if (enableTradTarget) {
+      const t = parseFloat(tradMaxPrice);
+      if (isNaN(t) || t <= 0) {
+        setError('傳統目標價請輸入有效金額（或關閉「另設」）');
+        return;
+      }
+      tradPrice = t;
+    }
+
     setSubscribeStatus('saving');
     try {
       const { origin, destination, outboundDate, returnDate } = searchForm.values;
@@ -227,6 +241,7 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
           sourceId: targetSourceId,
           origin, destination,
           maxPrice: userInputPrice,
+          maxPriceTraditional: tradPrice,
           outboundDate, returnDate,
           label: subscribeForm.values.subLabel.trim() || undefined
         })
@@ -443,10 +458,32 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
                 type="number"
                 value={subscribeForm.values.customMaxPrice}
                 onChange={e => subscribeForm.setValue('customMaxPrice', e.target.value)}
-                placeholder="金額"
+                placeholder="主目標價（廉航 + 傳統 fallback）"
                 disabled={subscribeStatus === 'saving' || subscribeStatus === 'saved'}
               />
             </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#94a3b8', marginTop: 8, marginBottom: enableTradTarget ? 4 : 8 }}>
+              <input
+                type="checkbox"
+                checked={enableTradTarget}
+                onChange={e => setEnableTradTarget(e.target.checked)}
+                disabled={subscribeStatus === 'saving' || subscribeStatus === 'saved'}
+              />
+              傳統航空（星宇 / 長榮）另設目標價
+            </label>
+            {enableTradTarget && (
+              <div className="sub-input-row" style={{ marginBottom: 8 }}>
+                <span className="sub-prefix">NT$</span>
+                <input
+                  type="number"
+                  value={tradMaxPrice}
+                  onChange={e => setTradMaxPrice(e.target.value)}
+                  placeholder="傳統航空目標價（例 28,000）"
+                  disabled={subscribeStatus === 'saving' || subscribeStatus === 'saved'}
+                />
+              </div>
+            )}
 
             <input
               type="text"

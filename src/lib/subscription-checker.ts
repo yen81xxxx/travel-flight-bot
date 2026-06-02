@@ -136,9 +136,18 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
       if (cheapest == null) return;
 
       // 同組訂閱依 max_price 排序，逐一檢查是否該通知
+      // 注意：cheapest 是跨類最低（廉航跟傳統取其低），所以用「廉航目標價（主目標）」當第一道閘
+      // 如果使用者有設「傳統另設」且廉航查無資料、只有傳統，則用 traditional target
       for (const sub of subList) {
         try {
-          if (cheapest > Number(sub.max_price)) {
+          const lccTarget = Number(sub.max_price);
+          const tradTarget = sub.max_price_traditional != null
+            ? Number(sub.max_price_traditional)
+            : lccTarget;
+          // 取兩個目標價較高者當「觸發門檻」— 確保任一分類跌破自己的 target 就會觸發
+          // （因為 cheapest 可能來自任一分類）
+          const effectiveThreshold = Math.max(lccTarget, tradTarget);
+          if (cheapest > effectiveThreshold) {
             result.skipped++;
             continue;
           }

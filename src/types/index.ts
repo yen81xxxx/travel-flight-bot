@@ -47,7 +47,8 @@ export interface Subscription {
   destination: string;
   outbound_date: string | null;
   return_date: string | null;
-  max_price: number;
+  max_price: number;                       // 主目標價（廉航 + 預設套兩類）
+  max_price_traditional?: number | null;   // 傳統航空另設（null = 跟隨 max_price）
   currency: string;
   active: boolean;
   paused?: boolean;
