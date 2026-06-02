@@ -437,32 +437,44 @@ function buildOverviewBubble(count: number, sourceId: string, cachedAt?: string 
 }
 
 /**
- * 卡片內單一分類列（廉航 or 傳統）：兩段組成
- *   行 1：🛩 廉航 (HND)     NT$ 13,414  ↓5%
- *   行 2：   比目標價低 NT$ 9,614（40%）
- * 沒資料時行 1 顯示「— 查無」，無行 2
+ * 卡片內單一分類段（廉航 or 傳統）：3 段組成
+ *   行 1：🛩 廉航 · 台灣虎航       NT$ 13,414
+ *   行 2：   比目標價低 NT$ 9,614（40%）· 較昨日 ↓5%
+ *   行 3：   [ 🛒 用 Skyscanner 訂廉航 ]   ← 各自的 Skyscanner 按鈕
+ * 沒資料時行 1 顯示「— 查無」，無行 2、無按鈕
  */
 function buildCategoryRowsForBubble(
   icon: string,
   label: string,
   data: MultiSubsItem['lcc'] | MultiSubsItem['traditional'] | null | undefined,
   maxPrice: number,
-  subscribedDest: string
+  origin: string,
+  outboundDate: string,
+  returnDate: string
 ): Record<string, unknown>[] {
-  const showAirport = data?.airport && data.airport !== subscribedDest;
-  const labelText = showAirport ? `${icon} ${label} (${data!.airport})` : `${icon} ${label}`;
-
   if (!data) {
     return [{
       type: 'box',
       layout: 'baseline',
       margin: 'md',
       contents: [
-        { type: 'text', text: labelText, size: 'sm', color: '#666666', flex: 4 },
+        { type: 'text', text: `${icon} ${label}`, size: 'sm', color: '#666666', flex: 4 },
         { type: 'text', text: '— 查無', size: 'sm', color: '#cbd5e1', flex: 5, align: 'end' }
       ]
     }];
   }
+
+  // 航司名稱：傳統就是同家、廉航 mix-and-match 簡寫成「虎航+捷星」（去掉「航空」「台灣」減字數）
+  let airlineName: string;
+  if ('airline' in data) {
+    airlineName = data.airline;
+  } else if (data.outboundAirline === data.returnAirline) {
+    airlineName = data.outboundAirline;
+  } else {
+    const short = (s: string) => s.replace(/航空$/, '').replace(/^台灣/, '');
+    airlineName = `${short(data.outboundAirline)}+${short(data.returnAirline)}`;
+  }
+  const labelText = `${icon} ${label} · ${airlineName}`;
 
   const priceColor = data.price <= maxPrice ? '#22c55e' : '#ff7a45';
   // 廉航 fallback 是「去程估算」，加 ＊ 標示提醒實際訂票價可能差幾百元
@@ -485,14 +497,18 @@ function buildCategoryRowsForBubble(
   }
   const thColor = isBelow ? '#22c55e' : '#94a3b8';
 
+  // Skyscanner 按鈕：依分類帶不同航司篩選
+  const category: AirlineCategory = 'airline' in data ? 'full-service' : 'lcc';
+  const skyscannerUrl = skyscannerUrlForCategory(category, origin, data.airport, outboundDate, returnDate);
+
   return [
     {
       type: 'box',
       layout: 'baseline',
       margin: 'md',
       contents: [
-        { type: 'text', text: labelText, size: 'sm', color: '#666666', flex: 4 },
-        { type: 'text', text: priceText, size: 'md', weight: 'bold', color: priceColor, flex: 5, align: 'end' }
+        { type: 'text', text: labelText, size: 'sm', color: '#666666', flex: 5, wrap: false },
+        { type: 'text', text: priceText, size: 'md', weight: 'bold', color: priceColor, flex: 4, align: 'end' }
       ]
     },
     {
@@ -503,6 +519,17 @@ function buildCategoryRowsForBubble(
       align: 'end',
       margin: 'xs',
       wrap: true
+    },
+    {
+      type: 'button',
+      style: 'secondary',
+      height: 'sm',
+      margin: 'sm',
+      action: {
+        type: 'uri',
+        label: `🛒 用 Skyscanner 訂${label}`,
+        uri: skyscannerUrl
+      }
     }
   ];
 }
@@ -537,12 +564,12 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
   if (item.cheapestPrice == null) {
     bodyContents.push({ type: 'text', text: '❌ 查無資料', size: 'sm', color: '#cbd5e1', margin: 'sm' });
   } else {
-    // 廉航 + 自己的目標價比較
-    bodyContents.push(...buildCategoryRowsForBubble('🛩', '廉航', item.lcc, item.maxPrice, item.destination));
+    // 廉航 + 自己的目標價比較 + Skyscanner 廉航按鈕
+    bodyContents.push(...buildCategoryRowsForBubble('🛩', '廉航', item.lcc, item.maxPrice, item.origin, item.outboundDate, item.returnDate));
     // 兩段中間細分隔，視覺上分開
     bodyContents.push({ type: 'separator', margin: 'md', color: '#e5e7eb' });
-    // 傳統 + 自己的目標價比較
-    bodyContents.push(...buildCategoryRowsForBubble('🏢', '傳統', item.traditional, item.maxPrice, item.destination));
+    // 傳統 + 自己的目標價比較 + Skyscanner 傳統按鈕
+    bodyContents.push(...buildCategoryRowsForBubble('🏢', '傳統', item.traditional, item.maxPrice, item.origin, item.outboundDate, item.returnDate));
   }
 
   const body = {
@@ -577,16 +604,7 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
         displayText: `查 ${item.origin}→${item.destination} 歷史走勢`
       }
     });
-    footerContents.push({
-      type: 'button',
-      style: 'secondary',
-      height: 'sm',
-      action: {
-        type: 'uri',
-        label: '🛒 Skyscanner',
-        uri: skyscannerUrlForCategory(item.cheapestCategory, item.origin, item.cheapestAirport, item.outboundDate, item.returnDate)
-      }
-    });
+    // Skyscanner 按鈕已移到 body 內每個分類底下（避免使用者不知道是用哪個分類的篩選）
     // ↪ 分享按鈕：用 LIFF deep link 才會在 LINE 內 in-app browser 開
     // （直接 vercel.app URL 會跳外部瀏覽器 → liff.isInClient() false → 分享失敗）
     // RedirectGate 會在 LIFF endpoint 攔截 goto=share 後 client-side replace 到 /liff/share
