@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSessionStorage } from '@/hooks/useSessionStorage';
 import { useKnownGroupCtxs } from '@/hooks/useKnownGroupCtxs';
 import { useLiff } from '@/hooks/useLiff';
-import { Alert, Badge, Button, EmptyState, Spinner } from '@/components';
+import { Alert, EmptyState, Spinner } from '@/components';
 import type { Subscription } from '@/types';
+import { getCity } from '@/config/airports';
 import TabNav from '../TabNav';
 
 interface Props {
@@ -206,10 +207,17 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
       <TabNav active="subscriptions" liffId={liffId} />
       <div className="subs-wrap">
         <header className="subs-header">
-          <h1>🔔 我的訂閱</h1>
-          <div className="header-badges">
-            {personalCount > 0 && <Badge variant="info">個人 {personalCount}</Badge>}
-            {groupCount > 0 && <Badge variant="info">群組 {groupCount}</Badge>}
+          <div>
+            <div className="subs-eyebrow">FLIGHT TRACKER</div>
+            <h1>我的訂閱</h1>
+          </div>
+          <div className="header-counters">
+            {personalCount > 0 && (
+              <div className="counter-pill"><strong>{personalCount}</strong> 個人</div>
+            )}
+            {groupCount > 0 && (
+              <div className="counter-pill counter-pill-group"><strong>{groupCount}</strong> 群組</div>
+            )}
           </div>
         </header>
 
@@ -234,90 +242,131 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
           />
         ) : (
           <div className="subs-list">
-            {Object.entries(groupedItems).map(([route, subs]) => (
-              <div key={route} className="route-group">
-                <h2 className="route-title">✈️ {route}</h2>
+            {Object.entries(groupedItems).map(([route, subs]) => {
+              const first = subs[0];
+              const originCity = getCity(first.origin);
+              const destCity = getCity(first.destination);
+              return (
+                <section key={route} className="route-group">
+                  <header className="route-header">
+                    <div className="route-cities">
+                      <span className="route-city">{originCity}</span>
+                      <svg className="route-plane-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M2.5 19.5L21.5 12 2.5 4.5l1 6L17 12 3.5 13.5l-1 6z" fill="currentColor" />
+                      </svg>
+                      <span className="route-city">{destCity}</span>
+                    </div>
+                    <div className="route-codes">{first.origin} → {first.destination}</div>
+                  </header>
 
-                <div className="subs-cards">
-                  {subs.map(sub => (
-                    <div key={sub.id} className="ios-row">
-                      <div className="route-visualization">
-                        <div className="airport-code">{sub.origin?.slice(0, 3).toUpperCase()}</div>
-                        <svg className="route-svg" viewBox="0 0 100 40">
-                          <line x1="15" y1="20" x2="75" y2="20" stroke="currentColor" strokeWidth="2" strokeDasharray="5,5" />
-                          <circle cx="85" cy="20" r="3" fill="currentColor" />
-                          <path d="M 85 20 L 95 15 L 93 20 L 95 25 Z" fill="currentColor" />
-                        </svg>
-                        <div className="airport-code">{sub.destination?.slice(0, 3).toUpperCase()}</div>
-                      </div>
-                      <div className="sub-item">
-                        <div className="sub-info">
-                          <div className="sub-dates">
-                            {sub.outbound_date && (
-                              <span className="date-badge">
-                                🗓️ {new Date(sub.outbound_date).toLocaleDateString('zh-TW')}
-                              </span>
-                            )}
-                            {sub.return_date && (
-                              <span className="date-badge">
-                                🔄 {new Date(sub.return_date).toLocaleDateString('zh-TW')}
-                              </span>
-                            )}
+                  <div className="cards-stack">
+                    {subs.map(sub => {
+                      const outDate = sub.outbound_date ? new Date(sub.outbound_date) : null;
+                      const retDate = sub.return_date ? new Date(sub.return_date) : null;
+                      const daysUntil = outDate
+                        ? Math.ceil((outDate.getTime() - Date.now()) / 86_400_000)
+                        : null;
+                      const fmtMD = (d: Date) =>
+                        d.toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' });
+                      const fmtY = (d: Date) => String(d.getFullYear());
+
+                      return (
+                        <article key={sub.id} className={`sub-card ${sub.active ? '' : 'is-paused'}`}>
+                          <div className="card-head">
+                            <div className="card-dates">
+                              {outDate && (
+                                <div className="date-block">
+                                  <div className="date-label">出發</div>
+                                  <div className="date-value">
+                                    <span className="date-md">{fmtMD(outDate)}</span>
+                                    <span className="date-year">{fmtY(outDate)}</span>
+                                  </div>
+                                </div>
+                              )}
+                              {retDate && (
+                                <>
+                                  <div className="date-sep" aria-hidden="true">·</div>
+                                  <div className="date-block">
+                                    <div className="date-label">回程</div>
+                                    <div className="date-value">
+                                      <span className="date-md">{fmtMD(retDate)}</span>
+                                      <span className="date-year">{fmtY(retDate)}</span>
+                                    </div>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                            <div className={`source-pill ${sub._source === 'group' ? 'is-group' : 'is-personal'}`}>
+                              {sub._source === 'group' ? '群組' : '個人'}
+                            </div>
                           </div>
 
-                          <div className="sub-price">
-                            <span className="price-label">主目標價</span>
-                            <span className="price-value">NT$ {sub.max_price.toLocaleString()}</span>
-                          </div>
-                          {sub.max_price_traditional != null && (
-                            <div className="sub-price">
-                              <span className="price-label">傳統航空</span>
-                              <span className="price-value">NT$ {Number(sub.max_price_traditional).toLocaleString()}</span>
+                          {daysUntil != null && daysUntil >= 0 && (
+                            <div className="countdown-strip">
+                              ⏳ 距離出發 <strong>{daysUntil}</strong> 天
                             </div>
                           )}
 
-                          {sub.label && (
-                            <div className="sub-label">📝 {sub.label}</div>
-                          )}
-
-                          <div className="sub-status">
-                            <Badge variant="info">
-                              {sub._source === 'group' ? '👥 群組' : '👤 個人'}
-                            </Badge>
-                            {sub.active ? (
-                              <Badge variant="success">✓ 已啟用</Badge>
-                            ) : (
-                              <Badge variant="warning">⏸ 已暫停</Badge>
+                          <div className="price-block">
+                            <div className="price-main">
+                              <div className="price-main-left">
+                                <div className="price-main-label">目標價</div>
+                                <div className="price-main-hint">廉航 / 傳統 fallback</div>
+                              </div>
+                              <div className="price-main-value">
+                                <span className="ccy">NT$</span>
+                                {sub.max_price.toLocaleString()}
+                              </div>
+                            </div>
+                            {sub.max_price_traditional != null && (
+                              <div className="price-trad">
+                                <div className="price-trad-label">
+                                  <span className="price-trad-tag">傳統</span>
+                                  星宇 / 長榮 / 華航
+                                </div>
+                                <div className="price-trad-value">
+                                  <span className="ccy">NT$</span>
+                                  {Number(sub.max_price_traditional).toLocaleString()}
+                                </div>
+                              </div>
                             )}
                           </div>
 
-                        </div>
+                          {sub.label && (
+                            <div className="card-note">📝 {sub.label}</div>
+                          )}
 
-                        <div className="sub-actions">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => openEditModal(sub)}
-                            title="修改目標價"
-                          >
-                            ✏️ 改價
-                          </Button>
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            onClick={() => sub.id && handleDelete(sub.id)}
-                            disabled={deleting === sub.id}
-                            title="取消訂閱"
-                          >
-                            {deleting === sub.id ? '⏳' : '✕ 取消'}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+                          <div className="card-foot">
+                            <div className="status-line">
+                              <span className={`status-dot ${sub.active ? 'is-on' : 'is-off'}`} />
+                              <span className="status-text">{sub.active ? '監控中' : '已暫停'}</span>
+                            </div>
+                            <div className="card-actions">
+                              <button
+                                type="button"
+                                className="link-btn link-btn-primary"
+                                onClick={() => openEditModal(sub)}
+                              >
+                                改價
+                              </button>
+                              <span className="action-sep" aria-hidden="true" />
+                              <button
+                                type="button"
+                                className="link-btn link-btn-danger"
+                                onClick={() => sub.id && handleDelete(sub.id)}
+                                disabled={deleting === sub.id}
+                              >
+                                {deleting === sub.id ? '取消中…' : '取消訂閱'}
+                              </button>
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         )}
 
@@ -430,198 +479,370 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
             font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'PingFang TC', sans-serif;
           }
 
+          /* ===== Header ===== */
           .subs-header {
-            margin-bottom: 32px;
+            margin-bottom: 28px;
             display: flex;
-            align-items: center;
+            align-items: flex-end;
             justify-content: space-between;
             gap: 12px;
             padding: 4px 4px 0;
           }
-
+          .subs-eyebrow {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 1.6px;
+            color: #0a84ff;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+          }
           .subs-header h1 {
-            font-size: 34px;
+            font-size: 32px;
             font-weight: 700;
             margin: 0;
             color: #ffffff;
-            letter-spacing: 0.37px;
-            line-height: 41px;
+            letter-spacing: -0.4px;
+            line-height: 1.1;
           }
-
-          .header-badges {
+          .header-counters {
             display: flex;
             gap: 6px;
+            flex-shrink: 0;
+          }
+          .counter-pill {
+            font-size: 12px;
+            font-weight: 500;
+            color: rgba(235, 235, 245, 0.75);
+            background: rgba(120, 120, 128, 0.24);
+            padding: 6px 10px;
+            border-radius: 8px;
+            letter-spacing: -0.08px;
+            display: inline-flex;
+            align-items: baseline;
+            gap: 4px;
+          }
+          .counter-pill strong {
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 13px;
+          }
+          .counter-pill-group strong {
+            color: #bf5af2;
           }
 
+          /* ===== Group ===== */
           .subs-list {
             display: flex;
             flex-direction: column;
-            gap: 28px;
+            gap: 32px;
           }
-
           .route-group {
             display: flex;
             flex-direction: column;
-            gap: 0;
-          }
-
-          .route-title {
-            font-size: 13px;
-            font-weight: 400;
-            margin: 0 0 8px 12px;
-            color: rgba(235, 235, 245, 0.6);
-            letter-spacing: -0.08px;
-            text-transform: uppercase;
-          }
-
-          .subs-cards {
-            background: #1c1c1e;
-            border-radius: 14px;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-          }
-
-          .ios-row {
-            padding: 16px;
-            position: relative;
-          }
-          .ios-row::after {
-            content: '';
-            position: absolute;
-            left: 16px;
-            right: 0;
-            bottom: 0;
-            height: 0.5px;
-            background: rgba(84, 84, 88, 0.65);
-          }
-          .ios-row:last-child::after {
-            display: none;
-          }
-
-          .route-visualization {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            padding: 10px 14px;
-            background: rgba(120, 120, 128, 0.16);
-            border-radius: 10px;
-            margin-bottom: 12px;
-          }
-
-          .airport-code {
-            font-size: 13px;
-            font-weight: 600;
-            color: #0a84ff;
-            min-width: 32px;
-            text-align: center;
-            letter-spacing: 0.5px;
-            font-family: 'SF Mono', SFMono-Regular, ui-monospace, monospace;
-          }
-
-          .route-svg {
-            flex: 1;
-            height: 28px;
-            color: rgba(10, 132, 255, 0.5);
-          }
-
-          .sub-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: stretch;
             gap: 12px;
           }
-
-          .sub-info {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            min-width: 0;
-          }
-
-          .sub-actions {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            flex-shrink: 0;
-            justify-content: flex-start;
-          }
-
-          .sub-dates {
-            display: flex;
-            gap: 6px;
-            flex-wrap: wrap;
-          }
-
-          .date-badge {
-            font-size: 13px;
-            background: rgba(120, 120, 128, 0.24);
-            color: rgba(235, 235, 245, 0.9);
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-weight: 500;
-            letter-spacing: -0.08px;
-          }
-
-          .sub-price {
+          .route-header {
+            padding: 0 8px;
             display: flex;
             align-items: baseline;
             justify-content: space-between;
-            padding: 8px 0;
+            gap: 12px;
           }
-
-          .price-label {
-            font-size: 13px;
-            color: rgba(235, 235, 245, 0.6);
-            font-weight: 400;
-            letter-spacing: -0.08px;
-          }
-
-          .price-value {
-            font-size: 22px;
-            font-weight: 600;
-            color: #ffffff;
-            letter-spacing: 0.35px;
-            font-feature-settings: 'tnum' 1;
-          }
-
-          .sub-label {
-            font-size: 13px;
-            color: rgba(235, 235, 245, 0.6);
-            padding: 6px 10px;
-            background: rgba(120, 120, 128, 0.16);
-            border-radius: 6px;
-            max-width: 100%;
-            word-break: break-word;
-            font-weight: 400;
-          }
-
-          .sub-status {
+          .route-cities {
             display: flex;
-            gap: 6px;
+            align-items: center;
+            gap: 10px;
+            color: #ffffff;
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: -0.3px;
+          }
+          .route-city {
+            line-height: 1;
+          }
+          .route-plane-icon {
+            width: 16px;
+            height: 16px;
+            color: rgba(10, 132, 255, 0.85);
+            flex-shrink: 0;
+          }
+          .route-codes {
+            font-size: 11px;
+            font-weight: 600;
+            color: rgba(235, 235, 245, 0.4);
+            letter-spacing: 1px;
+            font-family: 'SF Mono', SFMono-Regular, ui-monospace, monospace;
+          }
+
+          /* ===== Cards stack ===== */
+          .cards-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+          }
+
+          /* ===== Single card ===== */
+          .sub-card {
+            background: linear-gradient(180deg, #1f1f22 0%, #1a1a1d 100%);
+            border-radius: 16px;
+            border: 0.5px solid rgba(84, 84, 88, 0.45);
+            padding: 16px 16px 4px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset,
+                        0 6px 16px rgba(0, 0, 0, 0.18);
+            transition: opacity 0.2s ease;
+          }
+          .sub-card.is-paused {
+            opacity: 0.55;
+          }
+
+          /* card head: dates + source pill */
+          .card-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+          }
+          .card-dates {
+            display: flex;
+            align-items: center;
+            gap: 12px;
             flex-wrap: wrap;
           }
+          .date-block {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+          }
+          .date-label {
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.8px;
+            color: rgba(235, 235, 245, 0.45);
+            text-transform: uppercase;
+          }
+          .date-value {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+          }
+          .date-md {
+            font-size: 17px;
+            font-weight: 600;
+            color: #ffffff;
+            letter-spacing: -0.2px;
+            font-feature-settings: 'tnum' 1;
+          }
+          .date-year {
+            font-size: 11px;
+            color: rgba(235, 235, 245, 0.4);
+            font-feature-settings: 'tnum' 1;
+            letter-spacing: -0.06px;
+          }
+          .date-sep {
+            color: rgba(235, 235, 245, 0.3);
+            font-size: 14px;
+            align-self: center;
+            padding-top: 14px;
+          }
+          .source-pill {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 9px;
+            border-radius: 999px;
+            letter-spacing: -0.06px;
+            flex-shrink: 0;
+          }
+          .source-pill.is-personal {
+            color: #0a84ff;
+            background: rgba(10, 132, 255, 0.16);
+          }
+          .source-pill.is-group {
+            color: #bf5af2;
+            background: rgba(191, 90, 242, 0.16);
+          }
 
-          /* Apple-style buttons override (sub-actions only) */
-          .sub-actions :global(button) {
-            background: rgba(120, 120, 128, 0.24) !important;
-            color: #ffffff !important;
-            border: none !important;
-            border-radius: 8px !important;
-            padding: 6px 12px !important;
-            font-size: 13px !important;
-            font-weight: 500 !important;
-            min-height: 32px !important;
-            letter-spacing: -0.08px !important;
-            transition: opacity 0.2s ease !important;
+          /* countdown strip */
+          .countdown-strip {
+            font-size: 12px;
+            color: rgba(255, 159, 10, 0.95);
+            background: rgba(255, 159, 10, 0.12);
+            padding: 7px 12px;
+            border-radius: 8px;
+            letter-spacing: -0.06px;
           }
-          .sub-actions :global(button:hover) {
-            opacity: 0.7;
+          .countdown-strip strong {
+            font-weight: 700;
+            color: #ffd60a;
+            font-feature-settings: 'tnum' 1;
+            margin: 0 2px;
           }
-          .sub-actions :global(button:disabled) {
+
+          /* price block */
+          .price-block {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 14px;
+            background: rgba(120, 120, 128, 0.10);
+            border-radius: 12px;
+          }
+          .price-main {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+          }
+          .price-main-left {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+          }
+          .price-main-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #ffffff;
+            letter-spacing: -0.08px;
+          }
+          .price-main-hint {
+            font-size: 11px;
+            color: rgba(235, 235, 245, 0.45);
+            letter-spacing: -0.06px;
+          }
+          .price-main-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #ffffff;
+            letter-spacing: -0.3px;
+            font-feature-settings: 'tnum' 1;
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+            white-space: nowrap;
+          }
+          .ccy {
+            font-size: 12px;
+            font-weight: 500;
+            color: rgba(235, 235, 245, 0.55);
+            letter-spacing: 0.4px;
+          }
+          .price-trad {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding-top: 12px;
+            border-top: 0.5px dashed rgba(235, 235, 245, 0.12);
+          }
+          .price-trad-label {
+            font-size: 12px;
+            color: rgba(235, 235, 245, 0.6);
+            letter-spacing: -0.06px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+          .price-trad-tag {
+            font-size: 10px;
+            font-weight: 700;
+            color: #ffd60a;
+            background: rgba(255, 214, 10, 0.14);
+            padding: 2px 6px;
+            border-radius: 4px;
+            letter-spacing: 0.5px;
+          }
+          .price-trad-value {
+            font-size: 17px;
+            font-weight: 600;
+            color: rgba(235, 235, 245, 0.88);
+            font-feature-settings: 'tnum' 1;
+            letter-spacing: -0.2px;
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+            white-space: nowrap;
+          }
+
+          /* note */
+          .card-note {
+            font-size: 12px;
+            color: rgba(235, 235, 245, 0.6);
+            padding: 8px 12px;
+            background: rgba(120, 120, 128, 0.10);
+            border-radius: 8px;
+            word-break: break-word;
+          }
+
+          /* footer: status + actions */
+          .card-foot {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 6px 4px 8px;
+            border-top: 0.5px solid rgba(84, 84, 88, 0.35);
+            margin-top: 2px;
+            padding-top: 12px;
+          }
+          .status-line {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: rgba(235, 235, 245, 0.7);
+            letter-spacing: -0.06px;
+          }
+          .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            display: inline-block;
+          }
+          .status-dot.is-on {
+            background: #30d158;
+            box-shadow: 0 0 6px rgba(48, 209, 88, 0.5);
+          }
+          .status-dot.is-off {
+            background: rgba(235, 235, 245, 0.35);
+          }
+          .status-text {
+            font-weight: 500;
+          }
+          .card-actions {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+          }
+          .link-btn {
+            background: transparent;
+            border: none;
+            font-size: 14px;
+            font-weight: 500;
+            padding: 6px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            letter-spacing: -0.08px;
+            transition: background 0.15s ease;
+          }
+          .link-btn-primary {
+            color: #0a84ff;
+          }
+          .link-btn-danger {
+            color: #ff453a;
+          }
+          .link-btn:hover:not(:disabled) {
+            background: rgba(120, 120, 128, 0.16);
+          }
+          .link-btn:disabled {
             opacity: 0.4;
+            cursor: not-allowed;
+          }
+          .action-sep {
+            width: 0.5px;
+            height: 14px;
+            background: rgba(84, 84, 88, 0.65);
           }
 
           /* iOS-style modal */
@@ -759,7 +980,18 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
             }
             .subs-header h1 {
               font-size: 28px;
-              line-height: 34px;
+            }
+            .route-cities {
+              font-size: 18px;
+            }
+            .price-main-value {
+              font-size: 22px;
+            }
+            .price-trad-value {
+              font-size: 16px;
+            }
+            .sub-card {
+              padding: 14px 14px 4px;
             }
           }
         `}</style>
