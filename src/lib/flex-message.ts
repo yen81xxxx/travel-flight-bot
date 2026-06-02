@@ -439,7 +439,7 @@ function buildOverviewBubble(count: number, sourceId: string, cachedAt?: string 
 
 /**
  * 卡片內單一分類段（廉航 or 傳統）：3 段組成
- *   行 1：🛩 廉航 · 台灣虎航       NT$ 13,414
+ *   行 1：✈️ 廉航 · 台灣虎航       NT$ 13,414
  *   行 2：   比目標價低 NT$ 9,614（40%）· 較昨日 ↓5%
  *   行 3：   [ 🛒 用 Skyscanner 訂廉航 ]   ← 各自的 Skyscanner 按鈕
  * 沒資料時行 1 顯示「— 查無」，無行 2、無按鈕
@@ -570,12 +570,12 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
     bodyContents.push({ type: 'text', text: '❌ 查無資料', size: 'sm', color: '#cbd5e1', margin: 'sm' });
   } else {
     // 廉航：用主目標價 maxPrice
-    bodyContents.push(...buildCategoryRowsForBubble('🛩', '廉航', item.lcc, item.maxPrice, item.origin, item.outboundDate, item.returnDate));
+    bodyContents.push(...buildCategoryRowsForBubble('✈️', '廉航', item.lcc, item.maxPrice, item.origin, item.outboundDate, item.returnDate));
     // 兩段中間細分隔，視覺上分開
     bodyContents.push({ type: 'separator', margin: 'md', color: '#e5e7eb' });
     // 傳統：用 maxPriceTraditional 或 fallback 到 maxPrice
     const tradTarget = item.maxPriceTraditional ?? item.maxPrice;
-    bodyContents.push(...buildCategoryRowsForBubble('🏢', '傳統', item.traditional, tradTarget, item.origin, item.outboundDate, item.returnDate));
+    bodyContents.push(...buildCategoryRowsForBubble('✈️', '傳統', item.traditional, tradTarget, item.origin, item.outboundDate, item.returnDate));
   }
 
   const body = {
@@ -702,8 +702,8 @@ export function buildHistoryFlex(props: HistoryFlexProps) {
       margin: 'md',
       contents: [
         { type: 'text', text: '日期', size: 'xs', color: '#94a3b8', flex: 2 },
-        { type: 'text', text: '🛩 廉航', size: 'xs', color: '#94a3b8', flex: 4, align: 'end' },
-        { type: 'text', text: '🏢 傳統', size: 'xs', color: '#94a3b8', flex: 4, align: 'end' }
+        { type: 'text', text: '✈️ 廉航', size: 'xs', color: '#94a3b8', flex: 4, align: 'end' },
+        { type: 'text', text: '✈️ 傳統', size: 'xs', color: '#94a3b8', flex: 4, align: 'end' }
       ]
     });
     bodyContents.push({ type: 'separator', margin: 'sm' });
@@ -757,27 +757,27 @@ export function buildHistoryFlex(props: HistoryFlexProps) {
       const lccDiff = lastLcc - threshold;
       bodyContents.push({
         type: 'text',
-        text: `🛩 廉航：今日 NT$ ${lastLcc.toLocaleString()}　|　${lccDiff <= 0 ? '比目標低' : '比目標高'} NT$ ${Math.abs(lccDiff).toLocaleString()}`,
+        text: `✈️ 廉航：今日 NT$ ${lastLcc.toLocaleString()}　|　${lccDiff <= 0 ? '比目標低' : '比目標高'} NT$ ${Math.abs(lccDiff).toLocaleString()}`,
         size: 'xs',
         color: lccDiff <= 0 ? '#22c55e' : '#94a3b8',
         wrap: true,
         margin: 'sm'
       });
     } else {
-      bodyContents.push({ type: 'text', text: '🛩 廉航：無歷史資料', size: 'xs', color: '#64748b', margin: 'sm' });
+      bodyContents.push({ type: 'text', text: '✈️ 廉航：無歷史資料', size: 'xs', color: '#64748b', margin: 'sm' });
     }
     if (tradMin != null) {
       const lastTrad = tradPoints[tradPoints.length - 1].minPrice;
       const tradDiff = lastTrad - threshold;
       bodyContents.push({
         type: 'text',
-        text: `🏢 傳統：今日 NT$ ${lastTrad.toLocaleString()}　|　${tradDiff <= 0 ? '比目標低' : '比目標高'} NT$ ${Math.abs(tradDiff).toLocaleString()}`,
+        text: `✈️ 傳統：今日 NT$ ${lastTrad.toLocaleString()}　|　${tradDiff <= 0 ? '比目標低' : '比目標高'} NT$ ${Math.abs(tradDiff).toLocaleString()}`,
         size: 'xs',
         color: tradDiff <= 0 ? '#22c55e' : '#94a3b8',
         wrap: true
       });
     } else {
-      bodyContents.push({ type: 'text', text: '🏢 傳統：無歷史資料', size: 'xs', color: '#64748b' });
+      bodyContents.push({ type: 'text', text: '✈️ 傳統：無歷史資料', size: 'xs', color: '#64748b' });
     }
     bodyContents.push({
       type: 'text',
@@ -880,7 +880,7 @@ function lccRow(
   const uri = hasData
     ? skyscannerUrlForCategory('lcc', origin, rowAirport, outboundDate, returnDate)
     : null;
-  return comboRow('🛩 廉航', hasData ? data!.price : null, airlineLabel, priceColor, uri);
+  return comboRow('✈️ 廉航', hasData ? data!.price : null, airlineLabel, priceColor, uri);
 }
 
 /**
@@ -903,7 +903,7 @@ function traditionalRow(
   const uri = hasData
     ? skyscannerUrlForCategory('full-service', origin, rowAirport, outboundDate, returnDate)
     : null;
-  return comboRow('🏢 傳統', hasData ? data!.price : null, airlineLabel, priceColor, uri);
+  return comboRow('✈️ 傳統', hasData ? data!.price : null, airlineLabel, priceColor, uri);
 }
 
 /**
