@@ -520,14 +520,17 @@ function buildCategoryRowsForBubble(
       margin: 'xs',
       wrap: true
     },
+    // Skyscanner 改成 iOS 風 text link，視覺輕量不跟 footer 大按鈕打架
     {
-      type: 'button',
-      style: 'secondary',
-      height: 'sm',
-      margin: 'sm',
+      type: 'text',
+      text: '🛒 用 Skyscanner 訂 ›',
+      size: 'xs',
+      color: '#0a84ff',  // iOS link blue
+      align: 'end',
+      margin: 'xs',
       action: {
         type: 'uri',
-        label: `🛒 用 Skyscanner 訂${label}`,
+        label: `用 Skyscanner 訂${label}`,
         uri: skyscannerUrl
       }
     }
