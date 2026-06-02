@@ -481,14 +481,15 @@ function buildCategoryRowsForBubble(
   const isEst = 'isEstimate' in data && data.isEstimate === true;
   const priceText = `NT$ ${data.price.toLocaleString()}${isEst ? '＊' : ''}`;
 
-  // 目標價比較（per category）
+  // 目標價比較（per category）— 顯示目標價本身當錨點
   const diff = data.price - maxPrice;
   const diffPct = Math.round((Math.abs(diff) / maxPrice) * 100);
   const isBelow = diff <= 0;
   const diffAbs = Math.abs(diff).toLocaleString();
+  const targetStr = maxPrice.toLocaleString();
   const thBase = isBelow
-    ? `比目標價低 NT$ ${diffAbs}（${diffPct}%）`
-    : `比目標價高 NT$ ${diffAbs}（${diffPct}%）`;
+    ? `比目標 NT$ ${targetStr} 低 NT$ ${diffAbs}（${diffPct}%）`
+    : `比目標 NT$ ${targetStr} 高 NT$ ${diffAbs}（${diffPct}%）`;
   // vs 昨日 delta 加在目標價比較行尾（變化 < 1% 不顯示）
   const deltaPct = data.vsPrevPct;
   let deltaSegment = '';
@@ -523,7 +524,7 @@ function buildCategoryRowsForBubble(
     // Skyscanner 改成 iOS 風 text link，視覺輕量不跟 footer 大按鈕打架
     {
       type: 'text',
-      text: '🛒 用 Skyscanner 訂 ›',
+      text: '🔗 用 Skyscanner 訂 ›',
       size: 'xs',
       color: '#0a84ff',  // iOS link blue
       align: 'end',
