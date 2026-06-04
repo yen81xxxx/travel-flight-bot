@@ -213,6 +213,8 @@ async function safePush(sourceId: string, text: string): Promise<void> {
  * 部分更新訂閱（暫停、備註）
  * body: { id, sourceId, paused?, label?, maxPrice? }
  */
+// 'HH:MM' 24h 格式；null 表清掉時段過濾
+const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const PatchBody = z.object({
   id: z.number(),
   sourceId: z.string(),
@@ -220,7 +222,10 @@ const PatchBody = z.object({
   label: z.string().nullable().optional(),
   maxPrice: z.number().positive().optional(),
   // null 表示清掉「傳統另設」，回到跟隨 max_price
-  maxPriceTraditional: z.number().positive().nullable().optional()
+  maxPriceTraditional: z.number().positive().nullable().optional(),
+  // 起飛時間過濾下限 'HH:MM'；null 表清掉過濾
+  outboundMinDepartureTime: z.string().regex(HHMM_RE).nullable().optional(),
+  returnMinDepartureTime: z.string().regex(HHMM_RE).nullable().optional()
 });
 export async function PATCH(req: NextRequest): Promise<NextResponse> {
   let body: z.infer<typeof PatchBody>;
@@ -236,6 +241,8 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
   if (body.label !== undefined) update.label = body.label;
   if (body.maxPrice !== undefined) update.max_price = body.maxPrice;
   if (body.maxPriceTraditional !== undefined) update.max_price_traditional = body.maxPriceTraditional;
+  if (body.outboundMinDepartureTime !== undefined) update.outbound_min_departure_time = body.outboundMinDepartureTime;
+  if (body.returnMinDepartureTime !== undefined) update.return_min_departure_time = body.returnMinDepartureTime;
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ ok: false, error: 'no fields to update' }, { status: 400 });

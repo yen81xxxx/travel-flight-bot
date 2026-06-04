@@ -36,6 +36,9 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
   const [editMainPrice, setEditMainPrice] = useState<string>('');
   const [editTradEnabled, setEditTradEnabled] = useState<boolean>(false);
   const [editTradPrice, setEditTradPrice] = useState<string>('');
+  const [editTimeFilterEnabled, setEditTimeFilterEnabled] = useState<boolean>(false);
+  const [editOutboundMinTime, setEditOutboundMinTime] = useState<string>('');
+  const [editReturnMinTime, setEditReturnMinTime] = useState<string>('');
   const [editSaving, setEditSaving] = useState<boolean>(false);
 
   // 初始化群組 ID（URL → sessionStorage + localStorage）
@@ -95,15 +98,40 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
     if (sub.id == null) return;
     const current = Number(sub.max_price);
     const currentTrad = sub.max_price_traditional != null ? Number(sub.max_price_traditional) : null;
+    const currentOutTime = sub.outbound_min_departure_time ?? null;
+    const currentRetTime = sub.return_min_departure_time ?? null;
     setEditingSub(sub);
     setEditMainPrice(String(current));
     setEditTradEnabled(currentTrad != null);
     setEditTradPrice(String(currentTrad ?? Math.round(current * 2)));  // 預設建議 主×2（符合 LCC vs FS 量級差）
+    setEditTimeFilterEnabled(currentOutTime != null || currentRetTime != null);
+    setEditOutboundMinTime(currentOutTime ?? '08:00');
+    setEditReturnMinTime(currentRetTime ?? '08:00');
   };
 
   const closeEditModal = () => {
     if (editSaving) return;
     setEditingSub(null);
+  };
+
+  // 正規化使用者輸入的時間字串為 HH:MM。
+  // 接受 '12', '1200', '12:00', '12.30' 等，invalid 回 null。
+  const normalizeHHMM = (raw: string): string | null => {
+    const s = raw.trim();
+    if (!s) return null;
+    // 已是 HH:MM
+    const m1 = s.match(/^(\d{1,2}):(\d{2})$/);
+    // 純數字 4 位 = HHMM
+    const m2 = s.match(/^(\d{1,2})(\d{2})$/);
+    // 純數字 1~2 位 = 小時，分鐘 00
+    const m3 = s.match(/^(\d{1,2})$/);
+    let h: number, m: number;
+    if (m1) { h = +m1[1]; m = +m1[2]; }
+    else if (m2) { h = +m2[1]; m = +m2[2]; }
+    else if (m3) { h = +m3[1]; m = 0; }
+    else return null;
+    if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   };
 
   const submitEditPrice = async () => {
@@ -122,6 +150,24 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
       }
       newTradPrice = tradVal;
     }
+    // 時間過濾：勾選時兩個必須都輸入合法（去程 + 回程），不勾就清空兩個
+    let newOutTime: string | null = null;
+    let newRetTime: string | null = null;
+    if (editTimeFilterEnabled) {
+      const o = normalizeHHMM(editOutboundMinTime);
+      const r = normalizeHHMM(editReturnMinTime);
+      if (!o) {
+        alert('去程最早起飛時間格式錯誤，例如 12:00');
+        return;
+      }
+      if (!r) {
+        alert('回程最早起飛時間格式錯誤，例如 12:00');
+        return;
+      }
+      newOutTime = o;
+      newRetTime = r;
+    }
+
     const sub = editingSub;
     const subSourceId = sub.source_id ?? groupCtxId ?? sourceId;
     setEditSaving(true);
@@ -133,7 +179,9 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
           id: sub.id,
           sourceId: subSourceId,
           maxPrice: newPrice,
-          maxPriceTraditional: newTradPrice  // null = 跟隨主目標
+          maxPriceTraditional: newTradPrice,                    // null = 跟隨主目標
+          outboundMinDepartureTime: newOutTime,                  // null = 不過濾
+          returnMinDepartureTime: newRetTime                     // null = 不過濾
         })
       });
       const data = await res.json();
@@ -142,7 +190,15 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
         return;
       }
       setItems(prev => prev.map(item =>
-        item.id === sub.id ? { ...item, max_price: newPrice, max_price_traditional: newTradPrice } : item
+        item.id === sub.id
+          ? {
+              ...item,
+              max_price: newPrice,
+              max_price_traditional: newTradPrice,
+              outbound_min_departure_time: newOutTime,
+              return_min_departure_time: newRetTime
+            }
+          : item
       ));
       setEditingSub(null);
     } catch (err) {
@@ -341,6 +397,17 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                             )}
                           </div>
 
+                          {(sub.outbound_min_departure_time || sub.return_min_departure_time) && (
+                            <div className="card-timefilter">
+                              <span className="card-timefilter-icon">🌙</span>
+                              <span>
+                                排除清晨：去 {sub.outbound_min_departure_time ?? '不限'} 前
+                                {' · '}
+                                回 {sub.return_min_departure_time ?? '不限'} 前
+                              </span>
+                            </div>
+                          )}
+
                           {sub.label && (
                             <div className="card-note">📝 {sub.label}</div>
                           )}
@@ -425,6 +492,40 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                       onChange={e => setEditTradPrice(e.target.value)}
                       placeholder="例如 27000"
                     />
+                  </div>
+                )}
+
+                <label className="edit-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={editTimeFilterEnabled}
+                    onChange={e => setEditTimeFilterEnabled(e.target.checked)}
+                  />
+                  <span>排除過早出發的航班</span>
+                </label>
+
+                {editTimeFilterEnabled && (
+                  <div className="edit-time-grid">
+                    <div className="edit-field">
+                      <label htmlFor="edit-out-time">去程最早</label>
+                      <div className="edit-field-hint">早於此時刻起飛 → 不通知</div>
+                      <input
+                        id="edit-out-time"
+                        type="time"
+                        value={editOutboundMinTime}
+                        onChange={e => setEditOutboundMinTime(e.target.value)}
+                      />
+                    </div>
+                    <div className="edit-field">
+                      <label htmlFor="edit-ret-time">回程最早</label>
+                      <div className="edit-field-hint">早於此時刻起飛 → 不通知</div>
+                      <input
+                        id="edit-ret-time"
+                        type="time"
+                        value={editReturnMinTime}
+                        onChange={e => setEditReturnMinTime(e.target.value)}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -772,6 +873,23 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
             letter-spacing: 0.4px;
           }
 
+          /* time filter strip */
+          .card-timefilter {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: rgba(100, 210, 255, 0.85);
+            background: rgba(100, 210, 255, 0.10);
+            padding: 7px 12px;
+            border-radius: 8px;
+            letter-spacing: -0.06px;
+            font-feature-settings: 'tnum' 1;
+          }
+          .card-timefilter-icon {
+            flex-shrink: 0;
+          }
+
           /* note */
           .card-note {
             font-size: 12px;
@@ -914,7 +1032,8 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
             letter-spacing: -0.06px;
             margin-bottom: 4px;
           }
-          .edit-field input[type="text"] {
+          .edit-field input[type="text"],
+          .edit-field input[type="time"] {
             background: rgba(120, 120, 128, 0.24);
             border: none;
             border-radius: 10px;
@@ -925,9 +1044,20 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
             font-feature-settings: 'tnum' 1;
             outline: none;
             transition: background 0.15s ease;
+            font-family: inherit;
           }
-          .edit-field input[type="text"]:focus {
+          .edit-field input[type="text"]:focus,
+          .edit-field input[type="time"]:focus {
             background: rgba(120, 120, 128, 0.36);
+          }
+          /* iOS Safari 時間 picker 文字色 */
+          .edit-field input[type="time"]::-webkit-calendar-picker-indicator {
+            filter: invert(1) brightness(0.85);
+          }
+          .edit-time-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
           }
           .edit-checkbox-row {
             display: flex;

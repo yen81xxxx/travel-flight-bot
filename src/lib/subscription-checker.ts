@@ -113,33 +113,42 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
     const [origin, destination, outboundDate, returnDate] = key.split('|');
     try {
       // 多機場城市（東京 = HND + NRT）fan-out — 跟 daily-search 一致
+      // 此處僅做 raw fetch，不在 group 層做 analyzeFlights，因為每筆 sub 的時間過濾可能不同
       const destAirports = getCityAirports(destination);
       const fanout = await Promise.all(
         destAirports.map(async d => {
           const s = await searchFlights({ origin, destination: d, outboundDate, returnDate });
-          return { destination: d, result: s, analysis: analyzeFlights(s.outbound, s.return) };
+          return { destination: d, result: s };
         })
       );
       for (const f of fanout) result.serpapiCalls += f.result.serpapiCalls;
-
-      // 跨機場挑最便宜的 analysis（給 alert flex 用）
-      let analysis = fanout[0].analysis;
-      let cheapest = analysis.cheapestRoundTripPrice;
-      for (const f of fanout.slice(1)) {
-        const p = f.analysis.cheapestRoundTripPrice;
-        if (p != null && (cheapest == null || p < cheapest)) {
-          analysis = f.analysis;
-          cheapest = p;
-        }
-      }
-
-      if (cheapest == null) return;
 
       // 同組訂閱依 max_price 排序，逐一檢查是否該通知
       // 注意：cheapest 是跨類最低（廉航跟傳統取其低），所以用「廉航目標價（主目標）」當第一道閘
       // 如果使用者有設「傳統另設」且廉航查無資料、只有傳統，則用 traditional target
       for (const sub of subList) {
         try {
+          // 對「這筆訂閱」套用其時間過濾，重新分析（fan-out 的原始 quote 重用）
+          const timeFilter = {
+            outboundMin: sub.outbound_min_departure_time ?? null,
+            returnMin: sub.return_min_departure_time ?? null
+          };
+          // 跨機場挑這筆 sub 的最便宜
+          let analysis = analyzeFlights(fanout[0].result.outbound, fanout[0].result.return, timeFilter);
+          let cheapest = analysis.cheapestRoundTripPrice;
+          for (const f of fanout.slice(1)) {
+            const a = analyzeFlights(f.result.outbound, f.result.return, timeFilter);
+            const p = a.cheapestRoundTripPrice;
+            if (p != null && (cheapest == null || p < cheapest)) {
+              analysis = a;
+              cheapest = p;
+            }
+          }
+          if (cheapest == null) {
+            result.skipped++;
+            continue;
+          }
+
           const lccTarget = Number(sub.max_price);
           const tradTarget = sub.max_price_traditional != null
             ? Number(sub.max_price_traditional)

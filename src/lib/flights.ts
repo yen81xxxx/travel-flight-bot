@@ -1,5 +1,41 @@
-import type { FlightQuote } from '@/types';
+import type { FlightQuote, SerpApiFlight } from '@/types';
 import { getAirlineCategory } from '@/config/airlines';
+
+/** 起飛時間下限 — 'HH:MM' 字串，去程 / 回程可獨立設定 */
+export interface TimeFilter {
+  outboundMin?: string | null;
+  returnMin?: string | null;
+}
+
+/**
+ * 從 quote.raw 取出第一段（起點）的本地起飛時間「HH:MM」。
+ * SerpApi 格式：'2026-02-04 06:25' → '06:25'。
+ * 取不到 → null（呼叫端應該採「保留」策略，避免誤殺）。
+ */
+export function extractDepartureHHMM(q: FlightQuote): string | null {
+  const raw = q.raw as SerpApiFlight | undefined;
+  const time = raw?.flights?.[0]?.departure_airport?.time;
+  if (typeof time !== 'string') return null;
+  const m = time.match(/\b(\d{2}:\d{2})\b/);
+  return m ? m[1] : null;
+}
+
+/**
+ * 過濾起飛時間早於下限的 quote。
+ * 'HH:MM' 字串字典序比較 == 數值比較（zero-padded 24h 格式特性）。
+ * 取不到時間的 quote 一律保留（fail-open）。
+ */
+function filterByDepartureTime(
+  quotes: FlightQuote[],
+  minHHMM: string | null | undefined
+): FlightQuote[] {
+  if (!minHHMM) return quotes;
+  return quotes.filter(q => {
+    const t = extractDepartureHHMM(q);
+    if (t == null) return true;
+    return t >= minHHMM;
+  });
+}
 
 /** 同一家航空公司來回（傳統航空優先這個組合） */
 export interface SameAirlineRoundTrip {
@@ -49,10 +85,15 @@ export interface FlightAnalysis {
  */
 export function analyzeFlights(
   outbound: FlightQuote[],
-  ret: FlightQuote[]
+  ret: FlightQuote[],
+  timeFilter?: TimeFilter
 ): FlightAnalysis {
-  const sortedOut = [...outbound].sort(byPriceAsc);
-  const sortedRet = [...ret].sort(byPriceAsc);
+  // 起飛時間過濾：套用後再排序找最便宜
+  const fOutbound = filterByDepartureTime(outbound, timeFilter?.outboundMin);
+  const fReturn = filterByDepartureTime(ret, timeFilter?.returnMin);
+
+  const sortedOut = [...fOutbound].sort(byPriceAsc);
+  const sortedRet = [...fReturn].sort(byPriceAsc);
 
   const cheapestOut = sortedOut[0] ?? null;
   const cheapestRet = sortedRet[0] ?? null;
@@ -78,10 +119,10 @@ export function analyzeFlights(
     cheapestReturn: cheapestRet,
     cheapestRoundTripPrice: cheapestRoundTrip,
     cheapestAirline,
-    traditionalRoundTrip: pickTraditionalSameAirline(outbound),
-    lccCombo: pickLccCombo(outbound, ret),
-    outboundCount: outbound.length,
-    returnCount: ret.length
+    traditionalRoundTrip: pickTraditionalSameAirline(fOutbound),
+    lccCombo: pickLccCombo(fOutbound, fReturn),
+    outboundCount: fOutbound.length,
+    returnCount: fReturn.length
   };
 }
 
