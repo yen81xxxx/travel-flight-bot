@@ -369,7 +369,7 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                                 {sub.max_price_traditional != null ? (
                                   <>
                                     <span className="price-tag price-tag-lcc">廉航</span>
-                                    <span className="price-row-hint">虎航 / 樂桃 / 捷星 / 酷航</span>
+                                    <span className="price-row-hint">捷星 / 酷航</span>
                                   </>
                                 ) : (
                                   <>
@@ -387,7 +387,7 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                               <div className="price-row price-row-trad">
                                 <div className="price-row-label">
                                   <span className="price-tag price-tag-trad">傳統</span>
-                                  <span className="price-row-hint">星宇 / 長榮 / 華航</span>
+                                  <span className="price-row-hint">星宇 / 長榮</span>
                                 </div>
                                 <div className="price-row-value price-row-value-trad">
                                   <span className="ccy">NT$</span>
@@ -483,7 +483,7 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                 {editTradEnabled && (
                   <div className="edit-field">
                     <label htmlFor="edit-trad-price">傳統航空目標價 (NT$)</label>
-                    <div className="edit-field-hint">星宇 / 長榮 / 華航 等用此值</div>
+                    <div className="edit-field-hint">星宇 / 長榮 等用此值</div>
                     <input
                       id="edit-trad-price"
                       type="text"

@@ -378,7 +378,7 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
         </button>
 
         <p className="hint">
-          篩選：星宇 / 長榮 / 虎航 / 捷星 / 酷航
+          篩選：星宇 / 長榮 / 捷星 / 酷航
         </p>
       </form>
 
@@ -391,7 +391,7 @@ export default function SearchForm({ liffId, twAirports, jpAirports }: Props) {
           <p>可能的原因：</p>
           <ul>
             <li>📅 日期太久之前或太久之後（SerpApi 通常只有未來 11 個月內的票）</li>
-            <li>✈️ 這條航線沒有星宇 / 長榮 / 虎航 / 捷星 / 酷航直飛或合理轉機</li>
+            <li>✈️ 這條航線沒有星宇 / 長榮 / 捷星 / 酷航直飛或合理轉機</li>
             <li>🗓️ 旅程長度太長（&gt; 60 天 Google Flights 可能不顯示）</li>
             <li>🏝️ 冷門目的地（例如石垣島）+ 冷門日期 = 無班機</li>
           </ul>
