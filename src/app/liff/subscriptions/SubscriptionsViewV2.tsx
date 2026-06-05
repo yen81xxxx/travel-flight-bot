@@ -15,6 +15,21 @@ interface Props {
 
 type ItemWithSource = Subscription & { _source: 'personal' | 'group' };
 
+/**
+ * 把單方向（去 / 回）的時間窗口顯示成可讀區間。
+ * 例：
+ *   min='12:00' max=null   → '12:00 後'
+ *   min=null    max='18:00' → '18:00 前'
+ *   min='08:00' max='12:00' → '08:00–12:00'
+ *   兩者都 null（不該呼叫到）→ '不限'
+ */
+function formatWindow(min: string | null | undefined, max: string | null | undefined): string {
+  if (min && max) return `${min}–${max}`;
+  if (min) return `${min} 後`;
+  if (max) return `${max} 前`;
+  return '不限';
+}
+
 export default function SubscriptionsViewV2({ liffId }: Props) {
   // LIFF 初始化
   const { liffReady, user } = useLiff(liffId);
@@ -39,6 +54,8 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
   const [editTimeFilterEnabled, setEditTimeFilterEnabled] = useState<boolean>(false);
   const [editOutboundMinTime, setEditOutboundMinTime] = useState<string>('');
   const [editReturnMinTime, setEditReturnMinTime] = useState<string>('');
+  const [editOutboundMaxTime, setEditOutboundMaxTime] = useState<string>('');
+  const [editReturnMaxTime, setEditReturnMaxTime] = useState<string>('');
   const [editSaving, setEditSaving] = useState<boolean>(false);
 
   // 初始化群組 ID（URL → sessionStorage + localStorage）
@@ -98,15 +115,19 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
     if (sub.id == null) return;
     const current = Number(sub.max_price);
     const currentTrad = sub.max_price_traditional != null ? Number(sub.max_price_traditional) : null;
-    const currentOutTime = sub.outbound_min_departure_time ?? null;
-    const currentRetTime = sub.return_min_departure_time ?? null;
+    const outMin = sub.outbound_min_departure_time ?? null;
+    const retMin = sub.return_min_departure_time ?? null;
+    const outMax = sub.outbound_max_departure_time ?? null;
+    const retMax = sub.return_max_departure_time ?? null;
     setEditingSub(sub);
     setEditMainPrice(String(current));
     setEditTradEnabled(currentTrad != null);
     setEditTradPrice(String(currentTrad ?? Math.round(current * 2)));  // 預設建議 主×2（符合 LCC vs FS 量級差）
-    setEditTimeFilterEnabled(currentOutTime != null || currentRetTime != null);
-    setEditOutboundMinTime(currentOutTime ?? '08:00');
-    setEditReturnMinTime(currentRetTime ?? '08:00');
+    setEditTimeFilterEnabled(!!(outMin || retMin || outMax || retMax));
+    setEditOutboundMinTime(outMin ?? '');
+    setEditReturnMinTime(retMin ?? '');
+    setEditOutboundMaxTime(outMax ?? '');
+    setEditReturnMaxTime(retMax ?? '');
   };
 
   const closeEditModal = () => {
@@ -150,22 +171,40 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
       }
       newTradPrice = tradVal;
     }
-    // 時間過濾：勾選時兩個必須都輸入合法（去程 + 回程），不勾就清空兩個
-    let newOutTime: string | null = null;
-    let newRetTime: string | null = null;
+    // 時段窗口：勾選時 4 格皆可空（空 = 該端不限），不勾選就全清空
+    // 任一格有值要驗格式；同一段 min/max 同時設要 min <= max
+    let newOutMin: string | null = null;
+    let newRetMin: string | null = null;
+    let newOutMax: string | null = null;
+    let newRetMax: string | null = null;
     if (editTimeFilterEnabled) {
-      const o = normalizeHHMM(editOutboundMinTime);
-      const r = normalizeHHMM(editReturnMinTime);
-      if (!o) {
-        alert('去程最早起飛時間格式錯誤，例如 12:00');
+      const parse = (label: string, raw: string): string | false | null => {
+        if (!raw.trim()) return null;  // 空 = 不限
+        const v = normalizeHHMM(raw);
+        if (!v) {
+          alert(`${label}：時間格式錯誤，例如 12:00`);
+          return false;
+        }
+        return v;
+      };
+      const oMin = parse('去程「不早於」', editOutboundMinTime);
+      if (oMin === false) return;
+      const rMin = parse('回程「不早於」', editReturnMinTime);
+      if (rMin === false) return;
+      const oMax = parse('去程「不晚於」', editOutboundMaxTime);
+      if (oMax === false) return;
+      const rMax = parse('回程「不晚於」', editReturnMaxTime);
+      if (rMax === false) return;
+      // 同段 min/max 都填要合理（min <= max；'HH:MM' 字串字典序 = 數值序）
+      if (oMin && oMax && oMin > oMax) {
+        alert('去程「不早於」必須早於或等於「不晚於」');
         return;
       }
-      if (!r) {
-        alert('回程最早起飛時間格式錯誤，例如 12:00');
+      if (rMin && rMax && rMin > rMax) {
+        alert('回程「不早於」必須早於或等於「不晚於」');
         return;
       }
-      newOutTime = o;
-      newRetTime = r;
+      newOutMin = oMin; newRetMin = rMin; newOutMax = oMax; newRetMax = rMax;
     }
 
     const sub = editingSub;
@@ -180,8 +219,10 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
           sourceId: subSourceId,
           maxPrice: newPrice,
           maxPriceTraditional: newTradPrice,                    // null = 跟隨主目標
-          outboundMinDepartureTime: newOutTime,                  // null = 不過濾
-          returnMinDepartureTime: newRetTime                     // null = 不過濾
+          outboundMinDepartureTime: newOutMin,                   // null = 不過濾
+          returnMinDepartureTime: newRetMin,
+          outboundMaxDepartureTime: newOutMax,
+          returnMaxDepartureTime: newRetMax
         })
       });
       const data = await res.json();
@@ -195,8 +236,10 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
               ...item,
               max_price: newPrice,
               max_price_traditional: newTradPrice,
-              outbound_min_departure_time: newOutTime,
-              return_min_departure_time: newRetTime
+              outbound_min_departure_time: newOutMin,
+              return_min_departure_time: newRetMin,
+              outbound_max_departure_time: newOutMax,
+              return_max_departure_time: newRetMax
             }
           : item
       ));
@@ -397,13 +440,14 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                             )}
                           </div>
 
-                          {(sub.outbound_min_departure_time || sub.return_min_departure_time) && (
+                          {(sub.outbound_min_departure_time || sub.outbound_max_departure_time
+                            || sub.return_min_departure_time || sub.return_max_departure_time) && (
                             <div className="card-timefilter">
-                              <span className="card-timefilter-icon">🌙</span>
+                              <span className="card-timefilter-icon">⏰</span>
                               <span>
-                                排除清晨：去 {sub.outbound_min_departure_time ?? '不限'} 前
+                                起飛時段　去 {formatWindow(sub.outbound_min_departure_time, sub.outbound_max_departure_time)}
                                 {' · '}
-                                回 {sub.return_min_departure_time ?? '不限'} 前
+                                回 {formatWindow(sub.return_min_departure_time, sub.return_max_departure_time)}
                               </span>
                             </div>
                           )}
@@ -501,32 +545,59 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                     checked={editTimeFilterEnabled}
                     onChange={e => setEditTimeFilterEnabled(e.target.checked)}
                   />
-                  <span>排除過早出發的航班</span>
+                  <span>限制起飛時段</span>
                 </label>
 
                 {editTimeFilterEnabled && (
-                  <div className="edit-time-grid">
-                    <div className="edit-field">
-                      <label htmlFor="edit-out-time">去程最早</label>
-                      <div className="edit-field-hint">早於此時刻起飛 → 不通知</div>
-                      <input
-                        id="edit-out-time"
-                        type="time"
-                        value={editOutboundMinTime}
-                        onChange={e => setEditOutboundMinTime(e.target.value)}
-                      />
+                  <>
+                    <div className="edit-time-section">
+                      <div className="edit-time-section-title">去程</div>
+                      <div className="edit-time-section-hint">每格空白 = 該端不限</div>
+                      <div className="edit-time-row">
+                        <div className="edit-time-cell">
+                          <label htmlFor="edit-out-min">不早於</label>
+                          <input
+                            id="edit-out-min"
+                            type="time"
+                            value={editOutboundMinTime}
+                            onChange={e => setEditOutboundMinTime(e.target.value)}
+                          />
+                        </div>
+                        <div className="edit-time-cell">
+                          <label htmlFor="edit-out-max">不晚於</label>
+                          <input
+                            id="edit-out-max"
+                            type="time"
+                            value={editOutboundMaxTime}
+                            onChange={e => setEditOutboundMaxTime(e.target.value)}
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div className="edit-field">
-                      <label htmlFor="edit-ret-time">回程最早</label>
-                      <div className="edit-field-hint">早於此時刻起飛 → 不通知</div>
-                      <input
-                        id="edit-ret-time"
-                        type="time"
-                        value={editReturnMinTime}
-                        onChange={e => setEditReturnMinTime(e.target.value)}
-                      />
+                    <div className="edit-time-section">
+                      <div className="edit-time-section-title">回程</div>
+                      <div className="edit-time-row">
+                        <div className="edit-time-cell">
+                          <label htmlFor="edit-ret-min">不早於</label>
+                          <input
+                            id="edit-ret-min"
+                            type="time"
+                            value={editReturnMinTime}
+                            onChange={e => setEditReturnMinTime(e.target.value)}
+                          />
+                        </div>
+                        <div className="edit-time-cell">
+                          <label htmlFor="edit-ret-max">不晚於</label>
+                          <input
+                            id="edit-ret-max"
+                            type="time"
+                            value={editReturnMaxTime}
+                            onChange={e => setEditReturnMaxTime(e.target.value)}
+                          />
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  </>
                 )}
               </div>
 
@@ -1054,10 +1125,64 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
           .edit-field input[type="time"]::-webkit-calendar-picker-indicator {
             filter: invert(1) brightness(0.85);
           }
-          .edit-time-grid {
+          .edit-time-section {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 12px;
+            background: rgba(100, 210, 255, 0.06);
+            border-radius: 10px;
+            border: 0.5px solid rgba(100, 210, 255, 0.15);
+          }
+          .edit-time-section-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #64d2ff;
+            letter-spacing: 0.5px;
+          }
+          .edit-time-section-hint {
+            font-size: 11px;
+            color: rgba(235, 235, 245, 0.45);
+            letter-spacing: -0.06px;
+            margin-bottom: 4px;
+          }
+          .edit-time-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 12px;
+            gap: 10px;
+          }
+          .edit-time-cell {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+          }
+          .edit-time-cell label {
+            font-size: 12px;
+            font-weight: 500;
+            color: rgba(235, 235, 245, 0.7);
+            letter-spacing: -0.06px;
+          }
+          .edit-time-cell input[type="time"] {
+            background: rgba(120, 120, 128, 0.24);
+            border: none;
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: 500;
+            font-feature-settings: 'tnum' 1;
+            outline: none;
+            transition: background 0.15s ease;
+            font-family: inherit;
+            min-width: 0;
+            width: 100%;
+            box-sizing: border-box;
+          }
+          .edit-time-cell input[type="time"]:focus {
+            background: rgba(120, 120, 128, 0.36);
+          }
+          .edit-time-cell input[type="time"]::-webkit-calendar-picker-indicator {
+            filter: invert(1) brightness(0.85);
           }
           .edit-checkbox-row {
             display: flex;

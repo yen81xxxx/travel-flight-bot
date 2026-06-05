@@ -128,10 +128,12 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
       // 如果使用者有設「傳統另設」且廉航查無資料、只有傳統，則用 traditional target
       for (const sub of subList) {
         try {
-          // 對「這筆訂閱」套用其時間過濾，重新分析（fan-out 的原始 quote 重用）
+          // 對「這筆訂閱」套用其時段窗口過濾，重新分析（fan-out 的原始 quote 重用）
           const timeFilter = {
             outboundMin: sub.outbound_min_departure_time ?? null,
-            returnMin: sub.return_min_departure_time ?? null
+            returnMin: sub.return_min_departure_time ?? null,
+            outboundMax: sub.outbound_max_departure_time ?? null,
+            returnMax: sub.return_max_departure_time ?? null
           };
           // 跨機場挑這筆 sub 的最便宜
           let analysis = analyzeFlights(fanout[0].result.outbound, fanout[0].result.return, timeFilter);

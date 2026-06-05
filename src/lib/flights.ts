@@ -1,10 +1,15 @@
 import type { FlightQuote, SerpApiFlight } from '@/types';
 import { getAirlineCategory } from '@/config/airlines';
 
-/** 起飛時間下限 — 'HH:MM' 字串，去程 / 回程可獨立設定 */
+/**
+ * 起飛時段窗口 — 'HH:MM' 字串，去程 / 回程可獨立設定。
+ * min = 不早於；max = 不晚於；任一端為 NULL 表該方向不限。
+ */
 export interface TimeFilter {
   outboundMin?: string | null;
   returnMin?: string | null;
+  outboundMax?: string | null;
+  returnMax?: string | null;
 }
 
 /**
@@ -21,19 +26,25 @@ export function extractDepartureHHMM(q: FlightQuote): string | null {
 }
 
 /**
- * 過濾起飛時間早於下限的 quote。
+ * 過濾起飛時間不在 [min, max] 窗口內的 quote。
+ * - min 為 null → 不檢查下限
+ * - max 為 null → 不檢查上限
+ * - 兩者皆 null → 直接放行所有 quote
  * 'HH:MM' 字串字典序比較 == 數值比較（zero-padded 24h 格式特性）。
- * 取不到時間的 quote 一律保留（fail-open）。
+ * 取不到時間的 quote 一律保留（fail-open，避免 raw 缺欄位誤殺）。
  */
 function filterByDepartureTime(
   quotes: FlightQuote[],
-  minHHMM: string | null | undefined
+  minHHMM: string | null | undefined,
+  maxHHMM: string | null | undefined
 ): FlightQuote[] {
-  if (!minHHMM) return quotes;
+  if (!minHHMM && !maxHHMM) return quotes;
   return quotes.filter(q => {
     const t = extractDepartureHHMM(q);
     if (t == null) return true;
-    return t >= minHHMM;
+    if (minHHMM && t < minHHMM) return false;
+    if (maxHHMM && t > maxHHMM) return false;
+    return true;
   });
 }
 
@@ -88,9 +99,9 @@ export function analyzeFlights(
   ret: FlightQuote[],
   timeFilter?: TimeFilter
 ): FlightAnalysis {
-  // 起飛時間過濾：套用後再排序找最便宜
-  const fOutbound = filterByDepartureTime(outbound, timeFilter?.outboundMin);
-  const fReturn = filterByDepartureTime(ret, timeFilter?.returnMin);
+  // 起飛時段窗口過濾：套用後再排序找最便宜
+  const fOutbound = filterByDepartureTime(outbound, timeFilter?.outboundMin, timeFilter?.outboundMax);
+  const fReturn = filterByDepartureTime(ret, timeFilter?.returnMin, timeFilter?.returnMax);
 
   const sortedOut = [...fOutbound].sort(byPriceAsc);
   const sortedRet = [...fReturn].sort(byPriceAsc);

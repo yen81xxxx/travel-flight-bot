@@ -223,9 +223,11 @@ const PatchBody = z.object({
   maxPrice: z.number().positive().optional(),
   // null 表示清掉「傳統另設」，回到跟隨 max_price
   maxPriceTraditional: z.number().positive().nullable().optional(),
-  // 起飛時間過濾下限 'HH:MM'；null 表清掉過濾
+  // 起飛時段窗口 'HH:MM'；null 表該端不限
   outboundMinDepartureTime: z.string().regex(HHMM_RE).nullable().optional(),
-  returnMinDepartureTime: z.string().regex(HHMM_RE).nullable().optional()
+  returnMinDepartureTime: z.string().regex(HHMM_RE).nullable().optional(),
+  outboundMaxDepartureTime: z.string().regex(HHMM_RE).nullable().optional(),
+  returnMaxDepartureTime: z.string().regex(HHMM_RE).nullable().optional()
 });
 export async function PATCH(req: NextRequest): Promise<NextResponse> {
   let body: z.infer<typeof PatchBody>;
@@ -243,6 +245,8 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
   if (body.maxPriceTraditional !== undefined) update.max_price_traditional = body.maxPriceTraditional;
   if (body.outboundMinDepartureTime !== undefined) update.outbound_min_departure_time = body.outboundMinDepartureTime;
   if (body.returnMinDepartureTime !== undefined) update.return_min_departure_time = body.returnMinDepartureTime;
+  if (body.outboundMaxDepartureTime !== undefined) update.outbound_max_departure_time = body.outboundMaxDepartureTime;
+  if (body.returnMaxDepartureTime !== undefined) update.return_max_departure_time = body.returnMaxDepartureTime;
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ ok: false, error: 'no fields to update' }, { status: 400 });

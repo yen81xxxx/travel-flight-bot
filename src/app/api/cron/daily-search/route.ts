@@ -225,10 +225,12 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
       };
       if (!route) return emptyItem;
 
-      // 套用這筆 sub 自己的時間過濾
+      // 套用這筆 sub 自己的時段窗口過濾
       const timeFilter: TimeFilter = {
         outboundMin: sub.outbound_min_departure_time ?? null,
-        returnMin: sub.return_min_departure_time ?? null
+        returnMin: sub.return_min_departure_time ?? null,
+        outboundMax: sub.outbound_max_departure_time ?? null,
+        returnMax: sub.return_max_departure_time ?? null
       };
       let bestLcc: { price: number; outboundAirline: string; returnAirline: string; airport: string; isEstimate: boolean } | null = null;
       let bestTrad: { price: number; airline: string; airport: string } | null = null;
@@ -400,7 +402,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     ok: pushedFail === 0,
     // 部署版本標記 — 改卡片版面時 bump 一下，方便從 API 回應驗證新 code 是否真的上線
-    cardVersion: 'v38-per-sub-time-filter-2026-06-04',
+    cardVersion: 'v39-time-window-min-max-2026-06-05',
     daily: {
       sourcesTargeted: targets.length,
       sourcesOptedOut: optedOut.size,
