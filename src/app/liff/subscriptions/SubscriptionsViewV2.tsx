@@ -31,7 +31,7 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
 
-  // 改價 modal 狀態
+  // 編輯 modal 狀態（目標價 + 傳統另設 + 時間過濾）
   const [editingSub, setEditingSub] = useState<ItemWithSource | null>(null);
   const [editMainPrice, setEditMainPrice] = useState<string>('');
   const [editTradEnabled, setEditTradEnabled] = useState<boolean>(false);
@@ -186,7 +186,7 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
       });
       const data = await res.json();
       if (!data.ok) {
-        alert('改價失敗：' + (data.error ?? '未知錯誤'));
+        alert('儲存失敗：' + (data.error ?? '未知錯誤'));
         return;
       }
       setItems(prev => prev.map(item =>
@@ -202,7 +202,7 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
       ));
       setEditingSub(null);
     } catch (err) {
-      alert('改價失敗：' + (err instanceof Error ? err.message : String(err)));
+      alert('儲存失敗：' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setEditSaving(false);
     }
@@ -423,7 +423,7 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                                 className="link-btn link-btn-primary"
                                 onClick={() => openEditModal(sub)}
                               >
-                                改價
+                                編輯
                               </button>
                               <span className="action-sep" aria-hidden="true" />
                               <button
@@ -450,7 +450,7 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
           <div className="edit-modal-backdrop" onClick={closeEditModal}>
             <div className="edit-modal" onClick={e => e.stopPropagation()}>
               <div className="edit-modal-header">
-                <h2>修改目標價</h2>
+                <h2>編輯訂閱</h2>
                 <div className="edit-modal-route">
                   ✈️ {editingSub.origin} → {editingSub.destination}
                 </div>
