@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchFlights } from '@/lib/serpapi';
+import { searchFlights, AllKeysExhaustedError } from '@/lib/serpapi';
 import { analyzeFlights, type TimeFilter } from '@/lib/flights';
 import { getLineClient } from '@/lib/line';
 import { getSupabase } from '@/lib/supabase';
@@ -116,11 +116,20 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   }
   const routeResults = new Map<string, RouteResult | null>();
 
+  // 全 key 配額用光時，這個 flag 一翻 → 之後所有 route 直接 skip，
+  // 不再無腦 retry 燒下個月剛 reset 的配額
+  let allKeysExhausted = false;
+
   await Promise.all(Array.from(queryGroups).map(async ([key, group]) => {
+    if (allKeysExhausted) {
+      routeResults.set(key, null);
+      return;
+    }
     const [origin, destination, outboundDate, returnDate] = key.split('|');
     const MAX_ATTEMPTS = 2;
     let lastErr: unknown = null;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      if (allKeysExhausted) break;
       try {
         const destAirports = getCityAirports(destination);
         const [previousMins, fanout] = await Promise.all([
@@ -183,6 +192,12 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
         return;  // 成功 → 跳出 retry 迴圈
       } catch (err) {
         lastErr = err;
+        if (err instanceof AllKeysExhaustedError) {
+          // 全 key 配額用光 → 不 retry、設 flag 讓其他 routes 也 skip
+          console.error(`[cron] route ${key} 全 key 配額用光，中止所有後續 routes:`, err.message);
+          allKeysExhausted = true;
+          break;
+        }
         if (attempt < MAX_ATTEMPTS) {
           console.warn(`[cron] route ${key} attempt ${attempt} failed, retrying (cache likely warm from prev attempt):`, err);
           await new Promise(r => setTimeout(r, 500));  // 500ms backoff
@@ -402,7 +417,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     ok: pushedFail === 0,
     // 部署版本標記 — 改卡片版面時 bump 一下，方便從 API 回應驗證新 code 是否真的上線
-    cardVersion: 'v39-time-window-min-max-2026-06-05',
+    cardVersion: 'v40-multi-key-rotation-2026-06-06',
     daily: {
       sourcesTargeted: targets.length,
       sourcesOptedOut: optedOut.size,

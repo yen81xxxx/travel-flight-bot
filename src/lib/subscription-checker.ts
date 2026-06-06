@@ -1,5 +1,5 @@
 import { getSupabase } from './supabase';
-import { searchFlights } from './serpapi';
+import { searchFlights, AllKeysExhaustedError } from './serpapi';
 import { analyzeFlights } from './flights';
 import { pushText } from './line';
 import { buildAlertFlex } from './flex-message';
@@ -108,8 +108,15 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
     groups.set(key, arr);
   }
 
+  // 全 key 配額用光 → 後續 groups 立刻 skip
+  let allKeysExhausted = false;
+
   // 所有 group 平行跑（不再 for...of 一個個等）— 避免 Vercel 60s timeout
   await Promise.all(Array.from(groups).map(async ([key, subList]) => {
+    if (allKeysExhausted) {
+      result.skipped += subList.length;
+      return;
+    }
     const [origin, destination, outboundDate, returnDate] = key.split('|');
     try {
       // 多機場城市（東京 = HND + NRT）fan-out — 跟 daily-search 一致
@@ -223,8 +230,15 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
         }
       }
     } catch (err) {
-      console.error('[sub-checker] group', key, 'failed:', err);
-      result.errors += subList.length;
+      if (err instanceof AllKeysExhaustedError) {
+        // 全 key 配額用光 → 設 flag 讓其他 groups 不再嘗試
+        console.error('[sub-checker] group', key, '全 key 配額用光，中止剩餘 groups:', err.message);
+        allKeysExhausted = true;
+        result.errors += subList.length;
+      } else {
+        console.error('[sub-checker] group', key, 'failed:', err);
+        result.errors += subList.length;
+      }
     }
   }));
 

@@ -10,6 +10,37 @@ import { isWhitelistedAirline, normalizeAirlineName, getAirlineCategory } from '
 const SERPAPI_BASE = 'https://serpapi.com/search.json';
 const CACHE_TTL_HOURS = 6;
 
+/**
+ * 多 SerpApi key 輪換 — 第一支用完（429）自動換下一支。
+ * 環境變數優先順序：
+ *   1. SERPAPI_KEYS = "key1,key2,key3" (逗號分隔，最推薦)
+ *   2. SERPAPI_KEY  = "key1" (back-compat 單支)
+ * 兩個都設時 SERPAPI_KEYS 蓋過 SERPAPI_KEY。
+ */
+function loadSerpApiKeys(): string[] {
+  const multi = process.env.SERPAPI_KEYS?.trim();
+  if (multi) {
+    return multi.split(',').map(k => k.trim()).filter(Boolean);
+  }
+  const single = process.env.SERPAPI_KEY?.trim();
+  return single ? [single] : [];
+}
+
+/** 該 key 本次 Lambda invocation 已 429 → 不再嘗試（in-process 記憶體，每次 cold start 會重置） */
+const exhaustedKeys = new Set<string>();
+
+/** 整月配額 / 所有 key 都 429 時 throw 這支；cron 接到要立即中止 */
+export class AllKeysExhaustedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AllKeysExhaustedError';
+  }
+}
+
+function maskKey(k: string): string {
+  return k.length > 8 ? `${k.slice(0, 4)}…${k.slice(-4)}` : '****';
+}
+
 export interface SearchParams {
   origin: string;        // IATA, e.g. TPE
   destination: string;   // IATA, e.g. HND
@@ -64,8 +95,11 @@ export async function searchFlights(params: SearchParams): Promise<SearchResult>
   }
 
   // ---- 2. 真的去打 SerpApi ----
+  // 計數先 +1：SerpApi 依 HTTP request 計費，無論成功失敗都算配額
+  // （之前在 await 之後 ++ 會漏掉失敗的 calls，搜尋實際用量遠超 search_runs 顯示值）
   let serpapiCalls = 0;
 
+  serpapiCalls++;
   const outboundResp = await callSerpApi({
     departure_id: params.origin,
     arrival_id: params.destination,
@@ -73,7 +107,6 @@ export async function searchFlights(params: SearchParams): Promise<SearchResult>
     return_date: params.returnDate,
     type: params.returnDate ? '1' : '2'  // 1 = round trip, 2 = one way
   });
-  serpapiCalls++;
 
   let returnResp: SerpApiFlightsResponse | null = null;
   if (params.returnDate) {
@@ -85,6 +118,7 @@ export async function searchFlights(params: SearchParams): Promise<SearchResult>
     const cheapestLccOutbound = pickCheapestLccFlight(allFlights);
     const token = cheapestLccOutbound?.departure_token ?? allFlights[0]?.departure_token;
     if (token) {
+      serpapiCalls++;
       returnResp = await callSerpApi({
         departure_id: params.origin,
         arrival_id: params.destination,
@@ -93,7 +127,6 @@ export async function searchFlights(params: SearchParams): Promise<SearchResult>
         type: '1',
         departure_token: token
       });
-      serpapiCalls++;
     }
   }
 
@@ -146,10 +179,22 @@ function filterUndefinedParams(query: Record<string, string | undefined>): Recor
   ) as Record<string, string>;
 }
 
-async function callSerpApi(query: Record<string, string | undefined>): Promise<SerpApiFlightsResponse> {
-  const apiKey = process.env.SERPAPI_KEY;
-  if (!apiKey) throw new Error('SERPAPI_KEY not set');
+/**
+ * 對單一 key 打一次 SerpApi。
+ * - 429 → 拋 QuotaExceededError（外層輪換用）
+ * - timeout / 其他 → 拋 generic Error（不換 key，往上拋）
+ */
+class QuotaExceededError extends Error {
+  constructor(public readonly key: string, body: string) {
+    super(`SerpApi key ${maskKey(key)} 配額用完 (429): ${body.slice(0, 120)}`);
+    this.name = 'QuotaExceededError';
+  }
+}
 
+async function fetchWithKey(
+  apiKey: string,
+  query: Record<string, string | undefined>
+): Promise<SerpApiFlightsResponse> {
   const params = new URLSearchParams({
     engine: 'google_flights',
     api_key: apiKey,
@@ -160,9 +205,6 @@ async function callSerpApi(query: Record<string, string | undefined>): Promise<S
   });
 
   const url = `${SERPAPI_BASE}?${params.toString()}`;
-
-  // 每次 fetch 最多 25 秒（SerpApi 對冷門路線可能需要久一點）
-  // 不 retry（timeout 通常代表 SerpApi 真的慢，重試只會更慢）
   const TIMEOUT_MS = 25_000;
 
   const controller = new AbortController();
@@ -175,6 +217,10 @@ async function callSerpApi(query: Record<string, string | undefined>): Promise<S
       signal: controller.signal
     });
     clearTimeout(timer);
+    if (resp.status === 429) {
+      const body = await resp.text().catch(() => '');
+      throw new QuotaExceededError(apiKey, body);
+    }
     if (!resp.ok) {
       const body = await resp.text().catch(() => '');
       throw new Error(`SerpApi ${resp.status}: ${body.slice(0, 200)}`);
@@ -183,12 +229,49 @@ async function callSerpApi(query: Record<string, string | undefined>): Promise<S
   } catch (err) {
     clearTimeout(timer);
     const isTimeout = err instanceof Error && err.name === 'AbortError';
-    console.warn(`[serpapi] failed${isTimeout ? ' (timeout 25s)' : ''}:`, err);
     if (isTimeout) {
       throw new Error('SerpApi 查詢超時（這條航線太冷門或暫時擁塞），稍後再試');
     }
     throw err;
   }
+}
+
+/**
+ * 公開入口 — 多 key 輪換版。
+ * - 第一支 429 → 標記 exhausted、自動 fallback 下一支
+ * - 全部 key 都 429 → throw AllKeysExhaustedError，cron 應該立即中止
+ */
+async function callSerpApi(query: Record<string, string | undefined>): Promise<SerpApiFlightsResponse> {
+  const allKeys = loadSerpApiKeys();
+  if (allKeys.length === 0) throw new Error('SERPAPI_KEYS / SERPAPI_KEY 都沒設定');
+
+  const candidates = allKeys.filter(k => !exhaustedKeys.has(k));
+  if (candidates.length === 0) {
+    throw new AllKeysExhaustedError(`全部 ${allKeys.length} 支 SerpApi key 本月配額皆用完`);
+  }
+
+  let lastErr: unknown = null;
+  for (const key of candidates) {
+    try {
+      const resp = await fetchWithKey(key, query);
+      // 成功 — 不打 log（成功是常態）
+      return resp;
+    } catch (err) {
+      if (err instanceof QuotaExceededError) {
+        console.warn(`[serpapi] key ${maskKey(key)} 配額用完，換下一支`);
+        exhaustedKeys.add(key);
+        lastErr = err;
+        continue;
+      }
+      // 其他錯誤（timeout / 5xx / network） — 不換 key，往上拋
+      console.warn('[serpapi] failed:', err);
+      throw err;
+    }
+  }
+
+  throw new AllKeysExhaustedError(
+    `所有 ${candidates.length} 支可用 key 都 429；最後錯誤：${lastErr instanceof Error ? lastErr.message : String(lastErr)}`
+  );
 }
 
 function extractQuotes(
