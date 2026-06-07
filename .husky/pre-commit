@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+# Travel Flight Bot — pre-commit gate
+# 兩道閘擋住「改 A 壞 B」：
+#   1. TypeScript 型別檢查（最常見的 breakage）
+#   2. Jest 測試 --bail（第一個壞掉就停，省時間）
+# 任一失敗 → commit 被 reject，請修好再 commit
+# 緊急要 bypass：git commit --no-verify（避免使用）
+
+set -e
+
+echo "[pre-commit] tsc --noEmit ..."
+npm run typecheck
+
+echo "[pre-commit] jest --bail ..."
+npm test -- --bail
+
+echo "[pre-commit] ✅ 全通過"
