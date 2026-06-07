@@ -1,7 +1,5 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import PerformanceMonitor from './PerformanceMonitor';
-import ResourceHints from './ResourceHints';
 
 export const metadata: Metadata = {
   title: '東京便宜機票看板',
@@ -15,13 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="zh-Hant">
-      <head>
-        <ResourceHints />
-      </head>
-      <body>
-        <PerformanceMonitor />
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
