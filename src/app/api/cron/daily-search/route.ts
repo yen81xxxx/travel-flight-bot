@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { searchFlights, AllKeysExhaustedError } from '@/lib/serpapi';
-import { analyzeFlights, type TimeFilter } from '@/lib/flights';
+import { analyzeFlights } from '@/lib/flights';
+import { buildMultiSubsItem, isRouteError, type RouteOutcome } from '@/lib/cron-items-mapper';
 import { getLineClient } from '@/lib/line';
 import { getSupabase } from '@/lib/supabase';
 import { checkAllSubscriptions } from '@/lib/subscription-checker';
@@ -8,7 +9,7 @@ import { cleanupOldRecords, getQuotaStats } from '@/lib/cleanup';
 import { buildDailyFlex, buildMultiSubsDailyFlex } from '@/lib/flex-message';
 import { getCityAirports } from '@/config/airports';
 import { getAirlineCategory } from '@/config/airlines';
-import type { Subscription, FlightQuote } from '@/types';
+import type { Subscription } from '@/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const runtime = 'nodejs';
@@ -102,20 +103,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   // 5a) 全部 routes 平行 fetch — 只存 raw quotes，不在 group 層做 analyze
   //     （每筆 sub 的時間過濾可能不同，必須延後到 5b 對每筆 sub 個別 analyze）
   // ============================================
-  interface RouteResult {
-    fanout: Array<{
-      airport: string;
-      outbound: FlightQuote[];
-      return: FlightQuote[];
-      fromCache: boolean;
-      queriedAt: string;
-    }>;
-    previousMins: { lcc: number | null; traditional: number | null };
-    bestCachedAt: string | null;
-    fromCacheAll: boolean;
-  }
-  /** 失敗時記錄原因，給 5b 區分「系統問題 vs 真的沒航班」 */
-  type RouteOutcome = RouteResult | { error: 'quota-exhausted' };
+  // RouteData / RouteOutcome 型別搬到 src/lib/cron-items-mapper.ts，跟 buildMultiSubsItem 共用
   const routeResults = new Map<string, RouteOutcome | null>();
 
   // 全 key 配額用光時，這個 flag 一翻 → 之後所有 route 直接 skip，
@@ -224,108 +212,25 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
 
   await Promise.all(Array.from(subsBySource).map(async ([sourceId, subs]) => {
     // 對每筆 sub 套用其時間過濾、跨機場跨分類挑最便宜，組成 MultiSubsItem
-    const items = subs.map((sub): import('@/lib/flex-message').MultiSubsItem => {
+    // 邏輯抽到 cron-items-mapper.ts buildMultiSubsItem，方便單獨測試
+    const items = subs.map((sub) => {
       const key = [sub.origin, sub.destination, sub.outbound_date ?? '', sub.return_date ?? ''].join('|');
-      const route = routeResults.get(key);
-      const makeEmpty = (errorReason: 'quota-exhausted' | null = null) => ({
-        origin: sub.origin,
-        destination: sub.destination,
-        outboundDate: sub.outbound_date ?? '',
-        returnDate: sub.return_date ?? '',
-        maxPrice: Number(sub.max_price),
-        maxPriceTraditional: sub.max_price_traditional != null ? Number(sub.max_price_traditional) : null,
-        label: sub.label,
-        cheapestPrice: null,
-        cheapestAirport: null,
-        cheapestCategory: null,
-        cheapestAirline: null,
-        vsPrevPct: null,
-        errorReason
-      });
-      if (!route) return makeEmpty();
-      // 配額用光路線 → 帶 errorReason，卡片會顯示「⏸ 今日查詢額度暫滿」
-      if ('error' in route) return makeEmpty(route.error);
-
-      // 套用這筆 sub 自己的時段窗口過濾
-      const timeFilter: TimeFilter = {
-        outboundMin: sub.outbound_min_departure_time ?? null,
-        returnMin: sub.return_min_departure_time ?? null,
-        outboundMax: sub.outbound_max_departure_time ?? null,
-        returnMax: sub.return_max_departure_time ?? null
-      };
-      let bestLcc: { price: number; outboundAirline: string; returnAirline: string; airport: string; isEstimate: boolean } | null = null;
-      let bestTrad: { price: number; airline: string; airport: string } | null = null;
-      for (const f of route.fanout) {
-        const a = analyzeFlights(f.outbound, f.return, timeFilter);
-        if (a.lccCombo && (!bestLcc || a.lccCombo.price < bestLcc.price)) {
-          bestLcc = { ...a.lccCombo, airport: f.airport };
-        }
-        if (a.traditionalRoundTrip && (!bestTrad || a.traditionalRoundTrip.price < bestTrad.price)) {
-          bestTrad = { ...a.traditionalRoundTrip, airport: f.airport };
-        }
-      }
-
-      let bestCheapest: { price: number; airline: string | null; airport: string; category: 'lcc' | 'full-service' } | null = null;
-      if (bestLcc && (!bestTrad || bestLcc.price <= bestTrad.price)) {
-        bestCheapest = { price: bestLcc.price, airline: bestLcc.outboundAirline, airport: bestLcc.airport, category: 'lcc' };
-      } else if (bestTrad) {
-        bestCheapest = { price: bestTrad.price, airline: bestTrad.airline, airport: bestTrad.airport, category: 'full-service' };
-      }
-      if (!bestCheapest) return makeEmpty();  // 真的沒匹配的航班
-
-      // 注意：vsPrev 用未過濾的 previousMins 當基準（歷史快取沒存 raw flight 細節）
-      //       使用者啟用時間過濾後，第一次 vsPrev 可能略偏；不影響邏輯正確性
-      const lccVsPrevPct = (bestLcc && route.previousMins.lcc != null && route.previousMins.lcc > 0)
-        ? Math.round(((bestLcc.price - route.previousMins.lcc) / route.previousMins.lcc) * 100)
-        : null;
-      const tradVsPrevPct = (bestTrad && route.previousMins.traditional != null && route.previousMins.traditional > 0)
-        ? Math.round(((bestTrad.price - route.previousMins.traditional) / route.previousMins.traditional) * 100)
-        : null;
-      const vsPrev = bestCheapest.category === 'lcc' ? lccVsPrevPct : tradVsPrevPct;
-
-      return {
-        origin: sub.origin,
-        destination: sub.destination,
-        outboundDate: sub.outbound_date ?? '',
-        returnDate: sub.return_date ?? '',
-        maxPrice: Number(sub.max_price),
-        maxPriceTraditional: sub.max_price_traditional != null ? Number(sub.max_price_traditional) : null,
-        label: sub.label,
-        cheapestPrice: bestCheapest.price,
-        cheapestAirport: bestCheapest.airport,
-        cheapestCategory: bestCheapest.category,
-        cheapestAirline: bestCheapest.airline,
-        vsPrevPct: vsPrev,
-        lcc: bestLcc ? {
-          price: bestLcc.price,
-          airport: bestLcc.airport,
-          outboundAirline: bestLcc.outboundAirline,
-          returnAirline: bestLcc.returnAirline,
-          vsPrevPct: lccVsPrevPct,
-          isEstimate: bestLcc.isEstimate
-        } : null,
-        traditional: bestTrad ? {
-          price: bestTrad.price,
-          airport: bestTrad.airport,
-          airline: bestTrad.airline,
-          vsPrevPct: tradVsPrevPct
-        } : null
-      };
+      return buildMultiSubsItem(sub, routeResults.get(key));
     });
 
     // 找這個 source 所有 routes 裡最新 cachedAt（若全部都吃快取）
     const allCached = subs.every(sub => {
       const key = [sub.origin, sub.destination, sub.outbound_date ?? '', sub.return_date ?? ''].join('|');
       const r = routeResults.get(key);
-      // error 物件沒有 fromCacheAll；視為「不算全 cache」
-      return r != null && !('error' in r) && r.fromCacheAll === true;
+      // RouteError 視為「不算全 cache」(isRouteError 排除掉 quota 錯誤路線)
+      return r != null && !isRouteError(r) && r.fromCacheAll === true;
     });
     let combinedCachedAt: string | null = null;
     if (allCached) {
       for (const sub of subs) {
         const key = [sub.origin, sub.destination, sub.outbound_date ?? '', sub.return_date ?? ''].join('|');
         const r = routeResults.get(key);
-        if (r != null && !('error' in r) && r.bestCachedAt && (!combinedCachedAt || r.bestCachedAt > combinedCachedAt)) {
+        if (r != null && !isRouteError(r) && r.bestCachedAt && (!combinedCachedAt || r.bestCachedAt > combinedCachedAt)) {
           combinedCachedAt = r.bestCachedAt;
         }
       }

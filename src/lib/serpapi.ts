@@ -184,11 +184,48 @@ function filterUndefinedParams(query: Record<string, string | undefined>): Recor
  * - 429 → 拋 QuotaExceededError（外層輪換用）
  * - timeout / 其他 → 拋 generic Error（不換 key，往上拋）
  */
-class QuotaExceededError extends Error {
+export class QuotaExceededError extends Error {
   constructor(public readonly key: string, body: string) {
     super(`SerpApi key ${maskKey(key)} 配額用完 (429): ${body.slice(0, 120)}`);
     this.name = 'QuotaExceededError';
   }
+}
+
+/**
+ * 純邏輯的 key 輪換：給一個 keys 陣列、exhausted Set、跟試打的 callback，
+ * 依序試還沒 exhausted 的 key；429 標 exhausted 後試下一支；其他錯誤直接拋。
+ *
+ * 抽出為純函數方便單測（不用 mock fetch / DB）。
+ */
+export async function rotateKeys<T>(
+  keys: string[],
+  exhausted: Set<string>,
+  tryKey: (key: string) => Promise<T>
+): Promise<T> {
+  if (keys.length === 0) throw new Error('SERPAPI_KEYS / SERPAPI_KEY 都沒設定');
+  const candidates = keys.filter(k => !exhausted.has(k));
+  if (candidates.length === 0) {
+    throw new AllKeysExhaustedError(`全部 ${keys.length} 支 SerpApi key 本月配額皆用完`);
+  }
+  let lastErr: unknown = null;
+  for (const key of candidates) {
+    try {
+      return await tryKey(key);
+    } catch (err) {
+      if (err instanceof QuotaExceededError) {
+        console.warn(`[serpapi] key ${maskKey(key)} 配額用完，換下一支`);
+        exhausted.add(key);
+        lastErr = err;
+        continue;
+      }
+      // 非配額錯誤（timeout / 5xx / network）— 不換 key，往上拋
+      console.warn('[serpapi] failed:', err);
+      throw err;
+    }
+  }
+  throw new AllKeysExhaustedError(
+    `所有 ${candidates.length} 支可用 key 都 429；最後錯誤：${lastErr instanceof Error ? lastErr.message : String(lastErr)}`
+  );
 }
 
 async function fetchWithKey(
@@ -237,41 +274,10 @@ async function fetchWithKey(
 }
 
 /**
- * 公開入口 — 多 key 輪換版。
- * - 第一支 429 → 標記 exhausted、自動 fallback 下一支
- * - 全部 key 都 429 → throw AllKeysExhaustedError，cron 應該立即中止
+ * 公開入口 — 多 key 輪換版（呼叫 rotateKeys + fetchWithKey）。
  */
 async function callSerpApi(query: Record<string, string | undefined>): Promise<SerpApiFlightsResponse> {
-  const allKeys = loadSerpApiKeys();
-  if (allKeys.length === 0) throw new Error('SERPAPI_KEYS / SERPAPI_KEY 都沒設定');
-
-  const candidates = allKeys.filter(k => !exhaustedKeys.has(k));
-  if (candidates.length === 0) {
-    throw new AllKeysExhaustedError(`全部 ${allKeys.length} 支 SerpApi key 本月配額皆用完`);
-  }
-
-  let lastErr: unknown = null;
-  for (const key of candidates) {
-    try {
-      const resp = await fetchWithKey(key, query);
-      // 成功 — 不打 log（成功是常態）
-      return resp;
-    } catch (err) {
-      if (err instanceof QuotaExceededError) {
-        console.warn(`[serpapi] key ${maskKey(key)} 配額用完，換下一支`);
-        exhaustedKeys.add(key);
-        lastErr = err;
-        continue;
-      }
-      // 其他錯誤（timeout / 5xx / network） — 不換 key，往上拋
-      console.warn('[serpapi] failed:', err);
-      throw err;
-    }
-  }
-
-  throw new AllKeysExhaustedError(
-    `所有 ${candidates.length} 支可用 key 都 429；最後錯誤：${lastErr instanceof Error ? lastErr.message : String(lastErr)}`
-  );
+  return rotateKeys(loadSerpApiKeys(), exhaustedKeys, (key) => fetchWithKey(key, query));
 }
 
 function extractQuotes(

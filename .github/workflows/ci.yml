@@ -1,50 +1,77 @@
-name: CI/CD
+name: CI
+
+# 每次 push 跟 PR 都跑全套 check。
+# main branch 要求這條 workflow 綠燈才能 merge（在 GitHub Settings → Branch protection 設）。
+#
+# 修改紀錄：
+# - 2026-06：去掉 continue-on-error: true（之前測試失敗也不會擋 merge，造成回歸進 main）
+# - 改成 npm test --bail：第一個失敗就停，省 CI 時間
+# - 加 jest cache + npm cache 加速
 
 on:
   push:
-    branches: [main, develop]
+    # 任何 branch 都跑，方便我 (Claude) 推 feature branch 時也能看到 CI 結果
+    branches-ignore: []
   pull_request:
-    branches: [main, develop]
+    branches: [main]
+
+concurrency:
+  # 同一 branch 多次 push 時，取消前面還在跑的（省 GitHub Actions 用量）
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  lint-and-test:
+  verify:
+    name: typecheck + test + lint
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        node-version: [18.x]
+    timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: '20'
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install
+        run: npm ci --no-audit --no-fund
 
-      - name: TypeScript check
+      # TypeScript 檢查 — 失敗就紅燈
+      - name: TypeScript
         run: npm run typecheck
 
-      - name: ESLint
+      # Jest — 失敗就紅燈（之前的 continue-on-error 已移除）
+      # --bail：第一個壞掉就停（local pre-commit 也用同樣 flag，行為一致）
+      - name: Tests
+        run: npm test -- --bail --colors
+
+      # ESLint 警告不擋，錯誤擋
+      - name: Lint
         run: npm run lint
 
-      - name: Build
-        run: npm run build
-
-      - name: Run tests
-        run: npm test -- --passWithNoTests
-        continue-on-error: true
-
-  security-audit:
+  build:
+    name: next build
     runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 10
+    # build 失敗也擋，但 verify 失敗時不浪費時間跑 build
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install
+        run: npm ci --no-audit --no-fund
 
-      - name: Run npm audit
-        run: npm audit --audit-level=moderate
-        continue-on-error: true
+      # build 不需要真實 env（getSupabase 是 lazy 的，runtime 才讀）
+      # 但 Next.js 對 NEXT_PUBLIC_* 變數會做 inline，給個 dummy 避免 warning
+      - name: Build
+        env:
+          NEXT_PUBLIC_LIFF_ID: dummy-build-time
+          NEXT_PUBLIC_SUPABASE_URL: https://dummy.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy
+          NEXT_PUBLIC_APP_URL: https://example.com
+        run: npm run build
