@@ -1,157 +1,109 @@
 # Travel Flight Bot
 
-東京便宜機票爬蟲 + LINE Bot + 即時看板。**取代原本 N8N 整套流程**。
+台灣 ↔ 日本 機票價格追蹤的 LINE Bot。每天爬 Google Flights、跌破設定的價格門檻自動 LINE 推播。
 
-## 架構速覽
+## 30 秒搞懂這專案在幹嘛
 
 ```
-┌──────────────────────────────────────────────┐
-│  Vercel Cron (每天)                          │
-│      ↓                                        │
-│  /api/cron/daily-search                      │
-│      ↓                                        │
-└─────┬────────────────────────────────────────┘
-      │
-      ↓                          ┌──────────┐
-   SerpApi  ←── 6h cache ──→  Supabase  ────→  / (Next.js page, ISR)
-      │                          ↑   ↓
-      ↓                          │   │
-   分析結果                      │   │
-      ↓                          │   │
-   LINE Push                     │   │
-                                 │   │
-┌────────────────────────────────┘   │
-│                                    │
-│  LINE Webhook (使用者輸入)         │
-│      ↓                              │
-│  /api/line/webhook                  │
-│      ↓                              │
-│  狀態機 (Supabase) ─────────────────┘
-│      ↓
-│  搜尋 → push 結果
-└─────────────────────────
+        ┌─ Vercel Cron (每天 05:00 UTC) ──→ /api/cron/daily-search ──┐
+        │                                                            │
+        │                                                            ▼
+   SerpApi ◄──── 6h cache ────► Supabase ◄──── flight_quotes 表
+        │                                                            │
+        ▼                                                            │
+   分析最便宜廉航 / 傳統 ──→ 跟 user 的 max_price 比 ──→ LINE Push    │
+                                                                     │
+   LINE webhook (user 輸入 / postback) ──→ /api/line/webhook ────────┘
+                                          │
+                                          ▼
+                                   bot-handler.ts 處理對話狀態 + 觸發查詢
+
+   LIFF (next.js 內嵌頁) ──→ /liff/search/subscriptions/settings → 改設定走 /api/subscriptions
 ```
 
-## 功能對照（vs. 原本的 N8N）
+**三大入口**：cron 每日推播、LINE webhook（user 對話）、LIFF 頁面（GUI 設定）。
 
-| 功能 | N8N 節點 | 這裡的對應 |
-|---|---|---|
-| 每日排程 | Schedule Trigger | Vercel Cron + `/api/cron/daily-search` |
-| 查 SerpApi 去程 | HTTP GET | `src/lib/serpapi.ts` |
-| 查 SerpApi 回程 | HTTP GET | 同上（用 `departure_token`） |
-| 篩選航空公司 | Code 節點 | `src/config/airlines.ts` |
-| 分析最便宜 | Code 節點 | `src/lib/flights.ts` |
-| 推 GitHub | HTTP PUT (有 SHA 衝突問題) | **不再需要**，改用 Next.js ISR |
-| LINE 推播 | HTTP POST | `src/lib/line.ts` |
-| LINE Webhook | Webhook Trigger | `/api/line/webhook` |
-| 解析訊息 | Code 節點 | `src/lib/bot-handler.ts` |
-| 對話狀態 | `$getWorkflowStaticData` | Supabase `conversation_state` 表 |
-| 動作路由 | If/Switch | `src/lib/bot-handler.ts` |
+## 跑起來 — 本機開發
 
-## 部署 SOP
+### 環境需求
+- Node.js 20+ (CI 也用 20，pre-commit 要一致)
+- npm
+- 一個 Supabase project + SerpApi key + LINE channel
 
-### Step 1：申請帳號
-
-1. **Supabase**：到 https://supabase.com 註冊免費帳號 → 建立新專案
-2. **Vercel**：到 https://vercel.com 註冊（用 GitHub 登入最方便）
-3. **GitHub**：把這個資料夾推到一個 repo（之後 Vercel 從這 deploy）
-4. **SerpApi 帳號**（沿用 N8N 那組就好，到 https://serpapi.com/manage-api-key 拿 key）
-5. **LINE Developers Console**（沿用原本的 channel）
-
-### Step 2：建立 Supabase schema
-
-打開 Supabase → SQL Editor → 貼上 `supabase/migrations/0001_initial.sql` 內容 → Run。
-
-### Step 3：本機跑起來測試
+### 設定步驟
 
 ```bash
-cd D:\Claud專案\Travel
-npm install
-cp .env.example .env.local
-# 編輯 .env.local 把每一格填好（看下方 credentials checklist）
-npm run dev
-# 然後打開 http://localhost:3000
-# 可以打開 http://localhost:3000/api/health 看是不是所有環境變數都齊了
+git clone https://github.com/yen81xxxx/travel-flight-bot.git
+cd travel-flight-bot
+npm install                  # 第一次裝完會自動 setup husky pre-commit hook
+cp .env.example .env.local   # 編輯填入實際 key（見下方清單）
+npm run dev                  # http://localhost:3000
 ```
 
-### Step 4：部署 Vercel
+### 環境變數（`.env.local`）
 
-```bash
-# 推到 GitHub
-git init
-git add .
-git commit -m "initial"
-git remote add origin <your-github-repo>
-git push -u origin main
+| 變數 | 在哪拿 | 必填？ |
+|------|------|-------|
+| `SERPAPI_KEYS` | https://serpapi.com（每月 250 免費，**用兩支以上 逗號分隔**自動輪換） | ✅ |
+| `SERPAPI_KEY` | 同上（單支 fallback、SERPAPI_KEYS 不存在時生效） | ⚠️ 二選一 |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API → Project URL | ✅ |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 同上 → anon public | ✅ |
+| `SUPABASE_SERVICE_ROLE_KEY` | 同上 → service_role（**保密**） | ✅ |
+| `LINE_CHANNEL_ACCESS_TOKEN` | LINE Developers → Channel → Messaging API | ✅ |
+| `LINE_CHANNEL_SECRET` | LINE Developers → Channel → Basic settings | ✅ |
+| `NEXT_PUBLIC_LIFF_ID` | LINE Developers → LIFF → Add → LIFF ID | ✅ |
+| `NEXT_PUBLIC_APP_URL` | 部署後的 Vercel domain（本機填 `http://localhost:3000`） | ✅ |
+| `CRON_SECRET` | 隨便產 32+ 字元的字串（[generator](https://generate-secret.vercel.app/32)） | ✅ |
+| `LINE_DAILY_PUSH_TARGET` | LINE userId 或 groupId（沒人訂閱時的 fallback 推播目標） | ⚪ |
+| `DEFAULT_ORIGIN` / `DEFAULT_DESTINATION` | IATA code（沒訂閱時 cron fallback 推播用） | ⚪ |
 
-# 然後在 Vercel 後台 → New Project → 選 repo → 把 .env.local 的內容
-# 一一貼到 Project Settings → Environment Variables → Production
+### 跑 DB migration
+
+```sql
+-- 第一次：到 Supabase SQL Editor，依序貼上跑：
+-- 1) supabase/migrations/0001_initial.sql
+-- 2) supabase/migrations/0002_subscriptions.sql
+-- 3) ... 一直到 0007_max_departure_time.sql
+NOTIFY pgrst, 'reload schema';
 ```
-
-部署完會拿到一個網址，例如 `https://travel-xxx.vercel.app`
-
-### Step 5：把 LINE Webhook 切到新網址
-
-到 LINE Developers Console → 你的 Channel → Messaging API：
-- **Webhook URL**：`https://travel-xxx.vercel.app/api/line/webhook`
-- **Use webhook**：開啟
-- 點 **Verify** 應該回 200 ✓
-
-### Step 6：關掉 N8N
-
-確認 LINE Bot 在新網址上能正常對話、隔天看到排程跑起來、看板有更新後，就把 N8N 那個 workflow deactivate。
-
-## Credentials checklist（給 .env.local 的填法）
-
-| 變數 | 在哪拿 |
-|---|---|
-| `SERPAPI_KEY` | https://serpapi.com/manage-api-key |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API → Project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API → anon public |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API → service_role（**保密**） |
-| `LINE_CHANNEL_ACCESS_TOKEN` | LINE Developers → Channel → Messaging API → Channel access token |
-| `LINE_CHANNEL_SECRET` | LINE Developers → Channel → Basic settings → Channel secret |
-| `LINE_DAILY_PUSH_TARGET` | 你想推到哪個 user/group ID（沿用 N8N 用的那組）；不填則 broadcast |
-| `CRON_SECRET` | 自己產一個 32+ 字元的隨機字串（[產生器](https://generate-secret.vercel.app/32)） |
 
 ## 開發指令
 
-```bash
-npm run dev         # 本機開發
-npm run build       # 產生 production build
-npm run start       # 跑 production build
-npm run typecheck   # 只檢查型別
-npm run lint        # 跑 ESLint
+| 指令 | 用途 |
+|------|------|
+| `npm run dev` | 本機跑 Next.js dev server |
+| `npm run build` | Production build |
+| `npm run typecheck` | TypeScript 型別檢查 |
+| `npm test` | Jest 跑全部測試（目前 81 個） |
+| `npm run lint` | ESLint（max 5 warnings） |
+| `npm run dev` + 改檔 + `git commit` | pre-commit hook 自動跑 typecheck + jest + lint |
+
+## 部署 — Vercel
+
+1. Push 到 GitHub `main` branch（**main 有 branch protection，必須走 PR**）
+2. Vercel 自動 detect、build、deploy
+3. 環境變數要在 Vercel UI 設一份（**Settings → Environment Variables**）— 跟 `.env.local` 同步
+
+> Env 改了**不會自動 redeploy**，要手動 redeploy 或推任意 commit。
+
+## 工作流 — 改 code 的標準流程
+
+```
+1. git checkout -b claude/<topic>       # feature branch（不能直接動 main）
+2. 改 code、跑 npm test 確認沒壞
+3. git commit                            # pre-commit hook 自動 typecheck + jest + lint
+4. git push origin claude/<topic>
+5. 開 PR (GitHub UI 或 gh CLI)
+6. CI 自動跑 typecheck / jest / lint / next build
+7. CI 綠燈 → 自己 review → Merge
+8. Vercel 自動部署 main
 ```
 
-## 手動觸發測試
+**main 已上鎖**：直接 `git push origin main` 會被 GitHub 拒絕（GH006）。
 
-```bash
-# 觸發排程（要帶 CRON_SECRET）
-curl -X POST https://your-domain.vercel.app/api/cron/daily-search \
-  -H "Authorization: Bearer YOUR_CRON_SECRET"
+## 更深入
 
-# 健康檢查
-curl https://your-domain.vercel.app/api/health
-```
-
-## 架構亮點（和 N8N 比的改進）
-
-1. **沒有 staticData 消失問題** — 對話狀態進 Postgres
-2. **沒有 GitHub SHA 衝突** — 不再推 GitHub，前台直接從 DB 渲染
-3. **6 小時快取** — 重複查詢省 SerpApi 配額
-4. **LINE Webhook 簽名驗證** — 防止偽造請求
-5. **Cron 用 secret** — 防止外人觸發
-6. **每次搜尋有紀錄** — `search_runs` 表可以追失敗原因
-7. **可橫向擴展** — Vercel 自動 scale，無需自己架 server
-8. **Type-safe** — TypeScript 全程型別檢查
-9. **可版控** — 全部 in code，Git diff 一目了然
-
-## 之後可以做的事
-
-- LINE Flex Message 把結果做成卡片
-- LIFF 做日期選擇器
-- 訂閱降價提醒（subscriptions 表）
-- 多路線、多目的地（從 hardcoded 改成參數化）
-- 歷史價格趨勢圖
-- LINE Pay / Stripe 訂閱付費
+- 📐 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — 整套系統怎麼運作、各檔案職責
+- 🔧 [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — 「user 報 X 問題 → 看哪個檔、怎麼修」對照表
+- 📜 [`.claude/CLAUDE.md`](.claude/CLAUDE.md) — 專案規則 + 踩過的雷清單
+- 🔍 [`scripts/README.md`](scripts/README.md) — 7 個診斷腳本用途
