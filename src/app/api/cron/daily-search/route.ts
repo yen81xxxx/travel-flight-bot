@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { searchFlights, AllKeysExhaustedError } from '@/lib/serpapi';
 import { analyzeFlights } from '@/lib/flights';
-import { buildMultiSubsItem, isRouteError, type RouteData, type RouteOutcome } from '@/lib/cron-items-mapper';
+import { buildMultiSubsItem, isRouteError, type RouteOutcome } from '@/lib/cron-items-mapper';
 import { getLineClient } from '@/lib/line';
 import { getSupabase } from '@/lib/supabase';
 import { checkAllSubscriptions } from '@/lib/subscription-checker';

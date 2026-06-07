@@ -1,8 +1,9 @@
 #!/usr/bin/env sh
 # Travel Flight Bot — pre-commit gate
-# 兩道閘擋住「改 A 壞 B」：
+# 三道閘擋住「改 A 壞 B」：
 #   1. TypeScript 型別檢查（最常見的 breakage）
 #   2. Jest 測試 --bail（第一個壞掉就停，省時間）
+#   3. ESLint --max-warnings 30（跟 CI 一致；新加超過 30 個 warning 就擋）
 # 任一失敗 → commit 被 reject，請修好再 commit
 # 緊急要 bypass：git commit --no-verify（避免使用）
 
@@ -13,5 +14,8 @@ npm run typecheck
 
 echo "[pre-commit] jest --bail ..."
 npm test -- --bail
+
+echo "[pre-commit] next lint --max-warnings 30 ..."
+npm run lint
 
 echo "[pre-commit] ✅ 全通過"
