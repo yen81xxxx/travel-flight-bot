@@ -346,6 +346,13 @@ export function buildDailyFlex(props: DailyFlexProps) {
  * 多訂閱總表卡：一個 source 一張卡，列出所有訂閱（每訂閱一段，可點去 Skyscanner）。
  * 取代「每個 source 只發最近一筆」的去重邏輯。
  */
+/**
+ * 為何「沒有 cheapestPrice」— 用來在卡片上區分系統問題 vs 真的沒航班
+ *   'quota-exhausted' → SerpApi key 配額全用完，這次沒查到（不是路線本身有問題）
+ *   undefined / null  → 正常查詢但 SerpApi 沒回任何符合白名單的航班（路線/日期問題）
+ */
+export type ItemErrorReason = 'quota-exhausted';
+
 export interface MultiSubsItem {
   origin: string;
   destination: string;           // 訂閱原始 dest（可能 HND，多機場時 cheapestAirport 會帶實際勝出機場）
@@ -360,6 +367,7 @@ export interface MultiSubsItem {
   cheapestCategory: 'lcc' | 'full-service' | null;
   cheapestAirline: string | null;
   vsPrevPct: number | null;
+  errorReason?: ItemErrorReason | null;  // 沒 cheapestPrice 時的原因（系統問題 vs 真的沒航班）
   // 廉航分類詳細（mix-and-match 組合）
   lcc?: {
     price: number;
@@ -567,7 +575,19 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
   }
 
   if (item.cheapestPrice == null) {
-    bodyContents.push({ type: 'text', text: '❌ 查無資料', size: 'sm', color: '#cbd5e1', margin: 'sm' });
+    if (item.errorReason === 'quota-exhausted') {
+      // 系統問題：橘黃色，讓人看出跟「真的沒航班」不同
+      bodyContents.push(
+        { type: 'text', text: '⏸ 今日查詢額度暫滿', size: 'sm', color: '#f59e0b', weight: 'bold', margin: 'sm' },
+        { type: 'text', text: '明日會自動恢復查詢', size: 'xxs', color: '#94a3b8', margin: 'xs' }
+      );
+    } else {
+      // 真的沒匹配的航班
+      bodyContents.push(
+        { type: 'text', text: '❌ 此條件無符合航班', size: 'sm', color: '#cbd5e1', margin: 'sm' },
+        { type: 'text', text: '可試其他日期或機場', size: 'xxs', color: '#94a3b8', margin: 'xs' }
+      );
+    }
   } else {
     // 廉航：用主目標價 maxPrice
     bodyContents.push(...buildCategoryRowsForBubble('✈️', '廉航', item.lcc, item.maxPrice, item.origin, item.outboundDate, item.returnDate));

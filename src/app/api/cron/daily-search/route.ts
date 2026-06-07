@@ -114,7 +114,9 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
     bestCachedAt: string | null;
     fromCacheAll: boolean;
   }
-  const routeResults = new Map<string, RouteResult | null>();
+  /** 失敗時記錄原因，給 5b 區分「系統問題 vs 真的沒航班」 */
+  type RouteOutcome = RouteResult | { error: 'quota-exhausted' };
+  const routeResults = new Map<string, RouteOutcome | null>();
 
   // 全 key 配額用光時，這個 flag 一翻 → 之後所有 route 直接 skip，
   // 不再無腦 retry 燒下個月剛 reset 的配額
@@ -122,7 +124,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
 
   await Promise.all(Array.from(queryGroups).map(async ([key, group]) => {
     if (allKeysExhausted) {
-      routeResults.set(key, null);
+      routeResults.set(key, { error: 'quota-exhausted' });
       return;
     }
     const [origin, destination, outboundDate, returnDate] = key.split('|');
@@ -196,6 +198,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
           // 全 key 配額用光 → 不 retry、設 flag 讓其他 routes 也 skip
           console.error(`[cron] route ${key} 全 key 配額用光，中止所有後續 routes:`, err.message);
           allKeysExhausted = true;
+          routeResults.set(key, { error: 'quota-exhausted' });
           break;
         }
         if (attempt < MAX_ATTEMPTS) {
@@ -224,7 +227,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
     const items = subs.map((sub): import('@/lib/flex-message').MultiSubsItem => {
       const key = [sub.origin, sub.destination, sub.outbound_date ?? '', sub.return_date ?? ''].join('|');
       const route = routeResults.get(key);
-      const emptyItem = {
+      const makeEmpty = (errorReason: 'quota-exhausted' | null = null) => ({
         origin: sub.origin,
         destination: sub.destination,
         outboundDate: sub.outbound_date ?? '',
@@ -236,9 +239,12 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
         cheapestAirport: null,
         cheapestCategory: null,
         cheapestAirline: null,
-        vsPrevPct: null
-      };
-      if (!route) return emptyItem;
+        vsPrevPct: null,
+        errorReason
+      });
+      if (!route) return makeEmpty();
+      // 配額用光路線 → 帶 errorReason，卡片會顯示「⏸ 今日查詢額度暫滿」
+      if ('error' in route) return makeEmpty(route.error);
 
       // 套用這筆 sub 自己的時段窗口過濾
       const timeFilter: TimeFilter = {
@@ -265,7 +271,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
       } else if (bestTrad) {
         bestCheapest = { price: bestTrad.price, airline: bestTrad.airline, airport: bestTrad.airport, category: 'full-service' };
       }
-      if (!bestCheapest) return emptyItem;
+      if (!bestCheapest) return makeEmpty();  // 真的沒匹配的航班
 
       // 注意：vsPrev 用未過濾的 previousMins 當基準（歷史快取沒存 raw flight 細節）
       //       使用者啟用時間過濾後，第一次 vsPrev 可能略偏；不影響邏輯正確性
@@ -311,14 +317,15 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
     const allCached = subs.every(sub => {
       const key = [sub.origin, sub.destination, sub.outbound_date ?? '', sub.return_date ?? ''].join('|');
       const r = routeResults.get(key);
-      return r?.fromCacheAll === true;
+      // error 物件沒有 fromCacheAll；視為「不算全 cache」
+      return r != null && !('error' in r) && r.fromCacheAll === true;
     });
     let combinedCachedAt: string | null = null;
     if (allCached) {
       for (const sub of subs) {
         const key = [sub.origin, sub.destination, sub.outbound_date ?? '', sub.return_date ?? ''].join('|');
         const r = routeResults.get(key);
-        if (r?.bestCachedAt && (!combinedCachedAt || r.bestCachedAt > combinedCachedAt)) {
+        if (r != null && !('error' in r) && r.bestCachedAt && (!combinedCachedAt || r.bestCachedAt > combinedCachedAt)) {
           combinedCachedAt = r.bestCachedAt;
         }
       }
@@ -417,7 +424,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     ok: pushedFail === 0,
     // 部署版本標記 — 改卡片版面時 bump 一下，方便從 API 回應驗證新 code 是否真的上線
-    cardVersion: 'v40-multi-key-rotation-2026-06-06',
+    cardVersion: 'v41-quota-aware-empty-state-2026-06-06',
     daily: {
       sourcesTargeted: targets.length,
       sourcesOptedOut: optedOut.size,
