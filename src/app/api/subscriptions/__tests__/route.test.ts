@@ -169,10 +169,11 @@ describe('buildPatchUpdatePayload — undefined vs null 語義', () => {
 });
 
 describe('防回歸：欄位數量檢查', () => {
-  it('PatchBody 欄位數量 = 10（id + sourceId + 8 可選）', () => {
+  it('PatchBody 欄位數量 = 12（id + sourceId + 10 可選）', () => {
     // 新增欄位時請順便加測試（避免靜默落地未測的欄位）。
     // 目前：id, sourceId, paused, label, maxPrice, maxPriceTraditional,
-    //       outboundMin/MaxDepartureTime, returnMin/MaxDepartureTime
+    //       outboundMin/MaxDepartureTime, returnMin/MaxDepartureTime,
+    //       outboundDate, returnDate（returnDate=null → 變單程訂閱）
     const allOptional = PatchBody.safeParse({ id: 1, sourceId: 'U' });
     expect(allOptional.success).toBe(true);
     const shape = (PatchBody as unknown as { _def: { shape: () => Record<string, unknown> } })._def.shape();
@@ -181,7 +182,30 @@ describe('防回歸：欄位數量檢查', () => {
       'paused', 'label',
       'maxPrice', 'maxPriceTraditional',
       'outboundMinDepartureTime', 'outboundMaxDepartureTime',
-      'returnMinDepartureTime', 'returnMaxDepartureTime'
+      'returnMinDepartureTime', 'returnMaxDepartureTime',
+      'outboundDate', 'returnDate'
     ].sort());
+  });
+
+  it('returnDate: null → 變單程訂閱（payload 寫 null 進 DB）', () => {
+    const result = PatchBody.safeParse({ id: 1, sourceId: 'U', returnDate: null });
+    expect(result.success).toBe(true);
+    const payload = buildPatchUpdatePayload({ id: 1, sourceId: 'U', returnDate: null });
+    expect(payload).toEqual({ return_date: null });
+  });
+
+  it('returnDate: undefined → 不動 return_date（不變單程）', () => {
+    const payload = buildPatchUpdatePayload({ id: 1, sourceId: 'U' });
+    expect(payload).toEqual({});
+  });
+
+  it('returnDate: "YYYY-MM-DD" → 改回程日期', () => {
+    const payload = buildPatchUpdatePayload({ id: 1, sourceId: 'U', returnDate: '2027-04-04' });
+    expect(payload).toEqual({ return_date: '2027-04-04' });
+  });
+
+  it('returnDate 非法格式 → schema 拒絕', () => {
+    expect(PatchBody.safeParse({ id: 1, sourceId: 'U', returnDate: '2027/04/04' }).success).toBe(false);
+    expect(PatchBody.safeParse({ id: 1, sourceId: 'U', returnDate: 'tomorrow' }).success).toBe(false);
   });
 });

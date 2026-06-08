@@ -403,6 +403,42 @@ describe('buildMultiSubsItem — 欄位帶值不漏', () => {
   });
 });
 
+describe('buildMultiSubsItem — 單程訂閱 (return_date = null)', () => {
+  it('return_date null → item.returnDate 也是 null（不變空字串）', () => {
+    const sub = makeSub({ return_date: null });
+    const route = makeRoute({
+      fanout: [makeFanout({
+        outbound: [makeQuote({ airline: '捷星', price: 13000, trip_leg: 'outbound' })],
+        return: []  // 單程：沒 return list
+      })]
+    });
+    const item = buildMultiSubsItem(sub, route);
+    expect(item.returnDate).toBeNull();
+    expect(item.outboundDate).toBe('2027-02-04');
+  });
+
+  it('return_date null + 空 route → 空 item，returnDate 還是 null', () => {
+    const sub = makeSub({ return_date: null });
+    const item = buildMultiSubsItem(sub, undefined);
+    expect(item.returnDate).toBeNull();
+    expect(item.cheapestPrice).toBeNull();
+  });
+
+  it('單程訂閱 + 有資料 → analyzeFlights 退到 outbound 估算（isEstimate=true）', () => {
+    const sub = makeSub({ return_date: null });
+    const route = makeRoute({
+      fanout: [makeFanout({
+        outbound: [makeQuote({ airline: '捷星', price: 13000, trip_leg: 'outbound' })],
+        return: []  // 單程
+      })]
+    });
+    const item = buildMultiSubsItem(sub, route);
+    // pickLccCombo fallback：return list 空 → 取 outbound 估算
+    expect(item.lcc?.price).toBe(13000);
+    expect(item.lcc?.isEstimate).toBe(true);  // ★ 標 fallback
+  });
+});
+
 describe('buildMultiSubsItem — quota-exhausted 不會被誤導向 no-match', () => {
   it('就算 fanout 為空，只要 error 標記是 quota-exhausted 就要帶上去', () => {
     const route: RouteOutcome = { error: 'quota-exhausted' };

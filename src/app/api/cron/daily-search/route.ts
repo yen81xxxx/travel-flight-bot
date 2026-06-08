@@ -43,9 +43,9 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
     .eq('active', true)
     .eq('paused', false);
   const allSubs = ((rawSubs ?? []) as Subscription[]).filter(s =>
-    // 必須有 outbound_date 且未過期；沒日期或未來無效日期的訂閱直接跳過
-    // （之前用 ?? '' 會把空字串送進 SerpApi → 400 → 每天浪費 retry 配額）
-    !!s.outbound_date && !!s.return_date && s.outbound_date >= today
+    // 必須有 outbound_date 且未過期。return_date 可為 null（單程訂閱）。
+    // 不能用 ?? '' 把空字串送進 SerpApi（會回 400）— 下游需用 null 判斷。
+    !!s.outbound_date && s.outbound_date >= today
   );
 
   // ============================================
@@ -115,7 +115,10 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
       routeResults.set(key, { error: 'quota-exhausted' });
       return;
     }
-    const [origin, destination, outboundDate, returnDate] = key.split('|');
+    const [origin, destination, outboundDate, returnDateRaw] = key.split('|');
+    // returnDate 空字串 = 單程訂閱（cron key 第 4 段是 sub.return_date ?? '' join）。
+    // 空字串不能直接傳給 searchFlights / Supabase eq()，要轉 undefined / null。
+    const returnDate: string | undefined = returnDateRaw === '' ? undefined : returnDateRaw;
     const MAX_ATTEMPTS = 2;
     let lastErr: unknown = null;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -123,7 +126,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
       try {
         const destAirports = getCityAirports(destination);
         const [previousMins, fanout] = await Promise.all([
-          queryPreviousCategoryMins(supabase, origin, destAirports, outboundDate, returnDate),
+          queryPreviousCategoryMins(supabase, origin, destAirports, outboundDate, returnDate ?? null),
           Promise.all(
             destAirports.map(async (d) => {
               const r = await searchFlights({ origin, destination: d, outboundDate, returnDate });
@@ -371,22 +374,24 @@ async function queryPreviousCategoryMins(
   origin: string,
   destinations: string[],
   outboundDate: string,
-  returnDate: string
+  returnDate: string | null  // null = 單程訂閱
 ): Promise<{ lcc: number | null; traditional: number | null }> {
   const now = Date.now();
   const olderThan = new Date(now - 2 * 3600 * 1000).toISOString();
   const newerThan = new Date(now - 36 * 3600 * 1000).toISOString();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('flight_quotes')
     .select('airline, price, stops, trip_leg')
     .eq('origin', origin)
     .in('destination', destinations)
     .eq('outbound_date', outboundDate)
-    .eq('return_date', returnDate)
     .eq('stops', 0)
     .gte('queried_at', newerThan)
     .lt('queried_at', olderThan);
+  // return_date null 在 Supabase 要用 .is() 而不是 .eq()
+  query = returnDate == null ? query.is('return_date', null) : query.eq('return_date', returnDate);
+  const { data, error } = await query;
 
   if (error || !data || data.length === 0) return { lcc: null, traditional: null };
 

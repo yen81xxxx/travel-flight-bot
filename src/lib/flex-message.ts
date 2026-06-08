@@ -5,13 +5,18 @@ interface AlertFlexProps {
   origin: string;
   destination: string;
   outboundDate: string;
-  returnDate: string;
+  returnDate: string | null;  // null = 單程訂閱
   cheapestPrice: number;
   threshold: number;
   airline: string;
   // 這條訂閱的 source_id（user 或 group）。給「我的訂閱」按鈕帶 ctx 用，
   // 不傳就 fallback 到普通連結（個人訂閱情境）
   sourceId?: string;
+}
+
+/** 顯示日期區間的小工具：來回顯示 'YYYY-MM-DD ~ YYYY-MM-DD'，單程顯示 '單程 YYYY-MM-DD' */
+function formatDateRange(outboundDate: string, returnDate: string | null | undefined): string {
+  return returnDate ? `📅 ${outboundDate} ~ ${returnDate}` : `📅 單程 ${outboundDate}`;
 }
 
 interface TraditionalRoundTripData {
@@ -32,7 +37,7 @@ interface DailyFlexProps {
   origin: string;
   destination: string;
   outboundDate: string;
-  returnDate: string;
+  returnDate: string | null;  // null = 單程
   cheapestPrice: number | null;
   cheapestAirline: string | null;
   // 卡片主體顯示這兩列：
@@ -118,7 +123,7 @@ export function buildAlertFlex(props: AlertFlexProps) {
           },
           {
             type: 'text',
-            text: `📅 ${props.outboundDate} ~ ${props.returnDate}`,
+            text: formatDateRange(props.outboundDate, props.returnDate),
             size: 'sm',
             color: '#666666'
           },
@@ -256,7 +261,7 @@ export function buildDailyFlex(props: DailyFlexProps) {
     },
     {
       type: 'text',
-      text: `📅 ${props.outboundDate} ~ ${props.returnDate}`,
+      text: formatDateRange(props.outboundDate, props.returnDate),
       size: 'sm',
       color: '#666666'
     },
@@ -357,7 +362,7 @@ export interface MultiSubsItem {
   origin: string;
   destination: string;           // 訂閱原始 dest（可能 HND，多機場時 cheapestAirport 會帶實際勝出機場）
   outboundDate: string;
-  returnDate: string;
+  returnDate: string | null;     // null = 單程訂閱
   maxPrice: number;              // 主目標價（廉航 + 傳統的 fallback）
   maxPriceTraditional?: number | null;  // 傳統航空另設目標價（null = 跟隨 maxPrice）
   label?: string | null;
@@ -459,7 +464,7 @@ function buildCategoryRowsForBubble(
   maxPrice: number,
   origin: string,
   outboundDate: string,
-  returnDate: string
+  returnDate: string | null  // null = 單程訂閱
 ): Record<string, unknown>[] {
   if (!data) {
     return [{
@@ -555,7 +560,10 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
     ? `${destCity} (${item.cheapestAirport})`
     : formatAirport(item.destination);
   const routeText = `${formatAirport(item.origin)} → ${destLabel}`;
-  const dateText = `📅 ${item.outboundDate.slice(5)} ~ ${item.returnDate.slice(5)}`;
+  // 單程：'📅 單程 02-04'；來回：'📅 02-04 ~ 04-04'
+  const dateText = item.returnDate
+    ? `📅 ${item.outboundDate.slice(5)} ~ ${item.returnDate.slice(5)}`
+    : `📅 單程 ${item.outboundDate.slice(5)}`;
 
   // Header：路線 + 日期（大字一目了然，無 hero 重複問題）
   const header = {
@@ -607,13 +615,13 @@ function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, u
 
   const footerContents: Record<string, unknown>[] = [];
   if (item.cheapestPrice != null && item.cheapestCategory && item.cheapestAirport) {
-    // 看歷史走勢 postback
+    // 看歷史走勢 postback — 單程訂閱 ret 給空字串（postback handler 需 decode 後再判斷）
     const histData = new URLSearchParams({
       a: 'h',
       o: item.origin,
       d: item.destination,
       out: item.outboundDate,
-      ret: item.returnDate,
+      ret: item.returnDate ?? '',
       max: String(item.maxPrice),
       cat: item.cheapestCategory,
       win: item.cheapestAirport
@@ -885,7 +893,7 @@ function lccRow(
   origin: string,
   destination: string,
   outboundDate: string,
-  returnDate: string,
+  returnDate: string | null,  // null = 單程
   vsPrevPct: number | null | undefined
 ): Record<string, unknown> {
   const hasData = data != null;
@@ -912,7 +920,7 @@ function traditionalRow(
   origin: string,
   destination: string,
   outboundDate: string,
-  returnDate: string,
+  returnDate: string | null,  // null = 單程
   vsPrevPct: number | null | undefined
 ): Record<string, unknown> {
   const hasData = data != null;
@@ -1026,17 +1034,18 @@ function formatTaipeiHmFromDate(d: Date): string {
  * 文件：https://developers.skyscanner.net/docs/referrals/flights-parameters
  * 用 day-view 進入 Skyscanner，filter 參數會正確套用（之前用消費者 URL `/transport/flights/...` 不吃 filter）。
  */
-function skyscannerUrl(origin: string, destination: string, outboundDate: string, returnDate: string): string {
+function skyscannerUrl(origin: string, destination: string, outboundDate: string, returnDate: string | null): string {
+  // 來回 → 帶 inboundDate；單程 → 省略 inboundDate（Skyscanner 自動視為單程）
   const params = new URLSearchParams({
     origin,
     destination,
     outboundDate,
-    inboundDate: returnDate,
     adultsv2: '1',
     locale: 'zh-TW',
     market: 'TW',
     currency: 'TWD'
   });
+  if (returnDate) params.set('inboundDate', returnDate);
   return `https://skyscanner.net/g/referrals/v1/flights/day-view/?${params.toString()}`;
 }
 
@@ -1051,14 +1060,13 @@ function skyscannerUrlForCategory(
   origin: string,
   destination: string,
   outboundDate: string,
-  returnDate: string
+  returnDate: string | null  // null = 單程
 ): string {
   const codes = getAirlineCodesByCategory(category).join(',');
   const params = new URLSearchParams({
     origin,
     destination,
     outboundDate,
-    inboundDate: returnDate,
     adultsv2: '1',
     locale: 'zh-TW',
     market: 'TW',
@@ -1066,6 +1074,7 @@ function skyscannerUrlForCategory(
     preferDirects: 'true',
     cabinclass: 'economy'
   });
+  if (returnDate) params.set('inboundDate', returnDate);
   if (codes) params.set('airlines', codes);
   return `https://skyscanner.net/g/referrals/v1/flights/day-view/?${params.toString()}`;
 }

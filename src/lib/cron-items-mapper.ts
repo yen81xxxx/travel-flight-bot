@@ -57,7 +57,7 @@ export function buildMultiSubsItem(
     origin: sub.origin,
     destination: sub.destination,
     outboundDate: sub.outbound_date ?? '',
-    returnDate: sub.return_date ?? '',
+    returnDate: sub.return_date ?? null,  // 單程訂閱 → null
     maxPrice: Number(sub.max_price),
     maxPriceTraditional: sub.max_price_traditional != null ? Number(sub.max_price_traditional) : null,
     label: sub.label,
@@ -116,7 +116,7 @@ export function buildMultiSubsItem(
     origin: sub.origin,
     destination: sub.destination,
     outboundDate: sub.outbound_date ?? '',
-    returnDate: sub.return_date ?? '',
+    returnDate: sub.return_date ?? null,  // 單程訂閱 → null
     maxPrice: Number(sub.max_price),
     maxPriceTraditional: sub.max_price_traditional != null ? Number(sub.max_price_traditional) : null,
     label: sub.label,
