@@ -95,13 +95,14 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
   }
 
   // 依 (origin, destination, outbound_date, return_date) 分組合併查詢
+  // return_date 可為空（單程訂閱），key 第 4 段為空字串時下游轉 undefined
   const groups = new Map<string, Subscription[]>();
   for (const sub of allSubs) {
     const key = [
       sub.origin,
       sub.destination,
       sub.outbound_date ?? defaultDate(30),
-      sub.return_date ?? defaultDate(34)
+      sub.return_date ?? ''
     ].join('|');
     const arr = groups.get(key) ?? [];
     arr.push(sub);
@@ -117,7 +118,9 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
       result.skipped += subList.length;
       return;
     }
-    const [origin, destination, outboundDate, returnDate] = key.split('|');
+    const [origin, destination, outboundDate, returnDateRaw] = key.split('|');
+    // 單程訂閱的 returnDate 在 key 內是空字串 → 轉 undefined 給 searchFlights
+    const returnDate: string | undefined = returnDateRaw === '' ? undefined : returnDateRaw;
     try {
       // 多機場城市（東京 = HND + NRT）fan-out — 跟 daily-search 一致
       // 此處僅做 raw fetch，不在 group 層做 analyzeFlights，因為每筆 sub 的時間過濾可能不同
@@ -249,7 +252,7 @@ async function sendAlert(
   sub: Subscription,
   analysis: ReturnType<typeof analyzeFlights>,
   outboundDate: string,
-  returnDate: string
+  returnDate: string | undefined  // 單程訂閱無 returnDate
 ): Promise<void> {
   const cheapest = analysis.cheapestRoundTripPrice ?? 0;
 
@@ -259,7 +262,7 @@ async function sendAlert(
       origin: sub.origin,
       destination: sub.destination,
       outboundDate,
-      returnDate,
+      returnDate: returnDate ?? null,
       cheapestPrice: cheapest,
       threshold: Number(sub.max_price),
       airline: analysis.cheapestAirline ?? '—',
@@ -281,14 +284,14 @@ function formatAlertText(
   sub: Subscription,
   cheapest: number,
   outboundDate: string,
-  returnDate: string,
+  returnDate: string | undefined,  // 單程訂閱無 returnDate
   airline: string
 ): string {
   return [
     '🔔 降價通知！',
     '',
     `✈️ ${formatAirport(sub.origin)} → ${formatAirport(sub.destination)}`,
-    `📅 ${outboundDate} ~ ${returnDate}`,
+    returnDate ? `📅 ${outboundDate} ~ ${returnDate}` : `📅 單程 ${outboundDate}`,
     '',
     `💰 目前最低：NT$ ${cheapest.toLocaleString()}`,
     `🎯 你的門檻：NT$ ${Number(sub.max_price).toLocaleString()}`,

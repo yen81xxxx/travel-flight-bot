@@ -31,7 +31,10 @@ export const PatchBody = z.object({
   outboundMinDepartureTime: z.string().regex(HHMM_RE).nullable().optional(),
   returnMinDepartureTime: z.string().regex(HHMM_RE).nullable().optional(),
   outboundMaxDepartureTime: z.string().regex(HHMM_RE).nullable().optional(),
-  returnMaxDepartureTime: z.string().regex(HHMM_RE).nullable().optional()
+  returnMaxDepartureTime: z.string().regex(HHMM_RE).nullable().optional(),
+  // 日期：YYYY-MM-DD；returnDate 給 null 表單程訂閱
+  outboundDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional()
 });
 
 export type PatchBodyInput = z.infer<typeof PatchBody>;
@@ -52,5 +55,8 @@ export function buildPatchUpdatePayload(body: PatchBodyInput): Record<string, un
   if (body.returnMinDepartureTime !== undefined) update.return_min_departure_time = body.returnMinDepartureTime;
   if (body.outboundMaxDepartureTime !== undefined) update.outbound_max_departure_time = body.outboundMaxDepartureTime;
   if (body.returnMaxDepartureTime !== undefined) update.return_max_departure_time = body.returnMaxDepartureTime;
+  if (body.outboundDate !== undefined) update.outbound_date = body.outboundDate;
+  // returnDate: null → 寫 null（變單程）；'YYYY-MM-DD' → 寫新日期；undefined → 不動
+  if (body.returnDate !== undefined) update.return_date = body.returnDate;
   return update;
 }

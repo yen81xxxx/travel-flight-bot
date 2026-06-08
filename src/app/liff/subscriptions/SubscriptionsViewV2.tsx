@@ -56,6 +56,7 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
   const [editReturnMinTime, setEditReturnMinTime] = useState<string>('');
   const [editOutboundMaxTime, setEditOutboundMaxTime] = useState<string>('');
   const [editReturnMaxTime, setEditReturnMaxTime] = useState<string>('');
+  const [editIsOneWay, setEditIsOneWay] = useState<boolean>(false);  // ☑ = 單程訂閱（回程不追蹤）
   const [editSaving, setEditSaving] = useState<boolean>(false);
 
   // 初始化群組 ID（URL → sessionStorage + localStorage）
@@ -128,6 +129,7 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
     setEditReturnMinTime(retMin ?? '');
     setEditOutboundMaxTime(outMax ?? '');
     setEditReturnMaxTime(retMax ?? '');
+    setEditIsOneWay(sub.return_date == null);
   };
 
   const closeEditModal = () => {
@@ -210,6 +212,8 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
     const sub = editingSub;
     const subSourceId = sub.source_id ?? groupCtxId ?? sourceId;
     setEditSaving(true);
+    // 單程 toggle：勾選時把 returnDate 設成 null（變單程）；否則保留原值
+    const newReturnDate = editIsOneWay ? null : undefined;
     try {
       const res = await fetch('/api/subscriptions', {
         method: 'PATCH',
@@ -222,7 +226,8 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
           outboundMinDepartureTime: newOutMin,                   // null = 不過濾
           returnMinDepartureTime: newRetMin,
           outboundMaxDepartureTime: newOutMax,
-          returnMaxDepartureTime: newRetMax
+          returnMaxDepartureTime: newRetMax,
+          ...(newReturnDate === null && { returnDate: null })   // 只有單程才送 returnDate=null
         })
       });
       const data = await res.json();
@@ -239,7 +244,8 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
               outbound_min_departure_time: newOutMin,
               return_min_departure_time: newRetMin,
               outbound_max_departure_time: newOutMax,
-              return_max_departure_time: newRetMax
+              return_max_departure_time: newRetMax,
+              ...(editIsOneWay && { return_date: null })
             }
           : item
       ));
@@ -514,6 +520,15 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                     autoFocus
                   />
                 </div>
+
+                <label className="edit-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={editIsOneWay}
+                    onChange={e => setEditIsOneWay(e.target.checked)}
+                  />
+                  <span>單程訂閱（不追蹤回程）</span>
+                </label>
 
                 <label className="edit-checkbox-row">
                   <input
