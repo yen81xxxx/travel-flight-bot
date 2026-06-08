@@ -153,23 +153,26 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
   // ☑ 單程訂閱：勾選後隱藏回程日期、搜尋/訂閱都不帶 returnDate
   const [isOneWay, setIsOneWay] = useState<boolean>(session.state.isOneWay);
 
-  // API 狀態
+  // API 狀態 — result 用 session.state.searchResult 當初始值，這樣 LIFF 登入完 reload
+  // 回來時 Step 2 / Step 3 還能看到上次的搜尋結果（之前會空白卡因為 result=null）
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<SearchResponse | null>(null);
+  const [result, setResult] = useState<SearchResponse | null>(
+    (session.state.searchResult as SearchResponse | undefined) ?? null
+  );
   const [error, setError] = useState<string | null>(null);
   const [subscribeStatus, setSubscribeStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [subscribeAs, setSubscribeAs] = useState<'self' | 'group'>(session.state.subscribeAs);
 
-  // 預設日期
+  // 預設日期 — 如果 session 已有日期就用 session 的，沒有才填預設
   useEffect(() => {
-    const now = new Date();
-    const out = new Date(now.getTime() + 30 * 86400_000);
-    const ret = new Date(out.getTime() + 4 * 86400_000);
     if (!searchForm.values.outboundDate) {
+      const now = new Date();
+      const out = new Date(now.getTime() + 30 * 86400_000);
+      const ret = new Date(out.getTime() + 4 * 86400_000);
       searchForm.setValue('outboundDate', out.toISOString().slice(0, 10));
       searchForm.setValue('returnDate', ret.toISOString().slice(0, 10));
     }
-  }, []);
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // 從 URL 讀 ctx
   useEffect(() => {
@@ -529,6 +532,19 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
         )}
 
         {/* Step 2: 搜尋結果 */}
+        {/* Step 2 但沒 result（例如 LIFF 登入後 session corrupt 或 result fetch 失敗）→ 引導回 Step 1 */}
+        {session.state.step === 1 && (!result || !result.ok) && (
+          <div className="card">
+            <div className="empty-state">
+              <p>🕒 搜尋結果已過期</p>
+              <p className="empty-hint">回到第 1 步重新查詢一次</p>
+              <button onClick={() => session.previousStep()} className="btn-secondary">
+                ← 回去查航班
+              </button>
+            </div>
+          </div>
+        )}
+
         {session.state.step === 1 && result && result.ok && (
           <div className="card results-card">
             <h2>✈️ 搜尋結果</h2>
