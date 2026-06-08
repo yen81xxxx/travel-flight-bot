@@ -16,7 +16,8 @@ const SearchBody = z.object({
   origin: z.enum(VALID_IATA as [string, ...string[]]),
   destination: z.enum(VALID_IATA as [string, ...string[]]),
   outboundDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  // returnDate 省略 → 單程搜尋（searchFlights 內部用 type=2 one-way）
+  returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   sourceId: z.string().optional()
 }).refine(
   (data) => {
@@ -58,7 +59,8 @@ async function handlePost(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  if (new Date(body.outboundDate) >= new Date(body.returnDate)) {
+  // 來回搜尋才檢查回程晚於去程；單程不需要
+  if (body.returnDate && new Date(body.outboundDate) >= new Date(body.returnDate)) {
     return NextResponse.json(
       { ok: false, error: '回程日期必須晚於去程日期' },
       { status: 400 }
@@ -79,7 +81,7 @@ async function handlePost(req: NextRequest): Promise<NextResponse> {
         origin: body.origin,
         destination: body.destination,
         outbound_date: body.outboundDate,
-        return_date: body.returnDate,
+        return_date: body.returnDate ?? null,  // 單程 → null
         status: 'success',
         started_at: startedAt.toISOString()
       })

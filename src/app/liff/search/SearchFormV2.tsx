@@ -62,6 +62,8 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
   // 「傳統航空另設目標價」可選
   const [enableTradTarget, setEnableTradTarget] = useState(false);
   const [tradMaxPrice, setTradMaxPrice] = useState('');
+  // ☑ 單程訂閱：勾選後隱藏回程日期、搜尋/訂閱都不帶 returnDate
+  const [isOneWay, setIsOneWay] = useState<boolean>(session.state.isOneWay);
 
   // API 狀態
   const [loading, setLoading] = useState(false);
@@ -139,25 +141,32 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const out = new Date(outboundDate);
-    const ret = new Date(returnDate);
 
-    if (isNaN(out.getTime()) || isNaN(ret.getTime())) {
-      setError('日期格式錯誤');
+    if (isNaN(out.getTime())) {
+      setError('去程日期格式錯誤');
       return;
     }
     if (out < today) {
       setError('去程日期不能在過去');
       return;
     }
-    if (ret <= out) {
-      setError('回程日期必須晚於去程日期');
-      return;
-    }
 
-    const tripDays = Math.round((ret.getTime() - out.getTime()) / 86400_000);
-    if (tripDays > 60) {
-      const ok = confirm(`旅程長度 ${tripDays} 天，超過 60 天可能查無資料。確定要查嗎？`);
-      if (!ok) return;
+    // 來回才檢查回程
+    if (!isOneWay) {
+      const ret = new Date(returnDate);
+      if (isNaN(ret.getTime())) {
+        setError('回程日期格式錯誤');
+        return;
+      }
+      if (ret <= out) {
+        setError('回程日期必須晚於去程日期');
+        return;
+      }
+      const tripDays = Math.round((ret.getTime() - out.getTime()) / 86400_000);
+      if (tripDays > 60) {
+        const ok = confirm(`旅程長度 ${tripDays} 天，超過 60 天可能查無資料。確定要查嗎？`);
+        if (!ok) return;
+      }
     }
 
     const aheadDays = Math.round((out.getTime() - today.getTime()) / 86400_000);
@@ -176,7 +185,9 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          origin, destination, outboundDate, returnDate,
+          origin, destination, outboundDate,
+          // 單程：完全不送 returnDate；後端 searchFlights 視為單程
+          ...(isOneWay ? {} : { returnDate }),
           sourceId: groupCtxId ? undefined : (sourceId ?? undefined)
         })
       });
@@ -186,7 +197,7 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
 
       setResult(data);
       session.updateSession({
-        origin, destination, outboundDate, returnDate,
+        origin, destination, outboundDate, returnDate, isOneWay,
         searchResult: data
       });
 
@@ -242,7 +253,9 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
           origin, destination,
           maxPrice: userInputPrice,
           maxPriceTraditional: tradPrice,
-          outboundDate, returnDate,
+          outboundDate,
+          // 單程訂閱不送 returnDate；後端 schema returnDate 是 optional
+          ...(isOneWay ? {} : { returnDate }),
           label: subscribeForm.values.subLabel.trim() || undefined
         })
       });
@@ -372,6 +385,26 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
               </div>
             </div>
 
+            {/* 來回 / 單程 切換 */}
+            <div className="trip-type-row">
+              <button
+                type="button"
+                className={`trip-type-btn ${!isOneWay ? 'active' : ''}`}
+                onClick={() => setIsOneWay(false)}
+                disabled={loading}
+              >
+                🔄 來回
+              </button>
+              <button
+                type="button"
+                className={`trip-type-btn ${isOneWay ? 'active' : ''}`}
+                onClick={() => setIsOneWay(true)}
+                disabled={loading}
+              >
+                ➡️ 單程
+              </button>
+            </div>
+
             <div className="date-row">
               <label className="date-input">
                 <span className="role">📅 去程</span>
@@ -384,17 +417,19 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
                   min={new Date().toISOString().slice(0, 10)}
                 />
               </label>
-              <label className="date-input">
-                <span className="role">📅 回程</span>
-                <input
-                  type="date"
-                  value={searchForm.values.returnDate}
-                  onChange={e => searchForm.setValue('returnDate', e.target.value)}
-                  required
-                  disabled={loading}
-                  min={searchForm.values.outboundDate || new Date().toISOString().slice(0, 10)}
-                />
-              </label>
+              {!isOneWay && (
+                <label className="date-input">
+                  <span className="role">📅 回程</span>
+                  <input
+                    type="date"
+                    value={searchForm.values.returnDate}
+                    onChange={e => searchForm.setValue('returnDate', e.target.value)}
+                    required
+                    disabled={loading}
+                    min={searchForm.values.outboundDate || new Date().toISOString().slice(0, 10)}
+                  />
+                </label>
+              )}
             </div>
 
             {error && <div className="alert alert-error">⚠️ {error}</div>}
@@ -686,6 +721,38 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
             border-color: #b3c9ff;
             transform: rotate(180deg);
             box-shadow: 0 2px 8px rgba(0, 102, 255, 0.1);
+          }
+
+          /* 來回 / 單程 toggle — segmented control 風格 */
+          .trip-type-row {
+            display: flex;
+            gap: 0;
+            background: #f0f4ff;
+            border-radius: 10px;
+            padding: 4px;
+            margin-bottom: 4px;
+          }
+          .trip-type-btn {
+            flex: 1;
+            padding: 10px 12px;
+            background: transparent;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.2s ease;
+          }
+          .trip-type-btn.active {
+            background: white;
+            color: #0066ff;
+            font-weight: 600;
+            box-shadow: 0 2px 6px rgba(0, 102, 255, 0.15);
+          }
+          .trip-type-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
           }
 
           .date-row {
