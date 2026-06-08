@@ -16,12 +16,96 @@ interface Props {
   jpAirports: Airport[];
 }
 
+// === 顯示用 helpers ===
+function fmtTime(s: string | undefined): string {
+  if (!s) return '';
+  const m = s.match(/(\d{2}:\d{2})/);
+  return m ? m[1] : '';
+}
+function fmtDur(min: number | null | undefined): string {
+  if (min == null) return '—';
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `${h}h${m}m` : `${h}h`;
+}
+
+/**
+ * 顯示單程候選 list（去程 or 回程）。
+ * 預設只顯示前 3 班（最便宜），按「看全部 X 班」展開。
+ */
+function FlightList({ legLabel, flights }: { legLabel: string; flights: FlightRow[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const sorted = [...flights].sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+  const shown = expanded ? sorted : sorted.slice(0, 3);
+  const cheapest = sorted[0]?.price;
+
+  if (sorted.length === 0) return null;
+
+  return (
+    <div className="flight-list">
+      <div className="fl-title">{legLabel}</div>
+      {shown.map((f, i) => {
+        const leg = f.raw?.flights?.[0];
+        const dep = fmtTime(leg?.departure_airport?.time);
+        const arr = fmtTime(leg?.arrival_airport?.time);
+        const isCheapest = f.price === cheapest && f.price != null;
+        return (
+          <div key={i} className={`fl-row ${isCheapest ? 'cheapest' : ''}`}>
+            <div className="fl-left">
+              <div className="fl-airline">
+                {f.airline ?? '—'}
+                {leg?.flight_number && <span className="fl-fn">{leg.flight_number}</span>}
+                {isCheapest && <span className="fl-badge">最便宜</span>}
+              </div>
+              <div className="fl-time">
+                {dep && arr ? (
+                  <>
+                    <span className="fl-t">{dep}</span>
+                    <span className="fl-arrow">→</span>
+                    <span className="fl-t">{arr}</span>
+                    <span className="fl-meta">· {fmtDur(f.duration_minutes)} · {f.stops === 0 ? '直飛' : `${f.stops} 停`}</span>
+                  </>
+                ) : (
+                  <span className="fl-meta">{fmtDur(f.duration_minutes)} · {f.stops === 0 ? '直飛' : `${f.stops} 停`}</span>
+                )}
+              </div>
+            </div>
+            <div className="fl-price">NT$ {f.price?.toLocaleString() ?? '—'}</div>
+          </div>
+        );
+      })}
+      {sorted.length > 3 && (
+        <button
+          type="button"
+          className="fl-toggle"
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? `▲ 收合` : `▼ 看全部 ${sorted.length} 班`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+interface SerpFlightLegRaw {
+  airline?: string;
+  flight_number?: string;
+  airplane?: string;
+  departure_airport?: { id?: string; time?: string };
+  arrival_airport?: { id?: string; time?: string };
+  duration?: number;
+}
+interface SerpFlightRaw {
+  flights?: SerpFlightLegRaw[];
+  total_duration?: number;
+}
 interface FlightRow {
   airline: string | null;
   price: number | null;
   duration_minutes: number | null;
   stops: number;
   flight_type: 'best' | 'other';
+  raw?: SerpFlightRaw;
 }
 
 interface SearchResponse {
@@ -33,6 +117,10 @@ interface SearchResponse {
     cheapestAirline: string | null;
     outboundCount: number;
     returnCount: number;
+    cheapestOutbound?: FlightRow | null;
+    cheapestReturn?: FlightRow | null;
+    traditionalRoundTrip?: { airline: string; price: number } | null;
+    lccCombo?: { outboundAirline: string; returnAirline: string; price: number; isEstimate?: boolean } | null;
   };
   fromCache?: boolean;
   error?: string;
@@ -447,29 +535,76 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
 
             {result.analysis?.outboundCount === 0 ? (
               <div className="empty-state">
-                <p>找不到符合條件的航班</p>
+                <p>❌ 找不到符合條件的直飛航班</p>
+                <p className="empty-hint">監控航司：星宇 / 長榮 / 捷星 / 酷航。可試其他日期或機場（例：HND 改 NRT 通常選項較多）</p>
                 <button onClick={() => session.previousStep()} className="btn-secondary">
                   ← 修改條件
                 </button>
               </div>
             ) : (
               <>
-                <div className="summary-cards">
-                  <div className="stat">
-                    <div className="stat-label">最便宜往返</div>
-                    <div className="stat-value accent">
-                      {fmt(result.analysis?.cheapestRoundTripPrice)}
-                    </div>
+                {/* 摘要列：找到 N 班 + 最便宜 */}
+                <div className="result-summary">
+                  <div className="summary-line">
+                    <span className="summary-num">{result.analysis?.outboundCount ?? 0}</span>
+                    <span className="summary-text">個{isOneWay ? '單程' : '直飛'}選項</span>
+                    {!isOneWay && result.analysis && (
+                      <>
+                        <span className="summary-sep">·</span>
+                        <span className="summary-num">{result.analysis.returnCount ?? 0}</span>
+                        <span className="summary-text">回程選項</span>
+                      </>
+                    )}
                   </div>
-                  <div className="stat">
-                    <div className="stat-label">主推航空</div>
-                    <div className="stat-value">{result.analysis?.cheapestAirline ?? '—'}</div>
+                  <div className="summary-cheapest">
+                    {isOneWay ? '最便宜單程' : '最便宜往返'} <strong className="accent">{fmt(result.analysis?.cheapestRoundTripPrice)}</strong>
                   </div>
                 </div>
 
+                {/* 廉航 vs 傳統 對比卡 */}
+                <div className="category-cards">
+                  {result.analysis?.lccCombo && (
+                    <div className="cat-card lcc">
+                      <div className="cat-header">
+                        <span className="cat-tag lcc-tag">廉航</span>
+                        <span className="cat-airline">
+                          {result.analysis.lccCombo.outboundAirline === result.analysis.lccCombo.returnAirline
+                            ? result.analysis.lccCombo.outboundAirline
+                            : `${result.analysis.lccCombo.outboundAirline} → ${result.analysis.lccCombo.returnAirline}`}
+                        </span>
+                        {result.analysis.lccCombo.isEstimate && <span className="cat-est" title="去程估算，實際訂購可能差幾百元">＊估</span>}
+                      </div>
+                      <div className="cat-price lcc">{fmt(result.analysis.lccCombo.price)}</div>
+                    </div>
+                  )}
+                  {result.analysis?.traditionalRoundTrip && (
+                    <div className="cat-card trad">
+                      <div className="cat-header">
+                        <span className="cat-tag trad-tag">傳統</span>
+                        <span className="cat-airline">{result.analysis.traditionalRoundTrip.airline}</span>
+                      </div>
+                      <div className="cat-price trad">{fmt(result.analysis.traditionalRoundTrip.price)}</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 去程 list */}
+                <FlightList legLabel={isOneWay ? '✈️ 航班選項' : '🛫 去程選項'} flights={result.outbound ?? []} />
+
+                {/* 回程 list — 來回才顯示 */}
+                {!isOneWay && (result.return?.length ?? 0) > 0 && (
+                  <FlightList legLabel="🛬 回程選項" flights={result.return ?? []} />
+                )}
+
+                {/* 缓存 hint */}
+                {result.fromCache && (
+                  <div className="cache-hint">📦 此為近 6 小時內快取資料</div>
+                )}
+
+                {/* CTA */}
                 {sourceId ? (
                   <button onClick={() => session.nextStep()} className="btn-primary">
-                    ✓ 確認價格，進入訂閱 →
+                    🔔 確認價格，進入訂閱 →
                   </button>
                 ) : (
                   <button onClick={handleLineLogin} className="btn-line-login">
@@ -884,6 +1019,216 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
             box-shadow: 0 2px 8px rgba(239, 68, 68, 0.1);
           }
 
+          /* === 新版搜尋結果樣式 === */
+          .result-summary {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 14px 16px;
+            background: linear-gradient(135deg, #f0f4ff 0%, #e8f0ff 100%);
+            border-radius: 12px;
+            margin-bottom: 14px;
+          }
+          .summary-line {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            font-size: 13px;
+            color: #475569;
+          }
+          .summary-num {
+            font-size: 17px;
+            font-weight: 700;
+            color: #0066ff;
+            font-variant-numeric: tabular-nums;
+          }
+          .summary-sep {
+            color: #cbd5e1;
+            margin: 0 4px;
+          }
+          .summary-cheapest {
+            font-size: 13px;
+            color: #475569;
+          }
+          .summary-cheapest .accent {
+            font-size: 19px;
+            font-weight: 800;
+            color: #ff7a45;
+            margin-left: 6px;
+            font-variant-numeric: tabular-nums;
+          }
+
+          /* 廉航 vs 傳統 對比卡 */
+          .category-cards {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 14px;
+          }
+          .cat-card {
+            padding: 12px 14px;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+          }
+          .cat-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+          }
+          .cat-tag {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 3px 7px;
+            border-radius: 4px;
+            letter-spacing: 0.5px;
+          }
+          .lcc-tag { color: #0284c7; background: #e0f2fe; }
+          .trad-tag { color: #b45309; background: #fef3c7; }
+          .cat-airline {
+            font-size: 12px;
+            color: #475569;
+            font-weight: 500;
+          }
+          .cat-est {
+            font-size: 10px;
+            color: #ef4444;
+            font-weight: 600;
+          }
+          .cat-price {
+            font-size: 19px;
+            font-weight: 800;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.3px;
+          }
+          .cat-price.lcc { color: #0284c7; }
+          .cat-price.trad { color: #b45309; }
+          @media (max-width: 480px) {
+            .category-cards { grid-template-columns: 1fr; }
+          }
+
+          /* 航班 list */
+          .flight-list {
+            margin-bottom: 14px;
+            padding: 12px;
+            background: #fafafa;
+            border-radius: 10px;
+          }
+          .fl-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #475569;
+            margin-bottom: 8px;
+          }
+          .fl-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: white;
+            border-radius: 8px;
+            margin-bottom: 6px;
+            border: 1px solid transparent;
+            transition: all 0.15s ease;
+          }
+          .fl-row.cheapest {
+            border-color: #ff7a45;
+            background: linear-gradient(135deg, #fff7ed 0%, #ffffff 50%);
+          }
+          .fl-left {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+            flex: 1;
+          }
+          .fl-airline {
+            font-size: 13px;
+            font-weight: 600;
+            color: #1f2937;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+          }
+          .fl-fn {
+            font-size: 11px;
+            color: #94a3b8;
+            font-weight: 500;
+            font-family: 'SF Mono', SFMono-Regular, ui-monospace, monospace;
+          }
+          .fl-badge {
+            font-size: 10px;
+            font-weight: 700;
+            color: white;
+            background: #ff7a45;
+            padding: 2px 6px;
+            border-radius: 3px;
+          }
+          .fl-time {
+            font-size: 12px;
+            color: #64748b;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-variant-numeric: tabular-nums;
+          }
+          .fl-t {
+            font-weight: 600;
+            color: #334155;
+          }
+          .fl-arrow {
+            color: #cbd5e1;
+            margin: 0 2px;
+          }
+          .fl-meta {
+            color: #94a3b8;
+            margin-left: 6px;
+          }
+          .fl-price {
+            font-size: 15px;
+            font-weight: 700;
+            color: #1f2937;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+          }
+          .fl-row.cheapest .fl-price {
+            color: #ff7a45;
+          }
+          .fl-toggle {
+            width: 100%;
+            background: transparent;
+            border: none;
+            padding: 8px;
+            font-size: 12px;
+            color: #0066ff;
+            cursor: pointer;
+            font-weight: 500;
+          }
+          .fl-toggle:hover {
+            background: #f1f5f9;
+            border-radius: 6px;
+          }
+
+          .empty-hint {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 4px;
+          }
+
+          .cache-hint {
+            font-size: 11px;
+            color: #94a3b8;
+            text-align: center;
+            margin: 8px 0;
+          }
+
+          /* === 舊樣式（其他地方還在用，保留）=== */
           .summary-cards {
             display: grid;
             grid-template-columns: 1fr 1fr;
