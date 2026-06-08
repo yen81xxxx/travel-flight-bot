@@ -12,6 +12,7 @@ export interface SearchSessionState {
   destination: string;
   outboundDate: string;
   returnDate: string;
+  isOneWay: boolean;  // ☑ 單程訂閱（不追蹤回程）
   searchResult?: any;
   customMaxPrice: string;
   subLabel: string;
@@ -25,6 +26,7 @@ const DEFAULT_STATE: SearchSessionState = {
   destination: 'HND',
   outboundDate: '',
   returnDate: '',
+  isOneWay: false,
   customMaxPrice: '',
   subLabel: '',
   subscribeAs: 'self',

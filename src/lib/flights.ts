@@ -219,13 +219,13 @@ function formatLegLine(legLabel: string, flight: FlightQuote): string[] {
 export function formatAnalysisForLine(
   analysis: FlightAnalysis,
   outboundDate: string,
-  returnDate: string,
+  returnDate: string | undefined,  // undefined = 單程
   origin: string,
   destination: string
 ): string {
   const lines: string[] = [];
   lines.push(`✈️ ${origin} → ${destination}`);
-  lines.push(`📅 ${outboundDate} ~ ${returnDate}`);
+  lines.push(returnDate ? `📅 ${outboundDate} ~ ${returnDate}` : `📅 單程 ${outboundDate}`);
   lines.push('');
 
   if (analysis.outboundCount === 0) {
@@ -234,7 +234,7 @@ export function formatAnalysisForLine(
   }
 
   if (analysis.cheapestRoundTripPrice != null) {
-    lines.push(`💰 最便宜往返：NT$ ${analysis.cheapestRoundTripPrice.toLocaleString()}`);
+    lines.push(`💰 最便宜${returnDate ? '往返' : '單程'}：NT$ ${analysis.cheapestRoundTripPrice.toLocaleString()}`);
   }
   if (analysis.cheapestAirline) {
     lines.push(`🏢 主推航空：${analysis.cheapestAirline}`);
