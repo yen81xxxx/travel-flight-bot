@@ -48,13 +48,16 @@
 - ISO 8601 日期
 - 'HH:MM' 24 小時時間（zero-pad 兩位）
 - LCC mix-and-match (捷星去 + 酷航回) vs Traditional 同家來回（星宇 / 長榮）
-- LIFF 用 iOS Dark Mode design tokens（`#000` / `#1c1c1e` / SF Pro / `--ios-blue` 等）
-- 顏色語意：
+- LIFF 用 iOS Dark Mode design tokens（單一來源：`src/app/liff/_styles/tokens.css`）
+- 顏色語意（與 tokens.css 對齊）：
   - `#30d158` 綠 = 成功 / 監控中
-  - `#f59e0b` 橘 = 警告 / 配額暫滿
+  - `#ff9f0a` 橘 = 警告 / 配額暫滿（iOS 系統色；2026-06-09 之前舊版寫 `#f59e0b`，已統一）
   - `#ff453a` 紅 = 危險 / 取消
   - `#0a84ff` 藍 = 動作（編輯、改價）
   - `#bf5af2` 紫 = 群組情境
+  - `#ffd60a` 黃 = 傳統航空
+  - `#64d2ff` 青 = 廉航
+- LIFF 圖示：**禁止 emoji**，一律走 `src/app/liff/_components/Icon.tsx`（PR #1 後規則）
 
 ## 測試
 
