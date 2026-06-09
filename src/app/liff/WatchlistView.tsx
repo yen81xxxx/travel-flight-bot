@@ -86,14 +86,17 @@ export default function WatchlistView({ liffId }: Props) {
   const digestWatch = filter === 'all' ? pickDigestWatch(watches) : null;
 
   // PR #3 暫時的 navigation — PR #4 會改成開 sheet
+  // 使用者點到時已經在 /liff (LIFF session 內)，全走相對路徑即可，不用走
+  // https://liff.line.me/{liffId} 重觸發 auth。
+  //
+  // 註：以前 TabNav 的 search tab 用 LIFF URL 是因為它 mounts 在 /liff/search /
+  // /liff/subscriptions / /liff/settings 三個頁面（其中 search 才是 LIFF endpoint
+  // URL 對應頁），藉 https://liff.line.me/{liffId} 形式來「跳回 endpoint URL」。
+  // 我們現在 /liff/page.tsx 本身就是 LIFF session 起點，相對路徑就夠了 — 而且
+  // 比較穩定，PR #4 把 LIFF endpoint URL 改指 /liff 後不會誤跳。
   const ctxQS = groupCtxId ? `?ctx=${encodeURIComponent(groupCtxId)}` : '';
   const goToSettings = () => { window.location.href = `/liff/settings${ctxQS}`; };
-  const goToAdd = () => {
-    // 用 LIFF URL 觸發 auth；ctxQS 帶進去
-    window.location.href = liffId
-      ? `https://liff.line.me/${liffId}${ctxQS}`
-      : `/liff/search${ctxQS}`;
-  };
+  const goToAdd = () => { window.location.href = `/liff/search${ctxQS}`; };
   const openWatch = () => {
     // PR #4 改成開 DetailSheet 並帶 watch.id；現階段先跳訂閱頁（有 edit modal）
     // 不需要 watch 物件 — 訂閱頁自己會撈所有 sub 顯示
