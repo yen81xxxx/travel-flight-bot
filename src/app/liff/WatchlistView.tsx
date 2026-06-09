@@ -98,15 +98,28 @@ export default function WatchlistView({ liffId }: Props) {
   // DigestHero 只在 filter=all 時顯示；pickDigestWatch 內部做 hit 過濾
   const digestWatch = filter === 'all' ? pickDigestWatch(watches) : null;
 
-  // === Sheet handlers ===（PR #4a 完整接上）
+  // === Sheet handlers ===（PR #4a 完整接上、PR #4b 加 notify-target）
   // 全部走 sheet state，不再 navigate 出去。舊三條路由 (search/subscriptions/settings)
-  // 仍然存在但 watchlist 不再連結它們 — PR #4b 才退場。
+  // PR #4b 改成 redirect /liff，本檔不再連結它們。
   const goToSettings = () => setSheet({ kind: 'settings' });
   const goToAdd = () => setSheet({ kind: 'add' });
   const openWatch = (w: WatchItem) => setSheet({ kind: 'detail', watch: w });
-  // 用 groupCtxId 標示目前 source，避免「沒登入也沒群組」時 sheet 內部 UI 出 bug
-  // （groupCtxId 在群組情境用，個人情境用 sourceId）
-  const currentSheetSourceId = sheet.kind === 'detail' ? sheet.watch.source_id : (sourceId ?? groupCtxId);
+  // SettingsSheet 改個人設定，sourceId 用個人 (個人 + 群組同時打開的情境，群組設定本不該被覆寫)
+  const settingsSourceId = sourceId;
+
+  // === 載入 default_notify_target setting（給 AddWatchSheet 預填）===
+  const [defaultNotifyTarget, setDefaultNotifyTarget] = useState<'me' | 'group'>('me');
+  useEffect(() => {
+    if (!sourceId) return;
+    fetch(`/api/notification-settings?sourceId=${encodeURIComponent(sourceId)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok && data.settings?.default_notify_target === 'group') {
+          setDefaultNotifyTarget('group');
+        }
+      })
+      .catch(() => { /* 預設 'me' 即可 */ });
+  }, [sourceId]);
 
   // 還沒 LIFF ready → spinner（不要 flash 空 list）
   if (liffId && !liffReady) {
@@ -203,13 +216,15 @@ export default function WatchlistView({ liffId }: Props) {
       <AddWatchSheet
         open={sheet.kind === 'add'}
         onClose={closeSheet}
-        sourceId={currentSheetSourceId}
+        userId={sourceId}
+        groupCtxId={groupCtxId}
+        defaultNotifyTarget={defaultNotifyTarget}
         onCreated={refetch}
       />
       <SettingsSheet
         open={sheet.kind === 'settings'}
         onClose={closeSheet}
-        sourceId={currentSheetSourceId}
+        sourceId={settingsSourceId}
       />
 
       <style jsx>{`

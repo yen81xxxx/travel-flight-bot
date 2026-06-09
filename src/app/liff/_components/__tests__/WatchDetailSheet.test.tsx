@@ -36,8 +36,27 @@ const baseWatch: WatchItem = {
 };
 
 describe('WatchDetailSheet', () => {
+  // URL-discriminating mock：flights GET / PATCH / DELETE 各自路由。
+  // 個別 test 用 mockImplementationOnce 覆寫該情境的 PATCH/DELETE 回應。
   beforeEach(() => {
-    global.fetch = jest.fn() as unknown as typeof fetch;
+    global.fetch = jest.fn((url: string | URL | Request, init?: RequestInit) => {
+      const u = typeof url === 'string' ? url : url.toString();
+      // flights GET 預設回空 list
+      if (u.includes('/api/subscriptions/flights')) {
+        return Promise.resolve({
+          json: () => Promise.resolve({ ok: true, outbound: [], return: [] })
+        } as Response);
+      }
+      // PATCH / DELETE — 預設 ok
+      if (init?.method === 'PATCH' || init?.method === 'DELETE') {
+        return Promise.resolve({
+          json: () => Promise.resolve({ ok: true })
+        } as Response);
+      }
+      return Promise.resolve({
+        json: () => Promise.resolve({ ok: true })
+      } as Response);
+    }) as unknown as typeof fetch;
   });
 
   it('watch=null 時 → 仍 render 空 sheet（不 crash）', () => {
@@ -75,9 +94,6 @@ describe('WatchDetailSheet', () => {
   });
 
   it('儲存按鈕 → PATCH /api/subscriptions + onMutated', async () => {
-    (global.fetch as unknown as jest.Mock).mockResolvedValueOnce({
-      json: () => Promise.resolve({ ok: true })
-    });
     const onMutated = jest.fn();
     const { getByText } = render(
       <WatchDetailSheet open={true} onClose={() => {}} watch={baseWatch} onMutated={onMutated} />
@@ -97,9 +113,6 @@ describe('WatchDetailSheet', () => {
   });
 
   it('刪除：第一次點 → 顯示確認 UI，再點確認才真刪', async () => {
-    (global.fetch as unknown as jest.Mock).mockResolvedValueOnce({
-      json: () => Promise.resolve({ ok: true })
-    });
     const onMutated = jest.fn();
     const onClose = jest.fn();
     const { getByText, container } = render(
@@ -132,9 +145,6 @@ describe('WatchDetailSheet', () => {
   });
 
   it('暫停 toggle → 改變 PATCH body 的 paused', async () => {
-    (global.fetch as unknown as jest.Mock).mockResolvedValueOnce({
-      json: () => Promise.resolve({ ok: true })
-    });
     const { getByText, getByLabelText } = render(
       <WatchDetailSheet open={true} onClose={() => {}} watch={baseWatch} />
     );

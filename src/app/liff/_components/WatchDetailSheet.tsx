@@ -28,6 +28,25 @@ import { getCity } from '@/config/airports';
 import { daysUntil } from './WatchCard';
 import type { WatchItem } from '../_hooks/useWatchlist';
 
+interface FlightRow {
+  airline: string | null;
+  airline_code: string | null;
+  price: number | null;
+  duration_minutes: number | null;
+  stops: number;
+  departure_time: string | null;
+  flight_number: string | null;
+}
+
+const TOP_N_DEFAULT = 5;
+
+function fmtDuration(min: number | null): string {
+  if (min == null) return '—';
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `${h}h${m}m` : `${h}h`;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -57,6 +76,13 @@ export function WatchDetailSheet({ open, onClose, watch, onMutated }: Props): Re
   const [savedFlash, setSavedFlash] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // === flight list state (PR #4b) — 從 /api/subscriptions/flights 撈 6h cached
+  const [outboundFlights, setOutboundFlights] = useState<FlightRow[]>([]);
+  const [returnFlights, setReturnFlights] = useState<FlightRow[]>([]);
+  const [flightsLoading, setFlightsLoading] = useState(false);
+  const [showAllOutbound, setShowAllOutbound] = useState(false);
+  const [showAllReturn, setShowAllReturn] = useState(false);
+
   // 每次新 watch 進來時，把 form state reset 為該 watch 的值
   useEffect(() => {
     if (!watch || !open) return;
@@ -76,6 +102,42 @@ export function WatchDetailSheet({ open, onClose, watch, onMutated }: Props): Re
     setPaused(!!watch.paused);
     setError(null);
     setConfirmDelete(false);
+    setShowAllOutbound(false);
+    setShowAllReturn(false);
+  }, [watch, open]);
+
+  // 撈 6h 內快取的逐筆航班 — 只在 open + 有 outbound_date 時撈
+  useEffect(() => {
+    if (!watch || !open || !watch.outbound_date) {
+      setOutboundFlights([]);
+      setReturnFlights([]);
+      return;
+    }
+    const qs = new URLSearchParams({
+      origin: watch.origin,
+      destination: watch.destination,
+      outboundDate: watch.outbound_date
+    });
+    if (watch.return_date) qs.set('returnDate', watch.return_date);
+
+    setFlightsLoading(true);
+    fetch(`/api/subscriptions/flights?${qs.toString()}`)
+      .then(r => r.json())
+      .then((data: { ok: boolean; outbound?: FlightRow[]; return?: FlightRow[] }) => {
+        if (data.ok) {
+          setOutboundFlights(data.outbound ?? []);
+          setReturnFlights(data.return ?? []);
+        } else {
+          setOutboundFlights([]);
+          setReturnFlights([]);
+        }
+      })
+      .catch(() => {
+        // 撈不到 flight list 不算錯 — 整支 sheet 還是能用
+        setOutboundFlights([]);
+        setReturnFlights([]);
+      })
+      .finally(() => setFlightsLoading(false));
   }, [watch, open]);
 
   if (!watch) {
@@ -218,8 +280,28 @@ export function WatchDetailSheet({ open, onClose, watch, onMutated }: Props): Re
         </div>
       )}
 
-      {/* === Flights — PR #4b 才實作（要新 endpoint 拿 6h flight list） === */}
-      {/* TODO PR #4b: 去程選項 / 回程選項 with 最便宜 badge */}
+      {/* === Flights (PR #4b) === */}
+      {(outboundFlights.length > 0 || returnFlights.length > 0) && (
+        <>
+          <FlightList
+            label={watch.return_date ? '去程選項' : '航班選項'}
+            flights={outboundFlights}
+            showAll={showAllOutbound}
+            onToggleAll={() => setShowAllOutbound(v => !v)}
+          />
+          {watch.return_date && returnFlights.length > 0 && (
+            <FlightList
+              label="回程選項"
+              flights={returnFlights}
+              showAll={showAllReturn}
+              onToggleAll={() => setShowAllReturn(v => !v)}
+            />
+          )}
+        </>
+      )}
+      {flightsLoading && outboundFlights.length === 0 && (
+        <div className="flights-loading">載入航班…</div>
+      )}
 
       {/* === Per-watch settings === */}
       <div className="settings-block">
@@ -570,8 +652,170 @@ export function WatchDetailSheet({ open, onClose, watch, onMutated }: Props): Re
         .dc-cancel { background: var(--ios-fill-2); color: var(--ios-label); }
         .dc-confirm { background: var(--ios-red); color: #fff; }
         .dc-confirm:disabled { opacity: 0.5; cursor: not-allowed; }
+        .flights-loading {
+          text-align: center;
+          padding: 16px;
+          color: var(--ios-label-3);
+          font-size: 12.5px;
+        }
       `}</style>
     </BottomSheet>
+  );
+}
+
+/**
+ * 去/回程航班 list 子元件。
+ *   - 預設只顯示 top 5 + 「展開全部」連結
+ *   - 第一筆 (最便宜) 加 highlight + 「最便宜」badge
+ *   - airline | flight_no · HH:MM · 3h0m · 直飛 ｜ NT$ 11,480
+ */
+function FlightList({
+  label,
+  flights,
+  showAll,
+  onToggleAll
+}: {
+  label: string;
+  flights: FlightRow[];
+  showAll: boolean;
+  onToggleAll: () => void;
+}): React.ReactElement {
+  const visible = showAll ? flights : flights.slice(0, TOP_N_DEFAULT);
+  return (
+    <div className="flight-list">
+      <div className="fl-head">
+        <span className="fl-title">{label}</span>
+        <span className="fl-count">{flights.length} 班</span>
+      </div>
+      {visible.map((f, i) => (
+        <div key={i} className={`fl-row ${i === 0 ? 'cheapest' : ''}`}>
+          <div className="fl-left">
+            <div className="fl-line1">
+              <span className="fl-airline">{f.airline ?? '—'}</span>
+              {f.flight_number && <span className="fl-fno tnum">{f.flight_number}</span>}
+              {i === 0 && (
+                <span className="fl-badge">
+                  <Icon name="bolt" size={10} stroke={2.4} />
+                  最便宜
+                </span>
+              )}
+            </div>
+            <div className="fl-line2">
+              {f.departure_time && <span className="tnum">{f.departure_time}</span>}
+              {f.departure_time && <span className="fl-sep">·</span>}
+              <span className="tnum">{fmtDuration(f.duration_minutes)}</span>
+              <span className="fl-sep">·</span>
+              <span>直飛</span>
+            </div>
+          </div>
+          <div className="fl-price tnum">NT${f.price?.toLocaleString() ?? '—'}</div>
+        </div>
+      ))}
+      {flights.length > TOP_N_DEFAULT && (
+        <button type="button" className="fl-expand" onClick={onToggleAll}>
+          {showAll
+            ? <><Icon name="chevronUp" size={12} /> <span>收合</span></>
+            : <><Icon name="chevronDown" size={12} /> <span>展開全部 {flights.length} 班</span></>}
+        </button>
+      )}
+
+      <style jsx>{`
+        .flight-list {
+          background: var(--ios-bg-tertiary);
+          border-radius: var(--r-card);
+          padding: 10px 14px;
+          margin-top: 14px;
+        }
+        .fl-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          padding: 4px 0 6px;
+          border-bottom: 0.5px solid var(--ios-hairline);
+        }
+        .fl-title {
+          font-size: 13px;
+          font-weight: 700;
+          color: var(--ios-label);
+        }
+        .fl-count {
+          font-size: 11.5px;
+          color: var(--ios-label-3);
+        }
+        .fl-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 4px;
+          border-bottom: 0.5px solid var(--ios-hairline);
+        }
+        .fl-row:last-of-type { border-bottom: none; }
+        .fl-row.cheapest {
+          background: rgba(48, 209, 88, 0.10);
+          margin: 4px -10px;
+          padding: 10px 10px;
+          border-radius: 8px;
+          border-bottom: none;
+        }
+        .fl-left { min-width: 0; }
+        .fl-line1 {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--ios-label);
+        }
+        .fl-fno {
+          color: var(--ios-label-2);
+          font-weight: 500;
+          font-size: 11.5px;
+          font-family: var(--mono);
+        }
+        .fl-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 2px;
+          background: var(--ios-green);
+          color: #fff;
+          font-size: 9.5px;
+          font-weight: 700;
+          padding: 2px 6px;
+          border-radius: 999px;
+        }
+        .fl-line2 {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 11.5px;
+          color: var(--ios-label-2);
+          margin-top: 2px;
+        }
+        .fl-sep { color: var(--ios-label-3); }
+        .fl-price {
+          font-size: 15px;
+          font-weight: 700;
+          color: var(--ios-label);
+        }
+        .fl-row.cheapest .fl-price { color: var(--ios-green); }
+        .fl-expand {
+          appearance: none;
+          background: transparent;
+          border: none;
+          color: var(--ios-blue);
+          padding: 8px 0 2px;
+          font-size: 12.5px;
+          font-weight: 600;
+          width: 100%;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+          cursor: pointer;
+        }
+      `}</style>
+    </div>
   );
 }
 

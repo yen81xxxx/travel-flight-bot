@@ -30,15 +30,39 @@ interface PreviewResult {
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** 當前 sourceId（個人或群組）— null 時拒絕送出 */
-  sourceId: string | null;
+  /**
+   * 個人 sourceId（LIFF user.userId）— null 時無法以個人身份建立。
+   * 跟 groupCtxId 兩個都有時，user 可以選通知對象。
+   */
+  userId: string | null;
+  /**
+   * 當前 LIFF session 的群組 ctx（URL ?ctx= 帶進來）— 非 null 表示在群組情境，
+   * 使用者可以選把追蹤建在群組下。
+   */
+  groupCtxId: string | null;
+  /**
+   * 使用者在 Settings 設定的「新追蹤預設通知對象」(PR #4b)。
+   * 'me' = 個人 / 'group' = 群組。沒設時 caller 傳 'me' 當保險預設。
+   */
+  defaultNotifyTarget?: 'me' | 'group';
   /** 訂閱成功後通知 caller refetch watchlist */
   onCreated?: () => void;
 }
 
 const todayISO = (): string => new Date().toISOString().slice(0, 10);
 
-export function AddWatchSheet({ open, onClose, sourceId, onCreated }: Props): React.ReactElement {
+export function AddWatchSheet({
+  open, onClose, userId, groupCtxId, defaultNotifyTarget = 'me', onCreated
+}: Props): React.ReactElement {
+  // === 通知對象 ===
+  // 只有 userId + groupCtxId 都有時，user 可選；其中一邊不存在就只能用另一邊。
+  const canChooseTarget = !!userId && !!groupCtxId;
+  const [notifyTarget, setNotifyTarget] = useState<'me' | 'group'>(defaultNotifyTarget);
+
+  // === 算最終要用的 sourceId（根據選擇） ===
+  const sourceId: string | null = canChooseTarget
+    ? (notifyTarget === 'me' ? userId : groupCtxId)
+    : (userId ?? groupCtxId);
   // === form state ===
   const [origin, setOrigin] = useState<string>('TPE');
   const [destination, setDestination] = useState<string>('NRT');
@@ -55,13 +79,14 @@ export function AddWatchSheet({ open, onClose, sourceId, onCreated }: Props): Re
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 每次 open 重置（避免上次殘留）
+  // 每次 open 重置（避免上次殘留）+ 開啟時帶當下 defaultNotifyTarget
   useEffect(() => {
     if (open) {
       setError(null);
       setPreview(null);
+      setNotifyTarget(defaultNotifyTarget);
     }
-  }, [open]);
+  }, [open, defaultNotifyTarget]);
 
   // swap 出發 / 抵達 — 確保仍維持「一台一日」
   const handleSwap = () => {
@@ -242,6 +267,31 @@ export function AddWatchSheet({ open, onClose, sourceId, onCreated }: Props): Re
               </div>
             )}
           </div>
+
+          {/* === Notify target picker (PR #4b) — 只有 user 同時在群組情境才出現 === */}
+          {canChooseTarget && (
+            <div className="notify-target">
+              <div className="nt-label">通知對象</div>
+              <div className="nt-segmented">
+                <button
+                  type="button"
+                  className={notifyTarget === 'me' ? 'nt-seg active' : 'nt-seg'}
+                  onClick={() => setNotifyTarget('me')}
+                  data-testid="notify-target-me"
+                >
+                  <Icon name="person" size={13} stroke={2} /> 通知我
+                </button>
+                <button
+                  type="button"
+                  className={notifyTarget === 'group' ? 'nt-seg active' : 'nt-seg'}
+                  onClick={() => setNotifyTarget('group')}
+                  data-testid="notify-target-group"
+                >
+                  <Icon name="people" size={13} stroke={2} /> 通知群組
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* === Target price === */}
           <div className="target-box">
@@ -424,6 +474,42 @@ export function AddWatchSheet({ open, onClose, sourceId, onCreated }: Props): Re
           cursor: pointer;
         }
 
+        .notify-target {
+          margin-top: 18px;
+        }
+        .nt-label {
+          font-size: 13px;
+          color: var(--ios-label-2);
+          margin-bottom: 8px;
+        }
+        .nt-segmented {
+          display: flex;
+          gap: 6px;
+          background: var(--ios-fill-2);
+          padding: 4px;
+          border-radius: var(--r-pill);
+        }
+        .nt-seg {
+          flex: 1;
+          appearance: none;
+          background: transparent;
+          border: none;
+          color: var(--ios-label-2);
+          padding: 9px 12px;
+          border-radius: var(--r-pill);
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 5px;
+        }
+        .nt-seg.active {
+          background: var(--ios-bg-secondary);
+          color: var(--ios-label);
+          box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }
         .target-box { margin-top: 18px; }
         .target-row-label {
           font-size: 13px;
