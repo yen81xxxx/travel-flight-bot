@@ -27,13 +27,16 @@ interface SettingsState {
   quietEnabled: boolean;
   quietStart: string;
   quietEnd: string;
+  /** 'me' = 預設通知個人 / 'group' = 預設通知群組（PR #4b） */
+  defaultNotifyTarget: 'me' | 'group';
 }
 
 const DEFAULT_STATE: SettingsState = {
   dailySummary: true,
   quietEnabled: false,
   quietStart: '22:00',
-  quietEnd: '08:00'
+  quietEnd: '08:00',
+  defaultNotifyTarget: 'me'
 };
 
 export function SettingsSheet({ open, onClose, sourceId }: Props): React.ReactElement {
@@ -58,7 +61,9 @@ export function SettingsSheet({ open, onClose, sourceId }: Props): React.ReactEl
             dailySummary: s.daily_summary !== false,
             quietEnabled: !!(s.quiet_start && s.quiet_end),
             quietStart: s.quiet_start ?? '22:00',
-            quietEnd: s.quiet_end ?? '08:00'
+            quietEnd: s.quiet_end ?? '08:00',
+            // migration 0008 加的欄位；舊資料沒這欄 → 預設 'me'
+            defaultNotifyTarget: s.default_notify_target === 'group' ? 'group' : 'me'
           });
         }
       })
@@ -79,7 +84,8 @@ export function SettingsSheet({ open, onClose, sourceId }: Props): React.ReactEl
           quietStart: state.quietEnabled ? state.quietStart : null,
           quietEnd: state.quietEnabled ? state.quietEnd : null,
           timezone: 'Asia/Taipei',
-          dailySummary: state.dailySummary
+          dailySummary: state.dailySummary,
+          defaultNotifyTarget: state.defaultNotifyTarget
         })
       });
       const data = await res.json();
@@ -147,13 +153,30 @@ export function SettingsSheet({ open, onClose, sourceId }: Props): React.ReactEl
             </div>
           )}
 
-          {/* 預設通知對象 — PR #4a 先固定「我」，PR #4b 接後端 */}
+          {/* 預設通知對象 (PR #4b — 接後端 default_notify_target) */}
           <div className="set-row defaults-row">
             <div className="set-row-left">
               <div className="set-row-title">新追蹤的預設通知對象</div>
-              <div className="set-row-desc">新訂閱建立時帶上的預設。個別追蹤可在詳細頁覆寫。</div>
+              <div className="set-row-desc">在群組打開時新增追蹤的預設。可在 AddWatchSheet 個別覆寫。</div>
             </div>
-            <div className="default-locked">通知我</div>
+            <div className="notify-segmented">
+              <button
+                type="button"
+                className={state.defaultNotifyTarget === 'me' ? 'seg active' : 'seg'}
+                onClick={() => setState(s => ({ ...s, defaultNotifyTarget: 'me' }))}
+                data-testid="default-notify-me"
+              >
+                <Icon name="person" size={12} stroke={2} /> 我
+              </button>
+              <button
+                type="button"
+                className={state.defaultNotifyTarget === 'group' ? 'seg active' : 'seg'}
+                onClick={() => setState(s => ({ ...s, defaultNotifyTarget: 'group' }))}
+                data-testid="default-notify-group"
+              >
+                <Icon name="people" size={12} stroke={2} /> 群組
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -201,12 +224,31 @@ export function SettingsSheet({ open, onClose, sourceId }: Props): React.ReactEl
           margin-top: 2px;
         }
         .defaults-row { border-bottom: none; }
-        .default-locked {
-          font-size: 12.5px;
-          color: var(--ios-label-2);
+        .notify-segmented {
+          display: inline-flex;
           background: var(--ios-fill-2);
-          padding: 4px 10px;
           border-radius: 999px;
+          padding: 3px;
+          gap: 3px;
+        }
+        .seg {
+          appearance: none;
+          background: transparent;
+          border: none;
+          color: var(--ios-label-2);
+          font-size: 11.5px;
+          font-weight: 600;
+          padding: 6px 10px;
+          border-radius: 999px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+        }
+        .seg.active {
+          background: var(--ios-bg-secondary);
+          color: var(--ios-label);
+          box-shadow: 0 1px 2px rgba(0,0,0,0.3);
         }
         .quiet-range {
           display: flex;

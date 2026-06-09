@@ -13,7 +13,10 @@ const PostBody = z.object({
   quietEnd: z.string().regex(TIME_RE).nullable(),
   timezone: z.string().default('Asia/Taipei'),
   dailySummary: z.boolean().optional(),
-  priceAlerts: z.boolean().optional()
+  priceAlerts: z.boolean().optional(),
+  // PR #4b 新增：群組情境下，新追蹤的預設通知對象 ('me' = 個人 / 'group' = 群組)
+  // 對應 migration 0008。'me' 預設不會誤打擾群組。
+  defaultNotifyTarget: z.enum(['me', 'group']).optional()
 });
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
@@ -51,6 +54,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   };
   if (body.dailySummary !== undefined) upsertRow.daily_summary = body.dailySummary;
   if (body.priceAlerts !== undefined) upsertRow.price_alerts = body.priceAlerts;
+  if (body.defaultNotifyTarget !== undefined) upsertRow.default_notify_target = body.defaultNotifyTarget;
 
   const { error } = await supabase
     .from('notification_settings')

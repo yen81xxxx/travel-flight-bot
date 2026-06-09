@@ -13,14 +13,14 @@ describe('AddWatchSheet', () => {
 
   it('sourceId=null → 顯示「需要先登入 LINE」提示', () => {
     const { container } = render(
-      <AddWatchSheet open={true} onClose={() => {}} sourceId={null} />
+      <AddWatchSheet open={true} onClose={() => {}} userId={null} groupCtxId={null} />
     );
     expect(container.textContent).toContain('需要先登入');
   });
 
   it('有 sourceId → 顯示路線 picker + 來回/單程 segmented', () => {
     const { container } = render(
-      <AddWatchSheet open={true} onClose={() => {}} sourceId="Uabc" />
+      <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
     );
     expect(container.textContent).toContain('來回');
     expect(container.textContent).toContain('單程');
@@ -28,7 +28,7 @@ describe('AddWatchSheet', () => {
 
   it('未填日期 → preview button 是 disabled', () => {
     const { getByRole } = render(
-      <AddWatchSheet open={true} onClose={() => {}} sourceId="Uabc" />
+      <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
     );
     const btn = getByRole('button', { name: /查目前最低價/ });
     expect(btn).toBeDisabled();
@@ -43,7 +43,7 @@ describe('AddWatchSheet', () => {
       })
     });
     const { getByRole, getByLabelText, findAllByText, container } = render(
-      <AddWatchSheet open={true} onClose={() => {}} sourceId="Uabc" />
+      <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
     );
     // 填日期
     const outInput = getByLabelText(/去程/) as HTMLInputElement;
@@ -69,7 +69,7 @@ describe('AddWatchSheet', () => {
       })
     });
     const { getByRole, getByLabelText, findAllByText } = render(
-      <AddWatchSheet open={true} onClose={() => {}} sourceId="Uabc" />
+      <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
     );
     fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
     fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
@@ -92,7 +92,7 @@ describe('AddWatchSheet', () => {
     const onCreated = jest.fn();
     const onClose = jest.fn();
     const { getByLabelText, getByText } = render(
-      <AddWatchSheet open={true} onClose={onClose} sourceId="Uabc" onCreated={onCreated} />
+      <AddWatchSheet open={true} onClose={onClose} userId="Uabc" groupCtxId={null} onCreated={onCreated} />
     );
     fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
     fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
@@ -117,7 +117,7 @@ describe('AddWatchSheet', () => {
       json: () => Promise.resolve({ ok: true })
     });
     const { container, getByLabelText, getByText } = render(
-      <AddWatchSheet open={true} onClose={() => {}} sourceId="Uabc" />
+      <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
     );
     fireEvent.click(getByText('單程'));
     // 回程 label 不存在

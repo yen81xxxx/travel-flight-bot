@@ -25,9 +25,12 @@
 │  ③ LIFF (LINE 內嵌 webview，使用者開「我的訂閱」等)                  │
 │         │                                                           │
 │         ▼                                                           │
-│    /liff/search | /subscriptions | /settings (LIFF V2 React 頁)    │
-│    └─ fetch /api/subscriptions PATCH                                │
-│       └─ Supabase write                                             │
+│    /liff (Vision watchlist 主入口) — WatchCard + 三個 sheets          │
+│    ├─ fetch /api/subscriptions/with-quotes (列表 + 報價)             │
+│    ├─ fetch /api/subscriptions/flights (詳細 sheet 的航班 list)      │
+│    ├─ POST  /api/search (新增 sheet 的即時預覽)                       │
+│    ├─ POST/PATCH/DELETE /api/subscriptions                          │
+│    └─ GET/POST /api/notification-settings                            │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -61,17 +64,24 @@ travel-flight-bot/
     │   │   ├── line/webhook/route.ts             ★ LINE 訊息入口
     │   │   ├── subscriptions/route.ts            ← 訂閱 CRUD
     │   │   ├── subscriptions/schema.ts           ← PATCH zod schema
-    │   │   ├── subscriptions/history/route.ts    ← 歷史走勢
+    │   │   ├── subscriptions/history/route.ts    ← 歷史走勢（postback flex 用）
+    │   │   ├── subscriptions/with-quotes/route.ts ★ 帶報價的列表（watchlist）
+    │   │   ├── subscriptions/flights/route.ts    ← 詳細 sheet 的航班 list (6h)
     │   │   ├── notification-settings/route.ts    ← 通知設定
-    │   │   ├── search/route.ts                   ← LIFF 即時查
+    │   │   ├── search/route.ts                   ← 即時查（沒快取時打 SerpApi）
     │   │   ├── health/route.ts                   ← 健康檢查
     │   │   ├── group-info/route.ts               ← LINE 群組資訊
     │   │   └── version/route.ts                  ← 部署版本確認
-    │   └── liff/                      ← LIFF 內嵌頁
-    │       ├── search/SearchFormV2.tsx           ← 查機票表單
-    │       ├── subscriptions/SubscriptionsViewV2.tsx ★ 「我的訂閱」 + 編輯
-    │       ├── settings/SettingsViewV2.tsx        ← 靜音時段、開關
-    │       └── TabNav.tsx                         ← LIFF 共用 tab bar
+    │   └── liff/                      ← LIFF 內嵌頁 (Vision watchlist, PR #1~#4)
+    │       ├── page.tsx                           ★ /liff 主入口
+    │       ├── WatchlistView.tsx                  ← 列表 + filter + sheet routing
+    │       ├── _components/                       ← Icon / Sparkline / PriceChart / WatchCard / DigestHero / SignalPill / IOSToggle / BottomSheet / WatchDetailSheet / AddWatchSheet / SettingsSheet
+    │       ├── _hooks/useWatchlist.ts             ← 撈個人 + 群組 with-quotes 合併
+    │       ├── _lib/signal.ts                     ← deriveSignal + SIGNAL_META
+    │       ├── _styles/tokens.css                 ← iOS dark mode CSS vars
+    │       ├── _types.ts                          ← WatchWithQuote / WatchQuote
+    │       ├── layout.tsx                         ← LIFF nested layout (套 tokens)
+    │       └── search/ | subscriptions/ | settings/ ← 舊路由（page.tsx redirect /liff）
     ├── lib/                           ← 核心業務邏輯
     │   ├── serpapi.ts                 ★ SerpApi 客戶端 + multi-key 輪換
     │   ├── flights.ts                 ★ analyzeFlights、time filter
@@ -156,9 +166,43 @@ LINE 傳訊 → /api/line/webhook
    │  └─ FollowEvent / JoinEvent → 回 welcome 訊息
 ```
 
-### C. LIFF 訂閱編輯流程
+### C. LIFF Watchlist 流程（PR #1~#4 vision watchlist）
 
 ```
+LINE 連結 → 開 LIFF /liff  （舊 /liff/search /subscriptions /settings 一律 redirect /liff）
+   │
+   ├─ WatchlistView.tsx 用 useWatchlist 撈個人 + 已知群組的 /api/subscriptions/with-quotes
+   │  └─ 列表（含 sparkline、signal pill）+ filter chips（全部 / 已達標 / 個人 / 群組）
+   │     ＋ DigestHero（全部 filter + 有 hit 才出現）＋ FAB「+ 新增追蹤」＋ 右上 gear
+   │
+   ├─ 點 WatchCard → 開 WatchDetailSheet
+   │  ├─ Hero (大價格 + 廉航/傳統 標 + delta + SignalPill)
+   │  ├─ PriceChart (近 30 天 + target dashed line + min/latest marker)
+   │  ├─ 廉航 / 傳統 cat-card 雙併
+   │  ├─ 去 / 回程 flight 列表（top 5 + 展開全部、最便宜 highlight）
+   │  ├─ 追蹤設定（廉航/傳統目標、起飛時段、暫停 toggle）→ PATCH /api/subscriptions
+   │  └─ 刪除 (confirm step) → DELETE /api/subscriptions
+   │
+   ├─ 點 FAB → 開 AddWatchSheet
+   │  ├─ boarding-pass picker + 來回/單程 segmented + 日期
+   │  ├─ 即時預覽 button → POST /api/search（沒按就不打、省配額）
+   │  ├─ 通知對象 picker（user + 群組同時存在才顯示）
+   │  └─ 「開始追蹤」 → POST /api/subscriptions
+   │
+   └─ 點右上 gear → 開 SettingsSheet
+      ├─ 每日摘要 / 靜音時段 / 預設通知對象
+      └─ POST /api/notification-settings
+```
+
+### D. （舊）LIFF 訂閱編輯流程（PR #4b 前）
+
+```
+舊版三入口頁面（SearchFormV2 / SubscriptionsViewV2 / SettingsViewV2）已在 PR #4b 退場。
+原檔案已刪，舊 /liff/search /subscriptions /settings 路由現在 server-side redirect 回 /liff。
+保留書籤相容性，無 cron 或 webhook 觸及這些路由。
+
+（為歷史紀錄保留下方流程描述，下個 LTS 後可刪）
+
 LINE「我的訂閱」按鈕 → 開 LIFF /liff/subscriptions
    │
    ├─ SubscriptionsViewV2.tsx fetch /api/subscriptions?sourceId=X
