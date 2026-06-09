@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Icon } from './_components/Icon';
 
 interface Props {
   active: 'search' | 'subscriptions' | 'settings';
@@ -52,13 +53,13 @@ export default function TabNav({ active, liffId }: Props) {
   return (
     <nav className="tabnav">
       <a href={searchUrl} className={`tab ${active === 'search' ? 'active' : ''}`} data-preload-search>
-        🔍 查航班
+        <Icon name="search" size={18} /> <span>查航班</span>
       </a>
       <a href={subsUrl} className={`tab ${active === 'subscriptions' ? 'active' : ''}`} data-preload-subscriptions>
-        📋 我的訂閱
+        <Icon name="bookmark" size={18} /> <span>我的訂閱</span>
       </a>
       <a href={settingsUrl} className={`tab ${active === 'settings' ? 'active' : ''}`} data-preload-settings>
-        ⚙️ 設定
+        <Icon name="gear" size={18} /> <span>設定</span>
       </a>
       <style jsx>{`
         .tabnav {

@@ -9,6 +9,7 @@ import { useSessionStorage } from '@/hooks/useSessionStorage';
 import { useSearchSession } from '@/hooks/useSearchSession';
 import { Stepper } from '@/components/Stepper';
 import TabNav from '../TabNav';
+import { Icon } from '../_components/Icon';
 
 interface Props {
   liffId: string;
@@ -33,7 +34,7 @@ function fmtDur(min: number | null | undefined): string {
  * 顯示單程候選 list（去程 or 回程）。
  * 預設只顯示前 3 班（最便宜），按「看全部 X 班」展開。
  */
-function FlightList({ legLabel, flights }: { legLabel: string; flights: FlightRow[] }) {
+function FlightList({ legLabel, flights }: { legLabel: React.ReactNode; flights: FlightRow[] }) {
   const [expanded, setExpanded] = useState(false);
   const sorted = [...flights].sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
   const shown = expanded ? sorted : sorted.slice(0, 3);
@@ -150,7 +151,7 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
   // 「傳統航空另設目標價」可選
   const [enableTradTarget, setEnableTradTarget] = useState(false);
   const [tradMaxPrice, setTradMaxPrice] = useState('');
-  // ☑ 單程訂閱：勾選後隱藏回程日期、搜尋/訂閱都不帶 returnDate
+  // 單程訂閱：勾選後隱藏回程日期、搜尋/訂閱都不帶 returnDate
   const [isOneWay, setIsOneWay] = useState<boolean>(session.state.isOneWay);
 
   // API 狀態 — result 用 session.state.searchResult 當初始值，這樣 LIFF 登入完 reload
@@ -197,7 +198,7 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
   // 機場選項
   const renderAirportOptions = () => (
     <>
-      <optgroup label="🇹🇼 台灣">
+      <optgroup label="台灣">
         {twAirports.map(a => (
           <option key={a.iata} value={a.iata}>
             {a.city} {a.iata}
@@ -205,7 +206,7 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
         ))}
       </optgroup>
       {Object.entries(jpByRegion).map(([region, list]) => (
-        <optgroup key={region} label={`🇯🇵 ${region}`}>
+        <optgroup key={region} label={`日本 · ${region}`}>
           {list.map(a => (
             <option key={a.iata} value={a.iata}>
               {a.city} {a.iata}
@@ -408,10 +409,12 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
       <TabNav active="search" liffId={liffId} />
       <div className="wrap">
         <header className="hero">
-          <span className="logo">✈️</span>
+          <span className="logo"><Icon name="airplane" size={28} /></span>
           <div>
             <h1>機票查詢</h1>
-            <p>{profileName ? `Hi, ${profileName} 👋` : '台灣 → 日本'}</p>
+            <p className="hi-line">
+              {profileName ? <>Hi, {profileName} <Icon name="waveHand" size={14} /></> : '台灣 → 日本'}
+            </p>
           </div>
         </header>
 
@@ -484,7 +487,7 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
                 onClick={() => setIsOneWay(false)}
                 disabled={loading}
               >
-                🔄 來回
+                <Icon name="swap" size={16} /> 來回
               </button>
               <button
                 type="button"
@@ -492,13 +495,13 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
                 onClick={() => setIsOneWay(true)}
                 disabled={loading}
               >
-                ➡️ 單程
+                <Icon name="arrowRight" size={16} /> 單程
               </button>
             </div>
 
             <div className="date-row">
               <label className="date-input">
-                <span className="role">📅 去程</span>
+                <span className="role"><Icon name="calendar" size={13} /> 去程</span>
                 <input
                   type="date"
                   value={searchForm.values.outboundDate}
@@ -510,7 +513,7 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
               </label>
               {!isOneWay && (
                 <label className="date-input">
-                  <span className="role">📅 回程</span>
+                  <span className="role"><Icon name="calendar" size={13} /> 回程</span>
                   <input
                     type="date"
                     value={searchForm.values.returnDate}
@@ -523,10 +526,12 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
               )}
             </div>
 
-            {error && <div className="alert alert-error">⚠️ {error}</div>}
+            {error && <div className="alert alert-error"><Icon name="warning" size={16} /> <span>{error}</span></div>}
 
             <button type="submit" disabled={loading} className="btn-primary">
-              {loading ? <>⏳ 查詢中…</> : <>🔍 查詢航班</>}
+              {loading
+                ? <><Icon name="hourglass" size={16} /> <span>查詢中…</span></>
+                : <><Icon name="search" size={16} /> <span>查詢航班</span></>}
             </button>
           </form>
         )}
@@ -536,10 +541,10 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
         {session.state.step === 1 && (!result || !result.ok) && (
           <div className="card">
             <div className="empty-state">
-              <p>🕒 搜尋結果已過期</p>
+              <p><Icon name="clock" size={16} /> <span>搜尋結果已過期</span></p>
               <p className="empty-hint">回到第 1 步重新查詢一次</p>
               <button onClick={() => session.previousStep()} className="btn-secondary">
-                ← 回去查航班
+                <Icon name="chevronLeft" size={14} /> <span>回去查航班</span>
               </button>
             </div>
           </div>
@@ -547,14 +552,14 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
 
         {session.state.step === 1 && result && result.ok && (
           <div className="card results-card">
-            <h2>✈️ 搜尋結果</h2>
+            <h2><Icon name="airplane" size={18} /> <span>搜尋結果</span></h2>
 
             {result.analysis?.outboundCount === 0 ? (
               <div className="empty-state">
-                <p>❌ 找不到符合條件的直飛航班</p>
+                <p><Icon name="close" size={16} /> <span>找不到符合條件的直飛航班</span></p>
                 <p className="empty-hint">監控航司：星宇 / 長榮 / 捷星 / 酷航。可試其他日期或機場（例：HND 改 NRT 通常選項較多）</p>
                 <button onClick={() => session.previousStep()} className="btn-secondary">
-                  ← 修改條件
+                  <Icon name="chevronLeft" size={14} /> <span>修改條件</span>
                 </button>
               </div>
             ) : (
@@ -605,22 +610,32 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
                 </div>
 
                 {/* 去程 list */}
-                <FlightList legLabel={isOneWay ? '✈️ 航班選項' : '🛫 去程選項'} flights={result.outbound ?? []} />
+                <FlightList
+                  legLabel={
+                    isOneWay
+                      ? <><Icon name="airplane" size={14} /> <span>航班選項</span></>
+                      : <><Icon name="takeoff" size={14} /> <span>去程選項</span></>
+                  }
+                  flights={result.outbound ?? []}
+                />
 
                 {/* 回程 list — 來回才顯示 */}
                 {!isOneWay && (result.return?.length ?? 0) > 0 && (
-                  <FlightList legLabel="🛬 回程選項" flights={result.return ?? []} />
+                  <FlightList
+                    legLabel={<><Icon name="landing" size={14} /> <span>回程選項</span></>}
+                    flights={result.return ?? []}
+                  />
                 )}
 
                 {/* 缓存 hint */}
                 {result.fromCache && (
-                  <div className="cache-hint">📦 此為近 6 小時內快取資料</div>
+                  <div className="cache-hint"><Icon name="box" size={13} /> <span>此為近 6 小時內快取資料</span></div>
                 )}
 
                 {/* CTA */}
                 {sourceId ? (
                   <button onClick={() => session.nextStep()} className="btn-primary">
-                    🔔 確認價格，進入訂閱 →
+                    <Icon name="bell" size={16} /> <span>確認價格，進入訂閱</span> <Icon name="arrowRight" size={14} />
                   </button>
                 ) : (
                   <button onClick={handleLineLogin} className="btn-line-login">
@@ -636,7 +651,7 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
         {/* Step 3: 確認訂閱 */}
         {session.state.step === 2 && result && sourceId && (
           <div className="card subscribe-card">
-            <h2>🔔 確認訂閱</h2>
+            <h2><Icon name="bell" size={18} /> <span>確認訂閱</span></h2>
 
             <div className="sub-input-row">
               <span className="sub-prefix">NT$</span>
@@ -675,7 +690,7 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
               type="text"
               value={subscribeForm.values.subLabel}
               onChange={e => subscribeForm.setValue('subLabel', e.target.value)}
-              placeholder="📝 備註（選填）"
+              placeholder="備註（選填）"
               disabled={subscribeStatus === 'saving' || subscribeStatus === 'saved'}
               maxLength={50}
               className="sub-label-input"
@@ -688,23 +703,23 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
                   className={subscribeAs === 'self' ? 'tg active' : 'tg'}
                   onClick={() => setSubscribeAs('self')}
                 >
-                  👤 通知我
+                  <Icon name="person" size={15} /> <span>通知我</span>
                 </button>
                 <button
                   type="button"
                   className={subscribeAs === 'group' ? 'tg active' : 'tg'}
                   onClick={() => setSubscribeAs('group')}
                 >
-                  👥 通知群組
+                  <Icon name="people" size={15} /> <span>通知群組</span>
                 </button>
               </div>
             )}
 
-            {error && <div className="alert alert-error">⚠️ {error}</div>}
+            {error && <div className="alert alert-error"><Icon name="warning" size={16} /> <span>{error}</span></div>}
 
             {subscribeStatus === 'saved' ? (
               <div className="success-state">
-                <div className="big">🎉</div>
+                <div className="big"><Icon name="party" size={48} /></div>
                 <p>訂閱成功！跌破 NT$ {subscribeForm.values.customMaxPrice} 會自動通知。</p>
                 <button onClick={closeLiff} className="btn-primary">
                   關閉
@@ -717,10 +732,12 @@ export default function SearchFormV2({ liffId, twAirports, jpAirports }: Props) 
                   disabled={subscribeStatus === 'saving' || !subscribeForm.values.customMaxPrice}
                   className="btn-primary"
                 >
-                  {subscribeStatus === 'saving' ? '⏳ 訂閱中…' : '✓ 確認訂閱'}
+                  {subscribeStatus === 'saving'
+                    ? <><Icon name="hourglass" size={16} /> <span>訂閱中…</span></>
+                    : <><Icon name="check" size={16} /> <span>確認訂閱</span></>}
                 </button>
                 <button onClick={() => session.previousStep()} className="btn-secondary">
-                  ← 回上一步
+                  <Icon name="chevronLeft" size={14} /> <span>回上一步</span>
                 </button>
               </>
             )}

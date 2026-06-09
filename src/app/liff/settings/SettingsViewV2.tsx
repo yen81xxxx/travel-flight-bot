@@ -5,6 +5,7 @@ import { useSessionStorage } from '@/hooks/useSessionStorage';
 import { useLiff } from '@/hooks/useLiff';
 import { Alert, Badge, Button, Card, Spinner } from '@/components';
 import TabNav from '../TabNav';
+import { Icon } from '../_components/Icon';
 
 interface Props {
   liffId: string;
@@ -118,7 +119,7 @@ export default function SettingsViewV2({ liffId }: Props) {
       <div className="settings-wrap">
         <header className="settings-header">
           <div className="header-content">
-            <h1>⚙️ 通知設定</h1>
+            <h1><Icon name="gear" size={22} /> <span>通知設定</span></h1>
             {isGroupContext && <Badge variant="info">群組設定</Badge>}
           </div>
           <div className="flight-indicator">
@@ -131,7 +132,7 @@ export default function SettingsViewV2({ liffId }: Props) {
         {savedMsg && <Alert type="success" closable onClose={() => setSavedMsg(null)}>{savedMsg}</Alert>}
 
         <Card>
-          <h2 className="setting-title">🔔 價格提醒</h2>
+          <h2 className="setting-title"><Icon name="bell" size={18} /> <span>價格提醒</span></h2>
 
           <div className="setting-item">
             <div className="setting-label">
@@ -165,7 +166,7 @@ export default function SettingsViewV2({ liffId }: Props) {
         </Card>
 
         <Card>
-          <h2 className="setting-title">🤐 靜音時段</h2>
+          <h2 className="setting-title"><Icon name="moon" size={18} /> <span>靜音時段</span></h2>
 
           <div className="setting-item">
             <div className="setting-label">
@@ -218,7 +219,9 @@ export default function SettingsViewV2({ liffId }: Props) {
             size="lg"
             fullWidth
           >
-            {saving ? '💾 保存中…' : '✓ 保存設定'}
+            {saving
+              ? <><Icon name="hourglass" size={16} /> <span>保存中…</span></>
+              : <><Icon name="check" size={16} /> <span>保存設定</span></>}
           </Button>
         </div>
 

@@ -1,0 +1,1258 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "airplane" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="airplane"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M21 16.5v-1.7l-7.5-4.3V5.2a1.5 1.5 0 0 0-3 0v5.3L3 14.8v1.7l7.5-2.1v4.2L8.6 20v1.3l3.4-.9 3.4.9V20l-1.9-1.4v-4.2L21 16.5z"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "arrowDownRight" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="arrowDownRight"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M7 7l10 10M17 17v-7M17 17h-7"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "arrowRight" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="arrowRight"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M5 12h14M14 7l5 5-5 5"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "bell" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="bell"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M13.7 21a2 2 0 0 1-3.4 0"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "bellRing" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="bellRing"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M13.7 21a2 2 0 0 1-3.4 0"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M20.5 4.5a5 5 0 0 1 1.3 3M3.5 4.5a5 5 0 0 0-1.3 3"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "bolt" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="bolt"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M13 2.5L5 13h5.5l-1 8.5L18 11h-5.5l.5-8.5z"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "bookmark" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="bookmark"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M6 3.5h12a1 1 0 0 1 1 1V21l-7-4-7 4V4.5a1 1 0 0 1 1-1z"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "box" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="box"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M3.5 7.5L12 3l8.5 4.5v9L12 21l-8.5-4.5v-9z"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M3.5 7.5L12 12l8.5-4.5M12 12v9"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "calendar" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="calendar"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <rect
+    fill="none"
+    height="16"
+    rx="3"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+    width="17"
+    x="3.5"
+    y="4.5"
+  />
+  <path
+    d="M3.5 9h17M8 2.5v4M16 2.5v4"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "chartLine" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="chartLine"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M4 4v15a1 1 0 0 0 1 1h15"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M7 14l3.5-4 3 2.5L20 7"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "check" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="check"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M4 12.5l5 5 11-11"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "checkCircle" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="checkCircle"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <circle
+    cx="12"
+    cy="12"
+    fill="none"
+    r="9"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M8 12.5l2.5 2.5L16 9.5"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "chevronDown" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="chevronDown"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M5 9l7 7 7-7"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "chevronLeft" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="chevronLeft"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M15 5l-7 7 7 7"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "chevronRight" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="chevronRight"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M9 5l7 7-7 7"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "chevronUp" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="chevronUp"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M5 15l7-7 7 7"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "clock" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="clock"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <circle
+    cx="12"
+    cy="12"
+    fill="none"
+    r="8.5"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M12 7.5V12l3 2"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "close" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="close"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M6 6l12 12M18 6L6 18"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "dot" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="dot"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <circle
+    cx="12"
+    cy="12"
+    fill="currentColor"
+    r="4"
+    stroke="none"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "eye" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="eye"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <circle
+    cx="12"
+    cy="12"
+    fill="none"
+    r="3"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "flame" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="flame"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M12 3s5 4 5 9a5 5 0 0 1-10 0c0-1.5.5-2.5 1-3 0 1 .5 2 1.5 2 1.2 0 1.5-1.2 1-3-.3-1.2-.5-2.5.5-4z"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "gear" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="gear"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <circle
+    cx="12"
+    cy="12"
+    fill="none"
+    r="3.2"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M12 2.5l1.3 2.2 2.5-.5.4 2.5 2.3 1-.9 2.4 1.7 1.9-1.7 1.9.9 2.4-2.3 1-.4 2.5-2.5-.5L12 21.5l-1.3-2.2-2.5.5-.4-2.5-2.3-1 .9-2.4L4.7 12l1.7-1.9-.9-2.4 2.3-1 .4-2.5 2.5.5z"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "hourglass" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="hourglass"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M7 3h10M7 21h10"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M7 3c0 4 2.5 5.5 5 9 2.5-3.5 5-5 5-9M7 21c0-4 2.5-5.5 5-9 2.5 3.5 5 5 5 9"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "info" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="info"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <circle
+    cx="12"
+    cy="12"
+    fill="none"
+    r="9"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M12 11v5M12 7.8v.2"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "landing" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="landing"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M2.5 19h19"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M3.6 11.2l2.7 1.4 4.6.4 7-.2a1.6 1.6 0 0 0 .2-3.2l-3.8-.6-3.2-5.1-2.2-.2 1.1 5-3.6-.4-2-2L3 6.6l.1 3.5.5 1.1z"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "moon" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="moon"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5z"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "party" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="party"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M3 21l4.5-12 7.5 7.5L3 21z"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M14 4l.5 1.5M19.5 4.5L18 6M20 10l-1.5-.3M16 8a4 4 0 0 0-4-4"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "pause" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="pause"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <rect
+    fill="none"
+    height="14"
+    rx="1.2"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+    width="3.4"
+    x="6.5"
+    y="5"
+  />
+  <rect
+    fill="none"
+    height="14"
+    rx="1.2"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+    width="3.4"
+    x="14.1"
+    y="5"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "pencil" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="pencil"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M4 20h4L19 9l-4-4L4 16v4z"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M14 6l4 4"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "people" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="people"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <circle
+    cx="9"
+    cy="8.5"
+    fill="none"
+    r="3.3"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M3 19.5c0-3.2 2.7-5.3 6-5.3s6 2.1 6 5.3"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M16 5.5a3.3 3.3 0 0 1 0 6.4M17.5 19.5c0-2.6-1-4.4-2.8-5.3"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "person" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="person"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <circle
+    cx="12"
+    cy="8"
+    fill="none"
+    r="3.8"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "play" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="play"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M7 4.5l12 7.5-12 7.5V4.5z"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "plus" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="plus"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M12 5v14M5 12h14"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "search" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="search"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <circle
+    cx="11"
+    cy="11"
+    fill="none"
+    r="7"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M21 21l-4.3-4.3"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "sliders" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="sliders"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M4 8h10M18 8h2M4 16h2M10 16h10"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <circle
+    cx="16"
+    cy="8"
+    fill="none"
+    r="2.2"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <circle
+    cx="8"
+    cy="16"
+    fill="none"
+    r="2.2"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "sparkle" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="sparkle"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "sun" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="sun"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <circle
+    cx="12"
+    cy="12"
+    fill="none"
+    r="4"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "swap" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="swap"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M7 4v15M7 19l-3.2-3.2M7 19l3.2-3.2"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M17 20V5M17 5l-3.2 3.2M17 5l3.2 3.2"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "tag" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="tag"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M3.5 12.5l8-8a2 2 0 0 1 1.4-.6l5 .1a2 2 0 0 1 2 2l.1 5a2 2 0 0 1-.6 1.4l-8 8a2 2 0 0 1-2.8 0l-4.5-4.5a2 2 0 0 1 0-2.9z"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <circle
+    cx="15.5"
+    cy="8.5"
+    fill="currentColor"
+    r="1.4"
+    stroke="none"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "takeoff" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="takeoff"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M2.5 19h19"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M4 14.5l3 .4 4.5-1.2 6.8-1.8a1.6 1.6 0 0 0-.8-3.1l-3.7 1-4.6-4 -2.2.6 2.6 4.4-3.5.9L3 9.3l-1.6.4 1 3.4 1.1 1.4z"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "target" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="target"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <circle
+    cx="12"
+    cy="12"
+    fill="none"
+    r="8.5"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <circle
+    cx="12"
+    cy="12"
+    fill="none"
+    r="4.5"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <circle
+    cx="12"
+    cy="12"
+    fill="currentColor"
+    r="1"
+    stroke="none"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "trash" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="trash"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M4 7h16M9 7V5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 5v2"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M6.5 7l1 12.5a1.5 1.5 0 0 0 1.5 1.4h6a1.5 1.5 0 0 0 1.5-1.4L18 7"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "trendDown" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="trendDown"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M3 7l7 7 4-4 7 7"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M21 12v5h-5"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "trendUp" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="trendUp"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M3 17l7-7 4 4 7-7"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M21 12V7h-5"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "warning" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="warning"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M12 3.5L2.5 20h19L12 3.5z"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+  <path
+    d="M12 10v4M12 17.2v.2"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;
+
+exports[`Icon — snapshot (catches accidental path edits) snapshot "waveHand" 1`] = `
+<svg
+  aria-hidden="true"
+  class=""
+  data-icon="waveHand"
+  height="22"
+  style="display: block; flex-shrink: 0;"
+  viewBox="0 0 24 24"
+  width="22"
+>
+  <path
+    d="M7 11V6.5a1.4 1.4 0 0 1 2.8 0V11m0-1.5V5a1.4 1.4 0 0 1 2.8 0v5m0-.5V6a1.4 1.4 0 0 1 2.8 0v6.5c0 4-2.5 6.5-6 6.5-2 0-3.4-.8-4.6-2.3L2.4 14a1.5 1.5 0 0 1 2.2-2l1.4 1.3"
+    fill="none"
+    stroke="currentColor"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="1.8"
+  />
+</svg>
+`;

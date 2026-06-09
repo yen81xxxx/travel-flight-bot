@@ -8,6 +8,7 @@ import { Alert, EmptyState, Spinner } from '@/components';
 import type { Subscription } from '@/types';
 import { getCity } from '@/config/airports';
 import TabNav from '../TabNav';
+import { Icon } from '../_components/Icon';
 
 interface Props {
   liffId: string;
@@ -56,7 +57,8 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
   const [editReturnMinTime, setEditReturnMinTime] = useState<string>('');
   const [editOutboundMaxTime, setEditOutboundMaxTime] = useState<string>('');
   const [editReturnMaxTime, setEditReturnMaxTime] = useState<string>('');
-  const [editIsOneWay, setEditIsOneWay] = useState<boolean>(false);  // ☑ = 單程訂閱（回程不追蹤）
+  // editIsOneWay = true → 單程訂閱（不追蹤回程）
+  const [editIsOneWay, setEditIsOneWay] = useState<boolean>(false);
   const [editSaving, setEditSaving] = useState<boolean>(false);
 
   // 初始化群組 ID（URL → sessionStorage + localStorage）
@@ -334,7 +336,7 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
           </div>
         ) : items.length === 0 ? (
           <EmptyState
-            icon="🛫"
+            icon={<Icon name="takeoff" size={56} />}
             title="還沒有訂閱"
             description={`前往搜尋頁面開始追蹤航班價格${isGroupContext ? '（群組訂閱）' : ''}`}
             action={{
@@ -459,7 +461,7 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
                           )}
 
                           {sub.label && (
-                            <div className="card-note">📝 {sub.label}</div>
+                            <div className="card-note"><Icon name="pencil" size={14} /> {sub.label}</div>
                           )}
 
                           <div className="card-foot">
@@ -502,7 +504,7 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
               <div className="edit-modal-header">
                 <h2>編輯訂閱</h2>
                 <div className="edit-modal-route">
-                  ✈️ {editingSub.origin} → {editingSub.destination}
+                  <Icon name="airplane" size={14} /> {editingSub.origin} → {editingSub.destination}
                 </div>
               </div>
 
@@ -638,41 +640,22 @@ export default function SubscriptionsViewV2({ liffId }: Props) {
           </div>
         )}
 
-        <style jsx global>{`
-          /* iOS Dark Mode design tokens */
-          :root {
-            --ios-bg: #000000;
-            --ios-bg-secondary: #1c1c1e;
-            --ios-bg-tertiary: #2c2c2e;
-            --ios-bg-grouped: #1c1c1e;
-            --ios-separator: rgba(84, 84, 88, 0.65);
-            --ios-separator-opaque: #38383a;
-            --ios-label: #ffffff;
-            --ios-label-secondary: rgba(235, 235, 245, 0.6);
-            --ios-label-tertiary: rgba(235, 235, 245, 0.3);
-            --ios-blue: #0a84ff;
-            --ios-green: #30d158;
-            --ios-orange: #ff9f0a;
-            --ios-red: #ff453a;
-            --ios-yellow: #ffd60a;
-            --ios-purple: #bf5af2;
-            --ios-pink: #ff375f;
-          }
-          body {
-            background: var(--ios-bg);
-            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'PingFang TC', 'Helvetica Neue', sans-serif;
-            color: var(--ios-label);
-            -webkit-font-smoothing: antialiased;
-          }
-        `}</style>
+        {/*
+          Design tokens 已移到 src/app/liff/_styles/tokens.css，由 LIFF layout
+          自動 import。Body 樣式 (背景 / 字型) 由本檔 .subs-wrap 自己負責
+          (該 class 已設 background: var(--ios-bg) + font-family)，不再
+          污染 global body — 避免影響其他 light theme LIFF 頁面。
+        */}
         <style jsx>{`
           .subs-wrap {
             max-width: 640px;
             margin: 0 auto;
             padding: 24px 16px 96px;
-            background: #000000;
+            background: var(--ios-bg);
             min-height: 100vh;
-            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'PingFang TC', sans-serif;
+            font-family: var(--font);
+            color: var(--ios-label);
+            -webkit-font-smoothing: antialiased;
           }
 
           /* ===== Header ===== */
