@@ -1,0 +1,135 @@
+/**
+ * AddWatchSheet — sourceId null fallback + preview button 行為 + submit
+ */
+import '@testing-library/jest-dom';
+import * as React from 'react';
+import { render, fireEvent, waitFor } from '@testing-library/react';
+import { AddWatchSheet } from '../AddWatchSheet';
+
+describe('AddWatchSheet', () => {
+  beforeEach(() => {
+    global.fetch = jest.fn() as unknown as typeof fetch;
+  });
+
+  it('sourceId=null → 顯示「需要先登入 LINE」提示', () => {
+    const { container } = render(
+      <AddWatchSheet open={true} onClose={() => {}} sourceId={null} />
+    );
+    expect(container.textContent).toContain('需要先登入');
+  });
+
+  it('有 sourceId → 顯示路線 picker + 來回/單程 segmented', () => {
+    const { container } = render(
+      <AddWatchSheet open={true} onClose={() => {}} sourceId="Uabc" />
+    );
+    expect(container.textContent).toContain('來回');
+    expect(container.textContent).toContain('單程');
+  });
+
+  it('未填日期 → preview button 是 disabled', () => {
+    const { getByRole } = render(
+      <AddWatchSheet open={true} onClose={() => {}} sourceId="Uabc" />
+    );
+    const btn = getByRole('button', { name: /查目前最低價/ });
+    expect(btn).toBeDisabled();
+  });
+
+  it('填好日期 → preview button enable + 點擊打 /api/search', async () => {
+    (global.fetch as unknown as jest.Mock).mockResolvedValueOnce({
+      json: () => Promise.resolve({
+        ok: true,
+        analysis: { cheapestRoundTripPrice: 12500, cheapestAirline: '酷航' },
+        fromCache: true
+      })
+    });
+    const { getByRole, getByLabelText, findAllByText, container } = render(
+      <AddWatchSheet open={true} onClose={() => {}} sourceId="Uabc" />
+    );
+    // 填日期
+    const outInput = getByLabelText(/去程/) as HTMLInputElement;
+    fireEvent.change(outInput, { target: { value: '2026-09-01' } });
+    const retInput = getByLabelText(/回程/) as HTMLInputElement;
+    fireEvent.change(retInput, { target: { value: '2026-09-05' } });
+    // 點 preview
+    const btn = getByRole('button', { name: /查目前最低價/ });
+    fireEvent.click(btn);
+    // 12,500 可能同時出現在 preview block + 「目前價」suggestion pill 兩處 → 用 AllByText
+    const matches = await findAllByText(/12,500/);
+    expect(matches.length).toBeGreaterThanOrEqual(1);
+    // 顯示「酷航」+ 快取 hint
+    expect(container.textContent).toContain('酷航');
+    expect(container.textContent).toContain('快取');
+  });
+
+  it('preview 後點「目前價」suggestion → 帶入目標價 input', async () => {
+    (global.fetch as unknown as jest.Mock).mockResolvedValueOnce({
+      json: () => Promise.resolve({
+        ok: true,
+        analysis: { cheapestRoundTripPrice: 12500, cheapestAirline: 'X' }
+      })
+    });
+    const { getByRole, getByLabelText, findAllByText } = render(
+      <AddWatchSheet open={true} onClose={() => {}} sourceId="Uabc" />
+    );
+    fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
+    fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
+    fireEvent.click(getByRole('button', { name: /查目前最低價/ }));
+    // 等 preview 結果出現，然後直接挑「目前價」button（不是 preview 顯示的那個）
+    const matches = await findAllByText(/目前價.*12,500/);
+    // 找到那個是 button（pill），不是 label
+    const pill = matches.find(el => el.tagName === 'BUTTON');
+    expect(pill).toBeDefined();
+    fireEvent.click(pill!);
+    // 看 amount input 值
+    const amountInput = document.querySelector('input[placeholder="例：12800"]') as HTMLInputElement;
+    expect(amountInput.value).toBe('12500');
+  });
+
+  it('submit 按鈕送出 POST /api/subscriptions 並 onCreated', async () => {
+    (global.fetch as unknown as jest.Mock).mockResolvedValueOnce({
+      json: () => Promise.resolve({ ok: true, action: 'created' })
+    });
+    const onCreated = jest.fn();
+    const onClose = jest.fn();
+    const { getByLabelText, getByText } = render(
+      <AddWatchSheet open={true} onClose={onClose} sourceId="Uabc" onCreated={onCreated} />
+    );
+    fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
+    fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
+    const amount = document.querySelector('input[placeholder="例：12800"]') as HTMLInputElement;
+    fireEvent.change(amount, { target: { value: '13000' } });
+    fireEvent.click(getByText('開始追蹤'));
+    await waitFor(() => {
+      const calls = (global.fetch as unknown as jest.Mock).mock.calls;
+      const postCall = calls.find(c => c[0] === '/api/subscriptions');
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body);
+      expect(body.maxPrice).toBe(13000);
+      expect(body.outboundDate).toBe('2026-09-01');
+      expect(body.returnDate).toBe('2026-09-05');
+    });
+    expect(onCreated).toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('單程模式 → 隱藏回程 + POST body 不含 returnDate', async () => {
+    (global.fetch as unknown as jest.Mock).mockResolvedValueOnce({
+      json: () => Promise.resolve({ ok: true })
+    });
+    const { container, getByLabelText, getByText } = render(
+      <AddWatchSheet open={true} onClose={() => {}} sourceId="Uabc" />
+    );
+    fireEvent.click(getByText('單程'));
+    // 回程 label 不存在
+    expect(container.textContent).not.toMatch(/(?:^|\s)回程(?:\s|$)/);
+    fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
+    const amount = document.querySelector('input[placeholder="例：12800"]') as HTMLInputElement;
+    fireEvent.change(amount, { target: { value: '13000' } });
+    fireEvent.click(getByText('開始追蹤'));
+    await waitFor(() => {
+      const postCall = (global.fetch as unknown as jest.Mock).mock.calls.find(c => c[0] === '/api/subscriptions');
+      const body = JSON.parse(postCall![1].body);
+      expect(body.returnDate).toBeUndefined();
+    });
+  });
+});
