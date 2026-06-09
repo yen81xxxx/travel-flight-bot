@@ -24,6 +24,9 @@ import { deriveSignal } from './_lib/signal';
 import { WatchCard } from './_components/WatchCard';
 import { DigestHero, pickDigestWatch } from './_components/DigestHero';
 import { Icon } from './_components/Icon';
+import { WatchDetailSheet } from './_components/WatchDetailSheet';
+import { AddWatchSheet } from './_components/AddWatchSheet';
+import { SettingsSheet } from './_components/SettingsSheet';
 
 interface Props {
   liffId: string;
@@ -75,9 +78,19 @@ export default function WatchlistView({ liffId }: Props) {
     }
   }, [setGroupCtxId, addKnownGroupCtx]);
 
-  const { watches, loading, error } = useWatchlist(sourceId, knownGroupCtxs);
+  const { watches, loading, error, refetch } = useWatchlist(sourceId, knownGroupCtxs);
 
   const [filter, setFilter] = useState<FilterKey>('all');
+
+  // === Sheet routing state ===
+  // 一次只開一個 sheet — 用 single field 控制（避免兩個同時開的狀態組合）
+  const [sheet, setSheet] = useState<
+    | { kind: 'none' }
+    | { kind: 'detail'; watch: WatchItem }
+    | { kind: 'add' }
+    | { kind: 'settings' }
+  >({ kind: 'none' });
+  const closeSheet = () => setSheet({ kind: 'none' });
 
   const counts = useMemo(() => computeFilterCounts(watches), [watches]);
   const filtered = useMemo(() => applyFilter(watches, filter), [watches, filter]);
@@ -85,23 +98,15 @@ export default function WatchlistView({ liffId }: Props) {
   // DigestHero 只在 filter=all 時顯示；pickDigestWatch 內部做 hit 過濾
   const digestWatch = filter === 'all' ? pickDigestWatch(watches) : null;
 
-  // PR #3 暫時的 navigation — PR #4 會改成開 sheet
-  // 使用者點到時已經在 /liff (LIFF session 內)，全走相對路徑即可，不用走
-  // https://liff.line.me/{liffId} 重觸發 auth。
-  //
-  // 註：以前 TabNav 的 search tab 用 LIFF URL 是因為它 mounts 在 /liff/search /
-  // /liff/subscriptions / /liff/settings 三個頁面（其中 search 才是 LIFF endpoint
-  // URL 對應頁），藉 https://liff.line.me/{liffId} 形式來「跳回 endpoint URL」。
-  // 我們現在 /liff/page.tsx 本身就是 LIFF session 起點，相對路徑就夠了 — 而且
-  // 比較穩定，PR #4 把 LIFF endpoint URL 改指 /liff 後不會誤跳。
-  const ctxQS = groupCtxId ? `?ctx=${encodeURIComponent(groupCtxId)}` : '';
-  const goToSettings = () => { window.location.href = `/liff/settings${ctxQS}`; };
-  const goToAdd = () => { window.location.href = `/liff/search${ctxQS}`; };
-  const openWatch = () => {
-    // PR #4 改成開 DetailSheet 並帶 watch.id；現階段先跳訂閱頁（有 edit modal）
-    // 不需要 watch 物件 — 訂閱頁自己會撈所有 sub 顯示
-    window.location.href = `/liff/subscriptions${ctxQS}`;
-  };
+  // === Sheet handlers ===（PR #4a 完整接上）
+  // 全部走 sheet state，不再 navigate 出去。舊三條路由 (search/subscriptions/settings)
+  // 仍然存在但 watchlist 不再連結它們 — PR #4b 才退場。
+  const goToSettings = () => setSheet({ kind: 'settings' });
+  const goToAdd = () => setSheet({ kind: 'add' });
+  const openWatch = (w: WatchItem) => setSheet({ kind: 'detail', watch: w });
+  // 用 groupCtxId 標示目前 source，避免「沒登入也沒群組」時 sheet 內部 UI 出 bug
+  // （groupCtxId 在群組情境用，個人情境用 sourceId）
+  const currentSheetSourceId = sheet.kind === 'detail' ? sheet.watch.source_id : (sourceId ?? groupCtxId);
 
   // 還沒 LIFF ready → spinner（不要 flash 空 list）
   if (liffId && !liffReady) {
@@ -187,6 +192,25 @@ export default function WatchlistView({ liffId }: Props) {
         <Icon name="plus" size={18} stroke={2.4} />
         <span>新增追蹤</span>
       </button>
+
+      {/* ---- Sheets ---- */}
+      <WatchDetailSheet
+        open={sheet.kind === 'detail'}
+        onClose={closeSheet}
+        watch={sheet.kind === 'detail' ? sheet.watch : null}
+        onMutated={refetch}
+      />
+      <AddWatchSheet
+        open={sheet.kind === 'add'}
+        onClose={closeSheet}
+        sourceId={currentSheetSourceId}
+        onCreated={refetch}
+      />
+      <SettingsSheet
+        open={sheet.kind === 'settings'}
+        onClose={closeSheet}
+        sourceId={currentSheetSourceId}
+      />
 
       <style jsx>{`
         .wl-wrap {
