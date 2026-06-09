@@ -6,7 +6,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "airplane" 1
   class=""
   data-icon="airplane"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -27,7 +27,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "arrowDownRi
   class=""
   data-icon="arrowDownRight"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -48,7 +48,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "arrowRight"
   class=""
   data-icon="arrowRight"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -69,7 +69,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "bell" 1`] =
   class=""
   data-icon="bell"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -98,7 +98,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "bellRing" 1
   class=""
   data-icon="bellRing"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -135,7 +135,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "bolt" 1`] =
   class=""
   data-icon="bolt"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -156,7 +156,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "bookmark" 1
   class=""
   data-icon="bookmark"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -177,7 +177,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "box" 1`] = 
   class=""
   data-icon="box"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -206,7 +206,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "calendar" 1
   class=""
   data-icon="calendar"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -239,7 +239,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "chartLine" 
   class=""
   data-icon="chartLine"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -268,7 +268,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "check" 1`] 
   class=""
   data-icon="check"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -289,7 +289,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "checkCircle
   class=""
   data-icon="checkCircle"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -320,7 +320,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "chevronDown
   class=""
   data-icon="chevronDown"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -341,7 +341,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "chevronLeft
   class=""
   data-icon="chevronLeft"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -362,7 +362,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "chevronRigh
   class=""
   data-icon="chevronRight"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -383,7 +383,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "chevronUp" 
   class=""
   data-icon="chevronUp"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -404,7 +404,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "clock" 1`] 
   class=""
   data-icon="clock"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -435,7 +435,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "close" 1`] 
   class=""
   data-icon="close"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -456,7 +456,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "dot" 1`] = 
   class=""
   data-icon="dot"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -476,7 +476,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "eye" 1`] = 
   class=""
   data-icon="eye"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -507,7 +507,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "flame" 1`] 
   class=""
   data-icon="flame"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -528,7 +528,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "gear" 1`] =
   class=""
   data-icon="gear"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -559,7 +559,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "hourglass" 
   class=""
   data-icon="hourglass"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -588,7 +588,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "info" 1`] =
   class=""
   data-icon="info"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -619,7 +619,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "landing" 1`
   class=""
   data-icon="landing"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -648,7 +648,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "moon" 1`] =
   class=""
   data-icon="moon"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -669,7 +669,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "party" 1`] 
   class=""
   data-icon="party"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -698,7 +698,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "pause" 1`] 
   class=""
   data-icon="pause"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -735,7 +735,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "pencil" 1`]
   class=""
   data-icon="pencil"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -764,7 +764,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "people" 1`]
   class=""
   data-icon="people"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -803,7 +803,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "person" 1`]
   class=""
   data-icon="person"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -834,7 +834,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "play" 1`] =
   class=""
   data-icon="play"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -855,7 +855,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "plus" 1`] =
   class=""
   data-icon="plus"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -876,7 +876,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "search" 1`]
   class=""
   data-icon="search"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -907,7 +907,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "sliders" 1`
   class=""
   data-icon="sliders"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -948,7 +948,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "sparkle" 1`
   class=""
   data-icon="sparkle"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -969,7 +969,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "sun" 1`] = 
   class=""
   data-icon="sun"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -1000,7 +1000,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "swap" 1`] =
   class=""
   data-icon="swap"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -1029,7 +1029,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "tag" 1`] = 
   class=""
   data-icon="tag"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -1057,7 +1057,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "takeoff" 1`
   class=""
   data-icon="takeoff"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -1086,7 +1086,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "target" 1`]
   class=""
   data-icon="target"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -1126,7 +1126,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "trash" 1`] 
   class=""
   data-icon="trash"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -1155,7 +1155,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "trendDown" 
   class=""
   data-icon="trendDown"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -1184,7 +1184,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "trendUp" 1`
   class=""
   data-icon="trendUp"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -1213,7 +1213,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "warning" 1`
   class=""
   data-icon="warning"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >
@@ -1242,7 +1242,7 @@ exports[`Icon — snapshot (catches accidental path edits) snapshot "waveHand" 1
   class=""
   data-icon="waveHand"
   height="22"
-  style="display: block; flex-shrink: 0;"
+  style="display: inline-block; vertical-align: -0.15em; flex-shrink: 0;"
   viewBox="0 0 24 24"
   width="22"
 >

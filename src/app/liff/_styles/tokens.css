@@ -59,8 +59,9 @@
   --ios-pink: #ff375f;
 
   /* type + radii */
-  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'PingFang TC', 'Helvetica Neue', sans-serif;
-  --mono: 'SF Mono', SFMono-Regular, ui-monospace, monospace;
+  /* 多字節 / hyphen 字體名都加引號 — 避免 Stylelint value-keyword-case，並讓 stack 意圖明確 */
+  --font: -apple-system, 'BlinkMacSystemFont', 'SF Pro Display', 'SF Pro Text', 'PingFang TC', 'Helvetica Neue', sans-serif;
+  --mono: 'SF Mono', 'SFMono-Regular', ui-monospace, monospace;
   --r-card: 16px;
   --r-field: 12px;
   --r-pill: 999px;

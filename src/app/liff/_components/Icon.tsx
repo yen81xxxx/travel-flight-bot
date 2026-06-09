@@ -185,7 +185,12 @@ export function Icon({ name, size = 22, stroke = 1.8, className = '', style, tit
       width={size}
       height={size}
       className={className}
-      style={{ display: 'block', flexShrink: 0, ...(style ?? {}) }}
+      // display: inline-block — Icon 通常直接放在中文文字旁邊（從 emoji 替換來的場景），
+      // 預設 inline-block 才不會像 emoji 換 block 的 svg 那樣換行。
+      // vertical-align: -0.15em 把 SVG 視覺中心對齊文字 x-height（baseline 對 svg 偏低）。
+      // 設計手冊原本給的是 display: block，但他們所有 use case 都自帶 flex 容器；
+      // 我們的 use case 是 inline 文字旁，故 deviate。要當大圖塊時自己 style={{display:'block'}}。
+      style={{ display: 'inline-block', verticalAlign: '-0.15em', flexShrink: 0, ...(style ?? {}) }}
       aria-hidden={title ? undefined : 'true'}
       role={title ? 'img' : undefined}
       data-icon={name}
