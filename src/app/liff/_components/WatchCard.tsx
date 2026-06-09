@@ -1,0 +1,360 @@
+/**
+ * WatchCard — watchlist 核心列項，每筆訂閱一張卡
+ *
+ * 對應 design_handoff_travl_vision/README.md §4.2、components.jsx 的 WatchCard。
+ *
+ * 4 個 row（上到下）：
+ *   1. route row：城市 ✈ 城市 + IATA codes / 暫停 + 個人/群組 pill
+ *   2. meta row：日期區間 + 「N 天後出發」+ optional label
+ *   3. price row：左 = 目前最低 + 航司；右 = delta % + Sparkline
+ *   4. signal row：SignalPill + 距目標
+ *
+ * Graceful degradation（quote=null / history=[] / deltaPct=null）：
+ *   - quote=null → price row 顯示目標價當 fallback、無 sparkline、signal=watching
+ *   - history 空 → 不畫 sparkline，但 price 還顯示
+ *   - deltaPct=null → 不顯示 delta chip
+ *
+ * paused → 整卡 opacity 降低；hit → 綠色框 highlight。
+ */
+import * as React from 'react';
+import type { WatchItem } from '../_hooks/useWatchlist';
+import { deriveSignal, type Signal } from '../_lib/signal';
+import { getCity } from '@/config/airports';
+import { Icon } from './Icon';
+import { Sparkline } from './Sparkline';
+import { SignalPill } from './SignalPill';
+
+interface Props {
+  watch: WatchItem;
+  onOpen: (watch: WatchItem) => void;
+}
+
+/** 千分位格式 — null/undefined 顯示 dash */
+function ntFmt(n: number | null | undefined): string {
+  return n != null ? n.toLocaleString() : '—';
+}
+
+/** ISO 日期 'YYYY-MM-DD' → 'M/D'（純字串切，避免時區） */
+function mdFmt(s: string | null | undefined): string {
+  if (!s) return '';
+  const parts = s.split('-');
+  if (parts.length !== 3) return s;
+  return `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}`;
+}
+
+/** 距出發天數 — outDate 已過則回負數，caller 自己處理 */
+export function daysUntil(yyyymmdd: string | null | undefined): number | null {
+  if (!yyyymmdd) return null;
+  // 純字串切日期 + 用 UTC 00:00 比較，避免午夜時時區差讓「明天」變「今天」
+  const parts = yyyymmdd.split('-').map(p => parseInt(p, 10));
+  if (parts.length !== 3 || parts.some(isNaN)) return null;
+  const target = Date.UTC(parts[0], parts[1] - 1, parts[2]);
+  const today = new Date();
+  const todayUTC = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.round((target - todayUTC) / 86400000);
+}
+
+export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
+  // === Signal: 沒 quote 直接 watching；有就用 deriveSignal ===
+  const signal: Signal = w.quote
+    ? deriveSignal(w.quote.currentBest, Number(w.max_price))
+    : 'watching';
+
+  // === 顯示值（含 graceful degradation）===
+  const currentBest = w.quote?.currentBest ?? null;
+  const deltaPct = w.quote?.deltaPct ?? null;
+  const history = w.quote?.history ?? [];
+  const showSparkline = history.length >= 2;
+  const showDelta = deltaPct != null;
+  const down = deltaPct != null && deltaPct < 0;
+
+  // 顯示用「距目標」差距 — 用 currentBest，沒料就藏掉
+  const dist = currentBest != null ? currentBest - Number(w.max_price) : null;
+  const below = dist != null && dist <= 0;
+
+  // === 路線 + meta ===
+  const originCity = getCity(w.origin);
+  const destCity = getCity(w.destination);
+  const days = daysUntil(w.outbound_date);
+  const dateRange = w.outbound_date
+    ? (w.return_date ? `${mdFmt(w.outbound_date)}–${mdFmt(w.return_date)}` : `${mdFmt(w.outbound_date)} 單程`)
+    : '不限定日期';
+
+  // === 航司 label ===
+  let carrierLabel: React.ReactNode = null;
+  if (w.quote) {
+    if (w.quote.currentType === 'lcc' && w.quote.lcc) {
+      const { out, ret } = w.quote.lcc;
+      carrierLabel = (
+        <>
+          <span className="wc-ctag lcc">廉航</span>
+          {ret && out !== ret ? `${out} → ${ret}` : out}
+        </>
+      );
+    } else if (w.quote.currentType === 'trad' && w.quote.trad) {
+      carrierLabel = (
+        <>
+          <span className="wc-ctag trad">傳統</span>
+          {w.quote.trad.airline}
+        </>
+      );
+    }
+  }
+
+  return (
+    <article
+      className={`watch-card pressable ${w.paused ? 'is-paused' : ''} ${signal === 'hit' ? 'is-hit' : ''}`}
+      onClick={() => onOpen(w)}
+      data-testid="watch-card"
+      data-signal={signal}
+      data-source={w._source}
+      data-paused={w.paused ? 'true' : 'false'}
+    >
+      {/* ---- 1. route row ---- */}
+      <div className="wc-route-row">
+        <div className="wc-route">
+          <div className="wc-cities">
+            {originCity}
+            <Icon name="airplane" size={15} style={{ transform: 'rotate(90deg)', color: 'var(--ios-blue)', margin: '0 4px' }} />
+            {destCity}
+          </div>
+          <span className="wc-codes tnum">{w.origin}→{w.destination}</span>
+        </div>
+        <div className="wc-tags">
+          {w.paused && (
+            <span className="paused-pill">
+              <Icon name="pause" size={11} stroke={2} /> 已暫停
+            </span>
+          )}
+          <span className={`src-pill ${w._source}`}>
+            <Icon name={w._source === 'group' ? 'people' : 'person'} size={12} stroke={2} />
+            {w._source === 'group' ? '群組' : '個人'}
+          </span>
+        </div>
+      </div>
+
+      {/* ---- 2. meta row ---- */}
+      <div className="wc-meta">
+        <span className="tnum">{dateRange}</span>
+        {days != null && days >= 0 && (
+          <>
+            <span className="dot" />
+            <span className="wc-count tnum">{days} 天後出發</span>
+          </>
+        )}
+        {w.label && (
+          <>
+            <span className="dot" />
+            <span>{w.label}</span>
+          </>
+        )}
+      </div>
+
+      {/* ---- 3. price row ---- */}
+      <div className="wc-price-row">
+        <div className="wc-price-left">
+          <span className="wc-now-label">{currentBest != null ? '目前最低' : '目標價'}</span>
+          <div className="wc-now">
+            <span className="ccy">NT$</span>
+            <span className="val tnum">{ntFmt(currentBest ?? Number(w.max_price))}</span>
+          </div>
+          {carrierLabel && <span className="wc-carrier">{carrierLabel}</span>}
+        </div>
+        <div className="wc-spark-wrap">
+          {showDelta && (
+            <span className={`wc-delta ${down ? 'down' : 'up'}`}>
+              <Icon name={down ? 'trendDown' : 'trendUp'} size={15} stroke={2.1} />
+              {Math.abs(deltaPct!).toFixed(1)}%
+            </span>
+          )}
+          {showSparkline && (
+            <Sparkline history={history} width={84} height={34} />
+          )}
+          {showSparkline && <span className="spark-caption">近 {history.length} 天</span>}
+        </div>
+      </div>
+
+      {/* ---- 4. signal row ---- */}
+      <div className="wc-signal-row">
+        <SignalPill signal={signal} compact />
+        {dist != null && (
+          <span className={`wc-target tnum ${below ? 'below' : ''}`}>
+            {below
+              ? <>已低於目標 NT${ntFmt(-dist)}</>
+              : <><span className="lead">距目標</span> NT${ntFmt(dist)}</>}
+          </span>
+        )}
+      </div>
+
+      <style jsx>{`
+        .watch-card {
+          background: var(--card-grad);
+          border: 1px solid var(--ios-hairline);
+          border-radius: var(--r-card);
+          padding: 14px;
+          margin-bottom: 12px;
+          color: var(--ios-label);
+          cursor: pointer;
+          user-select: none;
+        }
+        .watch-card.is-paused { opacity: 0.62; }
+        .watch-card.is-hit {
+          border-color: rgba(48, 209, 88, 0.45);
+          box-shadow: 0 0 0 1px rgba(48, 209, 88, 0.2);
+        }
+        /* ---- row 1 ---- */
+        .wc-route-row {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 8px;
+        }
+        .wc-route { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .wc-cities {
+          display: inline-flex;
+          align-items: center;
+          font-size: 17px;
+          font-weight: 600;
+          flex-wrap: wrap;
+        }
+        .wc-codes {
+          font-family: var(--mono);
+          font-size: 11px;
+          color: var(--ios-label-3);
+          letter-spacing: 0.5px;
+        }
+        .wc-tags { display: flex; gap: 6px; flex-shrink: 0; }
+        .paused-pill, .src-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 3px 8px;
+          border-radius: var(--r-pill);
+          font-size: 10.5px;
+          font-weight: 600;
+        }
+        .paused-pill {
+          background: var(--ios-fill-2);
+          color: var(--ios-label-2);
+        }
+        .src-pill.personal {
+          background: rgba(10, 132, 255, 0.16);
+          color: var(--ios-blue);
+        }
+        .src-pill.group {
+          background: rgba(191, 90, 242, 0.18);
+          color: var(--ios-purple);
+        }
+        /* ---- row 2 ---- */
+        .wc-meta {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 6px;
+          margin-top: 8px;
+          font-size: 12.5px;
+          color: var(--ios-label-2);
+        }
+        .wc-meta > span { white-space: nowrap; }
+        .wc-meta .wc-count { color: var(--ios-orange); font-weight: 600; }
+        .dot {
+          width: 3px; height: 3px;
+          border-radius: 50%;
+          background: var(--ios-label-3);
+        }
+        /* ---- row 3 ---- */
+        .wc-price-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          gap: 12px;
+          margin-top: 14px;
+        }
+        .wc-price-left { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .wc-now-label {
+          font-size: 11px;
+          color: var(--ios-label-3);
+          letter-spacing: 0.2px;
+          text-transform: uppercase;
+        }
+        .wc-now {
+          display: inline-flex;
+          align-items: baseline;
+          gap: 4px;
+        }
+        .ccy {
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--ios-label-2);
+        }
+        .val {
+          font-size: 28px;
+          font-weight: 800;
+          letter-spacing: -0.5px;
+        }
+        .wc-carrier {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+          color: var(--ios-label-2);
+          margin-top: 2px;
+        }
+        .wc-ctag {
+          padding: 1.5px 6px;
+          border-radius: 5px;
+          font-size: 10px;
+          font-weight: 700;
+        }
+        .wc-ctag.lcc {
+          background: rgba(100, 210, 255, 0.18);
+          color: var(--ios-cyan);
+        }
+        .wc-ctag.trad {
+          background: rgba(255, 214, 10, 0.18);
+          color: var(--ios-yellow);
+        }
+        .wc-spark-wrap {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 2px;
+        }
+        .wc-delta {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          font-size: 12.5px;
+          font-weight: 700;
+        }
+        .wc-delta.down { color: var(--ios-green); }
+        .wc-delta.up { color: var(--ios-red); }
+        .spark-caption {
+          font-size: 10px;
+          color: var(--ios-label-3);
+        }
+        /* ---- row 4 ---- */
+        .wc-signal-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 8px;
+          margin-top: 12px;
+          padding-top: 12px;
+          border-top: 0.5px solid var(--ios-hairline);
+        }
+        .wc-target {
+          font-size: 12.5px;
+          color: var(--ios-label-2);
+        }
+        .wc-target.below {
+          color: var(--ios-green);
+          font-weight: 700;
+        }
+        .wc-target .lead { color: var(--ios-label-3); }
+      `}</style>
+    </article>
+  );
+}
+
+export default WatchCard;

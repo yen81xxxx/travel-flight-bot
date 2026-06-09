@@ -1,0 +1,323 @@
+'use client';
+
+/**
+ * WatchlistView — /liff 主入口主畫面（PR #3）。
+ *
+ * 對應 design_handoff_travl_vision §4.1 的 Watchlist Home：
+ *   - Header: eyebrow + 大標 + 右上角 gear（→ SettingsSheet，PR #4 接；目前先連 /liff/settings）
+ *   - DigestHero（條件：filter=all + 至少 1 個 hit watch）
+ *   - Filter chips: 全部 / 已達標 / 個人 / 群組（各帶 count）
+ *   - WatchCard 列表（filter 後）
+ *   - FAB「＋ 新增追蹤」（→ AddWatchSheet，PR #4 接；目前先連 /liff/search）
+ *
+ * 暫時的「連舊頁面」連結：FAB / gear / WatchCard onOpen 三處在 PR #4 才會
+ * 改成開 sheet。這 PR 先讓使用者「看得到新 watchlist 但能操作不會壞」。
+ */
+import * as React from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLiff } from '@/hooks/useLiff';
+import { useKnownGroupCtxs } from '@/hooks/useKnownGroupCtxs';
+import { useSessionStorage } from '@/hooks/useSessionStorage';
+import { Spinner } from '@/components';
+import { useWatchlist, type WatchItem } from './_hooks/useWatchlist';
+import { deriveSignal } from './_lib/signal';
+import { WatchCard } from './_components/WatchCard';
+import { DigestHero, pickDigestWatch } from './_components/DigestHero';
+import { Icon } from './_components/Icon';
+
+interface Props {
+  liffId: string;
+}
+
+export type FilterKey = 'all' | 'hit' | 'personal' | 'group';
+
+/** 對給定 watch list 算 filter chip 的 count map — 抽純函數方便單測 */
+export function computeFilterCounts(watches: WatchItem[]): Record<FilterKey, number> {
+  let hit = 0;
+  let personal = 0;
+  let group = 0;
+  for (const w of watches) {
+    if (w._source === 'personal') personal++;
+    else group++;
+    if (!w.paused && w.quote && deriveSignal(w.quote.currentBest, Number(w.max_price)) === 'hit') hit++;
+  }
+  return { all: watches.length, hit, personal, group };
+}
+
+/** 套 filter — 純函數方便單測 */
+export function applyFilter(watches: WatchItem[], filter: FilterKey): WatchItem[] {
+  if (filter === 'all') return watches;
+  if (filter === 'hit') {
+    return watches.filter(w =>
+      !w.paused && w.quote && deriveSignal(w.quote.currentBest, Number(w.max_price)) === 'hit'
+    );
+  }
+  if (filter === 'personal') return watches.filter(w => w._source === 'personal');
+  if (filter === 'group') return watches.filter(w => w._source === 'group');
+  return watches;
+}
+
+export default function WatchlistView({ liffId }: Props) {
+  const { liffReady, user } = useLiff(liffId);
+  const sourceId = user?.userId ?? null;
+
+  // 群組 ctx 處理 — 跟既有 SubscriptionsViewV2 同模式（URL ?ctx= → sessionStorage + localStorage）
+  const [groupCtxId, setGroupCtxId] = useSessionStorage<string | null>('liff_ctx', null);
+  const { ctxs: knownGroupCtxs, add: addKnownGroupCtx } = useKnownGroupCtxs();
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const ctx = params.get('ctx');
+    if (ctx && (ctx.startsWith('C') || ctx.startsWith('R'))) {
+      setGroupCtxId(ctx);
+      addKnownGroupCtx(ctx);
+    }
+  }, [setGroupCtxId, addKnownGroupCtx]);
+
+  const { watches, loading, error } = useWatchlist(sourceId, knownGroupCtxs);
+
+  const [filter, setFilter] = useState<FilterKey>('all');
+
+  const counts = useMemo(() => computeFilterCounts(watches), [watches]);
+  const filtered = useMemo(() => applyFilter(watches, filter), [watches, filter]);
+
+  // DigestHero 只在 filter=all 時顯示；pickDigestWatch 內部做 hit 過濾
+  const digestWatch = filter === 'all' ? pickDigestWatch(watches) : null;
+
+  // PR #3 暫時的 navigation — PR #4 會改成開 sheet
+  // 使用者點到時已經在 /liff (LIFF session 內)，全走相對路徑即可，不用走
+  // https://liff.line.me/{liffId} 重觸發 auth。
+  //
+  // 註：以前 TabNav 的 search tab 用 LIFF URL 是因為它 mounts 在 /liff/search /
+  // /liff/subscriptions / /liff/settings 三個頁面（其中 search 才是 LIFF endpoint
+  // URL 對應頁），藉 https://liff.line.me/{liffId} 形式來「跳回 endpoint URL」。
+  // 我們現在 /liff/page.tsx 本身就是 LIFF session 起點，相對路徑就夠了 — 而且
+  // 比較穩定，PR #4 把 LIFF endpoint URL 改指 /liff 後不會誤跳。
+  const ctxQS = groupCtxId ? `?ctx=${encodeURIComponent(groupCtxId)}` : '';
+  const goToSettings = () => { window.location.href = `/liff/settings${ctxQS}`; };
+  const goToAdd = () => { window.location.href = `/liff/search${ctxQS}`; };
+  const openWatch = () => {
+    // PR #4 改成開 DetailSheet 並帶 watch.id；現階段先跳訂閱頁（有 edit modal）
+    // 不需要 watch 物件 — 訂閱頁自己會撈所有 sub 顯示
+    window.location.href = `/liff/subscriptions${ctxQS}`;
+  };
+
+  // 還沒 LIFF ready → spinner（不要 flash 空 list）
+  if (liffId && !liffReady) {
+    return (
+      <div className="loading-wrap">
+        <Spinner />
+        <style jsx>{`
+          .loading-wrap {
+            min-height: 100vh;
+            background: var(--ios-bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  return (
+    <div className="wl-wrap">
+      {/* ---- Header ---- */}
+      <header className="wl-head">
+        <div>
+          <div className="eyebrow">FLIGHT TRACKER</div>
+          <h1 className="page-title">追蹤清單<span className="dot-blue">.</span></h1>
+        </div>
+        <button className="icon-btn" type="button" onClick={goToSettings} aria-label="設定">
+          <Icon name="gear" size={20} stroke={1.9} />
+        </button>
+      </header>
+
+      {/* ---- DigestHero（條件秀） ---- */}
+      {digestWatch && <DigestHero watch={digestWatch} onOpen={openWatch} />}
+
+      {/* ---- Filter chips ---- */}
+      <div className="filters" role="tablist" aria-label="篩選">
+        {(['all', 'hit', 'personal', 'group'] as FilterKey[]).map(k => (
+          <button
+            key={k}
+            type="button"
+            role="tab"
+            aria-selected={filter === k}
+            className={`chip ${filter === k ? 'active' : ''}`}
+            onClick={() => setFilter(k)}
+            data-testid={`filter-chip-${k}`}
+          >
+            {{ all: '全部', hit: '已達標', personal: '個人', group: '群組' }[k]}
+            <span className="chip-count tnum">{counts[k]}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* ---- Watch list ---- */}
+      {error && <div className="error-banner">{error}</div>}
+
+      {loading && watches.length === 0 ? (
+        <div className="empty">
+          <Spinner />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="empty">
+          <Icon name="bookmark" size={42} style={{ color: 'var(--ios-label-3)' }} />
+          <div className="empty-title">
+            {watches.length === 0 ? '還沒有追蹤' : '沒有符合的追蹤'}
+          </div>
+          <div className="empty-hint">
+            {watches.length === 0
+              ? '按下方「＋ 新增追蹤」開始監控航班降價'
+              : '試試切換上方篩選'}
+          </div>
+        </div>
+      ) : (
+        <div className="watch-list">
+          {filtered.map(w => (
+            <WatchCard key={w.id} watch={w} onOpen={openWatch} />
+          ))}
+        </div>
+      )}
+
+      {/* ---- FAB ---- */}
+      <button className="fab pressable" type="button" onClick={goToAdd} aria-label="新增追蹤">
+        <Icon name="plus" size={18} stroke={2.4} />
+        <span>新增追蹤</span>
+      </button>
+
+      <style jsx>{`
+        .wl-wrap {
+          max-width: 640px;
+          margin: 0 auto;
+          padding: 18px 16px 110px;
+          min-height: 100vh;
+          background: var(--ios-bg);
+          color: var(--ios-label);
+          font-family: var(--font);
+          -webkit-font-smoothing: antialiased;
+        }
+        .wl-head {
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 6px 4px 0;
+          margin-bottom: 18px;
+        }
+        .eyebrow {
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 1.6px;
+          color: var(--ios-blue);
+          text-transform: uppercase;
+          margin-bottom: 5px;
+        }
+        .page-title {
+          font-size: 30px;
+          font-weight: 700;
+          margin: 0;
+          color: var(--ios-label);
+          letter-spacing: -0.5px;
+          line-height: 1.08;
+        }
+        .dot-blue { color: var(--ios-blue); }
+        .icon-btn {
+          appearance: none;
+          background: var(--ios-fill-2);
+          border: none;
+          color: var(--ios-label);
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+        }
+
+        .filters {
+          display: flex;
+          gap: 8px;
+          overflow-x: auto;
+          padding: 4px 2px 14px;
+          -webkit-overflow-scrolling: touch;
+        }
+        .filters::-webkit-scrollbar { display: none; }
+        .chip {
+          appearance: none;
+          border: 0.5px solid var(--ios-hairline);
+          background: var(--ios-fill-2);
+          color: var(--ios-label-2);
+          font-size: 13px;
+          font-weight: 600;
+          padding: 7px 13px;
+          border-radius: var(--r-pill);
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          flex-shrink: 0;
+          cursor: pointer;
+        }
+        .chip.active {
+          background: var(--ios-label);
+          color: var(--ios-bg);
+          border-color: var(--ios-label);
+        }
+        .chip-count {
+          font-weight: 500;
+          opacity: 0.75;
+          font-size: 11.5px;
+        }
+
+        .error-banner {
+          background: rgba(255, 69, 58, 0.15);
+          color: var(--ios-red);
+          padding: 10px 14px;
+          border-radius: var(--r-field);
+          font-size: 13px;
+          margin-bottom: 12px;
+        }
+
+        .empty {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          padding: 48px 16px;
+          text-align: center;
+        }
+        .empty-title {
+          font-size: 16px;
+          font-weight: 600;
+          color: var(--ios-label-2);
+        }
+        .empty-hint {
+          font-size: 12.5px;
+          color: var(--ios-label-3);
+        }
+
+        .fab {
+          position: fixed;
+          bottom: 18px;
+          right: 18px;
+          background: var(--ios-blue);
+          color: #fff;
+          border: none;
+          border-radius: var(--r-pill);
+          padding: 13px 18px;
+          font-size: 14px;
+          font-weight: 700;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          box-shadow: 0 6px 24px rgba(10, 132, 255, 0.42);
+          cursor: pointer;
+          z-index: 50;
+        }
+      `}</style>
+    </div>
+  );
+}
