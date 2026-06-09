@@ -43,3 +43,7 @@ verify_result.txt
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Claude Code worktree local state (per-worktree spawned files, never commit)
+.claude/scheduled_tasks.lock
+.claude/tool-results/
