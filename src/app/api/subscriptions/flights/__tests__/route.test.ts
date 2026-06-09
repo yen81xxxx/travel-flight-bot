@@ -9,7 +9,8 @@
  * 4. extractDisplayFields 純函數：抽 departure_time + flight_number
  * 5. raw 結構壞 → 不 throw、回 null
  */
-import { GET, extractDisplayFields } from '../route';
+import { GET } from '../route';
+import { extractDisplayFields } from '../helpers';
 
 interface MockResult { data: unknown[] | null; error: { message: string } | null }
 interface MockBuilder {

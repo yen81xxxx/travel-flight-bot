@@ -21,54 +21,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
 import { getCityAirports } from '@/config/airports';
-import type { FlightQuote, SerpApiFlight } from '@/types';
+import type { FlightQuote } from '@/types';
+import { toFlightRow } from './helpers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const SIX_HOURS = 6 * 3600 * 1000;
-
-interface FlightRow {
-  airline: string | null;
-  airline_code: string | null;
-  price: number | null;
-  duration_minutes: number | null;
-  stops: number;
-  /** 'HH:MM' — 從 raw.flights[0].departure_airport.time 抽出 */
-  departure_time: string | null;
-  /** 第一段班機編號 (例：'JX 802') */
-  flight_number: string | null;
-}
-
-/**
- * 從 flight_quotes 的 raw 欄位抽出 departure_time 跟 flight_number。
- * raw 是 SerpApiFlight 結構（不一定有），所以全程防呆。
- * 抽出來純函數方便單測。
- */
-export function extractDisplayFields(raw: unknown): { departure_time: string | null; flight_number: string | null } {
-  if (!raw || typeof raw !== 'object') return { departure_time: null, flight_number: null };
-  const f = raw as Partial<SerpApiFlight>;
-  const first = f.flights?.[0];
-  if (!first) return { departure_time: null, flight_number: null };
-  // departure_airport.time 是 'YYYY-MM-DD HH:MM' — 切後 5 字
-  const t = first.departure_airport?.time;
-  const departure_time = t && typeof t === 'string' && t.length >= 16 ? t.slice(11, 16) : null;
-  const flight_number = first.flight_number ?? null;
-  return { departure_time, flight_number };
-}
-
-function toFlightRow(q: FlightQuote): FlightRow {
-  const { departure_time, flight_number } = extractDisplayFields(q.raw);
-  return {
-    airline: q.airline,
-    airline_code: q.airline_code,
-    price: q.price,
-    duration_minutes: q.duration_minutes,
-    stops: q.stops,
-    departure_time,
-    flight_number
-  };
-}
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const sp = req.nextUrl.searchParams;
