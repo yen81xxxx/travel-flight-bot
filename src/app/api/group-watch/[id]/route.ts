@@ -19,17 +19,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSupabase } from '@/lib/supabase';
+import { computeDerivedTarget, type ConsensusRule } from '@/lib/group-consensus';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const BodySchema = z.object({
-  action: z.enum(['join', 'leave']),
+  // G1: join / leave；G2 加 set-target
+  action: z.enum(['join', 'leave', 'set-target']),
   userId: z.string().min(1),
-  displayName: z.string().optional()
+  displayName: z.string().optional(),
+  // G2: set-target action 帶這個 (NT$ 整數)；其他 action 忽略
+  // null = 清掉該成員的 accepted_target (表態「我沒意見、跟群組走」)
+  target: z.number().positive().nullable().optional()
 });
 
-/** GET — 列出某 group watch 的所有 member */
+/** GET — 列出某 group watch 的所有 member + 該 sub 的 consensus rule + derived target */
 export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
@@ -39,15 +44,34 @@ export async function GET(
     return NextResponse.json({ ok: false, error: 'invalid id' }, { status: 400 });
   }
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from('group_member')
-    .select('line_user_id, display_name, accepted_target, joined_at')
-    .eq('subscription_id', subId)
-    .order('joined_at', { ascending: true });
-  if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+
+  // 同時拿 sub (要 consensus_rule + max_price) 跟 members
+  const [subRes, memRes] = await Promise.all([
+    supabase
+      .from('subscriptions')
+      .select('consensus_rule, max_price')
+      .eq('id', subId)
+      .maybeSingle(),
+    supabase
+      .from('group_member')
+      .select('line_user_id, display_name, accepted_target, joined_at')
+      .eq('subscription_id', subId)
+      .order('joined_at', { ascending: true })
+  ]);
+
+  if (subRes.error) {
+    return NextResponse.json({ ok: false, error: subRes.error.message }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, members: data ?? [] });
+  if (memRes.error) {
+    return NextResponse.json({ ok: false, error: memRes.error.message }, { status: 500 });
+  }
+  return NextResponse.json({
+    ok: true,
+    members: memRes.data ?? [],
+    // G2: 把 consensus_rule + derived_target 一起回，UI 不用重算
+    consensusRule: subRes.data?.consensus_rule ?? 'max',
+    derivedTarget: subRes.data?.max_price != null ? Number(subRes.data.max_price) : null
+  });
 }
 
 /** POST — body.action 區分 join / leave */
@@ -70,10 +94,10 @@ export async function POST(
 
   const supabase = getSupabase();
 
-  // 防呆：subscription 必須是 group watch 才能加 member
+  // 防呆：subscription 必須是 group watch 才能 join/leave/set-target
   const { data: sub, error: subErr } = await supabase
     .from('subscriptions')
-    .select('id, source_type')
+    .select('id, source_type, consensus_rule')
     .eq('id', subId)
     .maybeSingle();
   if (subErr) {
@@ -107,14 +131,93 @@ export async function POST(
     return NextResponse.json({ ok: true, action: 'joined' });
   }
 
-  // action === 'leave'
-  const { error } = await supabase
+  if (action === 'leave') {
+    const { error } = await supabase
+      .from('group_member')
+      .delete()
+      .eq('subscription_id', subId)
+      .eq('line_user_id', body.userId);
+    if (error) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    }
+    // G2: 離開後也要重算 derived target — 該成員的 target 不算數了
+    const derived = await recomputeAndPersistDerived(supabase, subId, sub.consensus_rule);
+    return NextResponse.json({ ok: true, action: 'left', derivedTarget: derived });
+  }
+
+  // === G2: action === 'set-target' ===
+  // 必須先是 member 才能 set-target（leave 完不能再設）
+  const target = body.target ?? null;
+  const { data: existingMember, error: memCheckErr } = await supabase
     .from('group_member')
-    .delete()
+    .select('id')
+    .eq('subscription_id', subId)
+    .eq('line_user_id', body.userId)
+    .maybeSingle();
+  if (memCheckErr) {
+    return NextResponse.json({ ok: false, error: memCheckErr.message }, { status: 500 });
+  }
+  if (!existingMember) {
+    return NextResponse.json(
+      { ok: false, error: 'not a member of this group watch — join first' },
+      { status: 403 }
+    );
+  }
+
+  const { error: updateErr } = await supabase
+    .from('group_member')
+    .update({ accepted_target: target })
     .eq('subscription_id', subId)
     .eq('line_user_id', body.userId);
-  if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  if (updateErr) {
+    return NextResponse.json({ ok: false, error: updateErr.message }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, action: 'left' });
+
+  const derived = await recomputeAndPersistDerived(supabase, subId, sub.consensus_rule);
+  return NextResponse.json({ ok: true, action: 'target-set', derivedTarget: derived });
+}
+
+/**
+ * G2: 重算 derived_target 並寫回 subscriptions.max_price (cron 用同欄判 alert)。
+ *
+ * 重要設計選擇：把 derived 寫進現有 max_price 而不是新欄位。理由：
+ *   1. cron / sub-checker 0 改動 (一直讀 max_price)
+ *   2. 個人訂閱 max_price 行為不變
+ *   3. 加新欄位反而要改 ALL caller，bug 面積擴大
+ *
+ * 退化情境：rule='manual' 或全員無 target → derived=null → **不**寫回，
+ * 保留建立者原本的 max_price。
+ *
+ * @returns 新的 derived target (= subscriptions.max_price after update) 或 null
+ */
+async function recomputeAndPersistDerived(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  subId: number,
+  rule: ConsensusRule | null
+): Promise<number | null> {
+  const ruleNonNull: ConsensusRule = rule ?? 'max';
+  const { data, error } = await supabase
+    .from('group_member')
+    .select('accepted_target')
+    .eq('subscription_id', subId);
+  if (error) {
+    console.warn('[group-watch recompute] members fetch failed:', error.message);
+    return null;
+  }
+  const derived = computeDerivedTarget(
+    (data ?? []) as { accepted_target: number | null }[],
+    ruleNonNull
+  );
+  if (derived == null) return null;
+
+  const { error: writeErr } = await supabase
+    .from('subscriptions')
+    .update({ max_price: derived })
+    .eq('id', subId);
+  if (writeErr) {
+    console.warn('[group-watch recompute] max_price update failed:', writeErr.message);
+    return derived; // 仍回算出來的 derived 給 caller，DB 沒寫成沒辦法
+  }
+  return derived;
 }
