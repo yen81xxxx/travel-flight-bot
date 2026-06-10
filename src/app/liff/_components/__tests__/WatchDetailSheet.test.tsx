@@ -356,3 +356,146 @@ describe('WatchDetailSheet — G2 consensus target + my-target editor', () => {
     expect(queryByTestId('edit-my-target-button')).toBeNull();
   });
 });
+
+describe('WatchDetailSheet — G3 date poll', () => {
+  beforeEach(() => {
+    // Mock that returns 1 member (caller is member) + 2 options
+    global.fetch = jest.fn((url: string | URL | Request, init?: RequestInit) => {
+      const u = typeof url === 'string' ? url : url.toString();
+      if (u.includes('/api/subscriptions/flights')) {
+        return Promise.resolve({ json: () => Promise.resolve({ ok: true, outbound: [], return: [] }) } as Response);
+      }
+      if (u.includes('/poll')) {
+        if (!init?.method) {
+          // GET poll
+          return Promise.resolve({
+            json: () => Promise.resolve({
+              ok: true,
+              options: [
+                {
+                  id: 100, out_date: '2026-08-14', ret_date: '2026-08-18',
+                  voters: [{ line_user_id: 'Uabc', display_name: 'Alice' }],
+                  voteCount: 1
+                },
+                {
+                  id: 101, out_date: '2026-08-21', ret_date: '2026-08-25',
+                  voters: [],
+                  voteCount: 0
+                }
+              ],
+              myVote: 100
+            })
+          } as Response);
+        }
+        // POST poll
+        const body = JSON.parse(init.body as string);
+        if (body.action === 'add-option') {
+          return Promise.resolve({ json: () => Promise.resolve({ ok: true, optionId: 999 }) } as Response);
+        }
+        return Promise.resolve({ json: () => Promise.resolve({ ok: true, action: 'voted' }) } as Response);
+      }
+      if (u.includes('/api/group-watch/') && !init?.method) {
+        // GET group base — caller is a member
+        return Promise.resolve({
+          json: () => Promise.resolve({
+            ok: true,
+            members: [{ line_user_id: 'Uabc', display_name: 'Alice', accepted_target: 12000, joined_at: '2026-06-01' }],
+            consensusRule: 'max',
+            derivedTarget: 12000
+          })
+        } as Response);
+      }
+      return Promise.resolve({ json: () => Promise.resolve({ ok: true }) } as Response);
+    }) as unknown as typeof fetch;
+  });
+
+  it('member 打開群組訂閱 → 顯示 poll-block + 2 個選項', async () => {
+    const groupWatch: WatchItem = { ...baseWatch, source_type: 'group', _source: 'group' };
+    const { findByTestId, container } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={groupWatch} userId="Uabc" />
+    );
+    await findByTestId('poll-block');
+    expect(await findByTestId('poll-options')).toBeInTheDocument();
+    expect(container.textContent).toContain('2026-08-14');
+    expect(container.textContent).toContain('2026-08-21');
+  });
+
+  it('myVote=100 → option 100 顯示 "mine" / checked', async () => {
+    const groupWatch: WatchItem = { ...baseWatch, source_type: 'group', _source: 'group' };
+    const { findByTestId } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={groupWatch} userId="Uabc" />
+    );
+    const opt100 = await findByTestId('poll-option-100');
+    expect(opt100.className).toContain('mine');
+  });
+
+  it('點別的選項 → POST vote + 樂觀更新（舊投票被移除）', async () => {
+    const groupWatch: WatchItem = { ...baseWatch, source_type: 'group', _source: 'group' };
+    const { findByTestId } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={groupWatch} userId="Uabc" />
+    );
+    const voteBtn101 = await findByTestId('vote-button-101');
+    fireEvent.click(voteBtn101);
+    await waitFor(() => {
+      const postCall = (global.fetch as unknown as jest.Mock).mock.calls.find(c => {
+        const u = c[0].toString();
+        return u.includes('/poll') && (c[1] as RequestInit)?.method === 'POST';
+      });
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body);
+      expect(body.action).toBe('vote');
+      expect(body.optionId).toBe(101);
+    });
+  });
+
+  it('點「新增日期候選」→ 顯示 add-option-form', async () => {
+    const groupWatch: WatchItem = { ...baseWatch, source_type: 'group', _source: 'group' };
+    const { findByTestId } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={groupWatch} userId="Uabc" />
+    );
+    fireEvent.click(await findByTestId('open-add-option'));
+    expect(await findByTestId('add-option-form')).toBeInTheDocument();
+  });
+
+  it('填日期 + 確認 → POST add-option', async () => {
+    const groupWatch: WatchItem = { ...baseWatch, source_type: 'group', _source: 'group' };
+    const { findByTestId } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={groupWatch} userId="Uabc" />
+    );
+    fireEvent.click(await findByTestId('open-add-option'));
+    const outInput = await findByTestId('new-out-date') as HTMLInputElement;
+    fireEvent.change(outInput, { target: { value: '2026-09-10' } });
+    fireEvent.click(await findByTestId('confirm-add-option'));
+    await waitFor(() => {
+      const postCall = (global.fetch as unknown as jest.Mock).mock.calls.find(c => {
+        const u = c[0].toString();
+        if (!u.includes('/poll')) return false;
+        const init = c[1] as RequestInit;
+        if (init?.method !== 'POST') return false;
+        return JSON.parse(init.body as string).action === 'add-option';
+      });
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body);
+      expect(body.outDate).toBe('2026-09-10');
+    });
+  });
+
+  it('非 member → 不顯示 poll-block', async () => {
+    // 改 mock：caller 不是 member
+    global.fetch = jest.fn((url: string | URL | Request) => {
+      const u = typeof url === 'string' ? url : url.toString();
+      if (u.includes('/api/group-watch/') && !u.includes('/poll')) {
+        return Promise.resolve({
+          json: () => Promise.resolve({ ok: true, members: [], consensusRule: 'max', derivedTarget: null })
+        } as Response);
+      }
+      return Promise.resolve({ json: () => Promise.resolve({ ok: true, outbound: [], return: [] }) } as Response);
+    }) as unknown as typeof fetch;
+    const groupWatch: WatchItem = { ...baseWatch, source_type: 'group', _source: 'group' };
+    const { queryByTestId, findByTestId } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={groupWatch} userId="Uzzz" />
+    );
+    await findByTestId('group-block');  // wait for fetch to complete
+    expect(queryByTestId('poll-block')).toBeNull();
+  });
+});
