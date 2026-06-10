@@ -4,6 +4,7 @@ import { analyzeFlights } from './flights';
 import { pushText } from './line';
 import { buildAlertFlex } from './flex-message';
 import { buildGroupAlertFlex } from './group-flex';
+import { isCoveredByGroupAlert, buildMembershipMap } from './dedupe-alerts';
 import { getLineClient } from './line';
 import { formatAirport, getCityAirports } from '@/config/airports';
 import type { Subscription } from '@/types';
@@ -14,6 +15,8 @@ interface CheckResult {
   skipped: number;
   errors: number;
   serpapiCalls: number;
+  /** G5: 因為被群組 alert 覆蓋而 skip 的個人 alert 數 — log 觀察用，沒到 throw */
+  dedupedByGroup: number;
 }
 
 interface NotificationSettings {
@@ -39,7 +42,7 @@ function getTodayDateString(): string {
  */
 export async function checkAllSubscriptions(): Promise<CheckResult> {
   const supabase = getSupabase();
-  const result: CheckResult = { total: 0, notified: 0, skipped: 0, errors: 0, serpapiCalls: 0 };
+  const result: CheckResult = { total: 0, notified: 0, skipped: 0, errors: 0, serpapiCalls: 0, dedupedByGroup: 0 };
 
   const { data: subs, error } = await supabase
     .from('subscriptions')
@@ -94,6 +97,33 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
       });
     }
   }
+
+  // G5: 預撈所有相關的 group_member rows 給 dedupe check 用 (1 條 query，O(N))
+  // 用於：cron 處理個人 sub 時 → 該 user 是否有加入「同路線同日期」的群組 →
+  // 是的話跳個人 alert，群組 flex 一條 LINE 配額就涵蓋。
+  const personalSubs = allSubs.filter(s => s.source_type === 'user');
+  const groupSubs = allSubs.filter(s => s.source_type === 'group');
+  const personalUserIds = Array.from(new Set(personalSubs.map(s => s.source_id)));
+  const groupSubIds = groupSubs.map(s => s.id!).filter(Boolean);
+  let membershipsByUserId = new Map<string, Set<number>>();
+  if (personalUserIds.length > 0 && groupSubIds.length > 0) {
+    const { data: memRows } = await supabase
+      .from('group_member')
+      .select('line_user_id, subscription_id')
+      .in('line_user_id', personalUserIds)
+      .in('subscription_id', groupSubIds);
+    membershipsByUserId = buildMembershipMap((memRows ?? []) as { line_user_id: string; subscription_id: number }[]);
+  }
+  // groupSubs slim — dedupe 純函數要的欄位
+  const groupSubsForDedupe = groupSubs.map(s => ({
+    id: s.id!,
+    origin: s.origin,
+    destination: s.destination,
+    outbound_date: s.outbound_date,
+    return_date: s.return_date,
+    active: s.active,
+    paused: s.paused
+  }));
 
   // 依 (origin, destination, outbound_date, return_date) 分組合併查詢
   // return_date 可為空（單程訂閱），key 第 4 段為空字串時下游轉 undefined
@@ -207,6 +237,29 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
             if (isWithinQuietHours(setting.quietStart, setting.quietEnd, setting.timezone)) {
               console.log('[sub-checker] in quiet hours, skip:', sub.id);
               result.skipped++;
+              continue;
+            }
+          }
+
+          // G5: 個人 alert + caller 在「相同路線+日期」的群組 → 跳個人，讓群組 flex 涵蓋
+          // (LINE 配額 + 不騷擾使用者)
+          if (sub.source_type === 'user') {
+            const covered = isCoveredByGroupAlert(
+              {
+                source_id: sub.source_id,
+                origin: sub.origin,
+                destination: sub.destination,
+                outbound_date: sub.outbound_date,
+                return_date: sub.return_date
+              },
+              groupSubsForDedupe,
+              membershipsByUserId
+            );
+            if (covered) {
+              console.log('[sub-checker] dedupe: skip personal sub', sub.id,
+                          'for user', sub.source_id, '— covered by group watch');
+              result.skipped++;
+              result.dedupedByGroup++;
               continue;
             }
           }
