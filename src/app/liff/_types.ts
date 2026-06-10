@@ -43,7 +43,28 @@ export interface WatchQuote {
   deltaPct: number | null;
   /** 升冪日期，最後一筆 == currentBest。空陣列 → 前端不畫圖 */
   history: PricePoint[];
+  /**
+   * PR #5: Price Intelligence — server 算好的「買 / 等」判斷。
+   * 包含 verdict + percentile + p25/p75 + reasons + confidence。
+   * 歷史不足時 status='building'，**不**含 verdict。
+   * 缺欄位（很舊的訂閱、quote fallback、PR #5 上線前的 client）→ 前端降級不畫 Intel panel。
+   * 用 optional 而不是 required null 是因為這個欄位 PR #5 才出現，舊測試 fixture 沒有，
+   * 沒必要為了 backward-compat 強行寫 null。
+   */
+  intel?: PriceIntel | null;
 }
+
+// PriceIntel 來自 priceIntel 模組，先 import 才能在 WatchQuote 內用，
+// 再 re-export 讓 caller 從這支拿一致的 type。
+import type {
+  PriceIntel,
+  PriceIntelBuilding,
+  PriceIntelReady,
+  PriceIntelReason,
+  Verdict,
+  Confidence
+} from './_lib/priceIntel';
+export type { PriceIntel, PriceIntelBuilding, PriceIntelReady, PriceIntelReason, Verdict, Confidence };
 
 /** 訂閱列表回傳 item — 既有 Subscription 欄位 + 新 quote block */
 export interface WatchWithQuote {

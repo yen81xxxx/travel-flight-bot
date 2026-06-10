@@ -20,9 +20,11 @@ import {
   formatShortDate,
   dailyToHistory,
   computeDeltaPct,
+  computeDaysUntil,
   type QuoteSourceData
 } from '../quote-builder';
 import type { Subscription, FlightQuote } from '@/types';
+import { MIN_POINTS } from '@/app/liff/_lib/priceIntel';
 
 // === fixtures ===
 const baseSub: Subscription = {
@@ -286,5 +288,85 @@ describe('buildWatchQuote — 單程訂閱', () => {
     if (q?.lcc) {
       expect(q.lcc.ret).toBeNull();
     }
+  });
+});
+
+describe('computeDaysUntil — 純字串切，不靠 Date', () => {
+  it('壞日期 → null', () => {
+    expect(computeDaysUntil(null)).toBeNull();
+    expect(computeDaysUntil(undefined)).toBeNull();
+    expect(computeDaysUntil('garbage')).toBeNull();
+    expect(computeDaysUntil('2026-13-99')).not.toBeNull(); // 沒做 range 檢查，但不 crash
+  });
+
+  it('遙遠未來 → 大正數', () => {
+    const d = computeDaysUntil('2099-12-31');
+    expect(d).not.toBeNull();
+    expect(d!).toBeGreaterThan(1000);
+  });
+});
+
+describe('buildWatchQuote — Price Intelligence 整合', () => {
+  it('quote 內含 intel 欄位（不能漏）', () => {
+    const src = emptySrc();
+    src.recentByAirport.set('NRT', {
+      outbound: [mkQuote({ airline: '酷航', price: 11000 })],
+      return: [mkQuote({ airline: '酷航', price: 11200, trip_leg: 'return' })]
+    });
+    const q = buildWatchQuote(baseSub, src);
+    expect(q).not.toBeNull();
+    expect(q!.intel).toBeDefined();
+  });
+
+  it('歷史少於 14 點 → intel.status="building"', () => {
+    const src = emptySrc();
+    src.recentByAirport.set('NRT', {
+      outbound: [mkQuote({ airline: '酷航', price: 11000 })],
+      return: [mkQuote({ airline: '酷航', price: 11200, trip_leg: 'return' })]
+    });
+    // 只給 5 點 daily history
+    src.daily = Array.from({ length: 5 }, (_, i) => ({
+      date: `2026-06-0${i + 1}`,
+      minPrice: 11500 + i * 100
+    }));
+    const q = buildWatchQuote(baseSub, src);
+    expect(q!.intel?.status).toBe('building');
+    if (q!.intel?.status === 'building') {
+      expect(q!.intel.tracked).toBe(5);
+      expect(q!.intel.remaining).toBe(MIN_POINTS - 5);
+    }
+  });
+
+  it('歷史 >= 14 點 → intel.status="ready" + 含 verdict', () => {
+    const src = emptySrc();
+    src.recentByAirport.set('NRT', {
+      outbound: [mkQuote({ airline: '酷航', price: 11000 })],
+      return: [mkQuote({ airline: '酷航', price: 11200, trip_leg: 'return' })]
+    });
+    src.daily = Array.from({ length: 14 }, (_, i) => ({
+      date: `2026-06-${String(i + 1).padStart(2, '0')}`,
+      minPrice: 13000 - i * 100  // 跌勢
+    }));
+    const q = buildWatchQuote(baseSub, src);
+    expect(q!.intel?.status).toBe('ready');
+    if (q!.intel?.status === 'ready') {
+      expect(['buy', 'lean-buy', 'watch', 'wait']).toContain(q!.intel.verdict);
+      expect(q!.intel.reasons.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('outbound_date null → intel.days null（不 crash）', () => {
+    const subAnyDate: Subscription = { ...baseSub, outbound_date: null };
+    const src = emptySrc();
+    src.recentByAirport.set('NRT', {
+      outbound: [mkQuote({ airline: '酷航', price: 11000 })],
+      return: [mkQuote({ airline: '酷航', price: 11200, trip_leg: 'return' })]
+    });
+    src.daily = Array.from({ length: 14 }, (_, i) => ({
+      date: `2026-06-${String(i + 1).padStart(2, '0')}`,
+      minPrice: 13000 - i * 100
+    }));
+    const q = buildWatchQuote(subAnyDate, src);
+    expect(q!.intel?.days).toBeNull();
   });
 });

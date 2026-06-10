@@ -23,6 +23,7 @@ import { Icon } from './Icon';
 import { IOSToggle } from './IOSToggle';
 import { PriceChart } from './PriceChart';
 import { SignalPill } from './SignalPill';
+import { IntelPanel } from './IntelPanel';
 import { deriveSignal } from '../_lib/signal';
 import { getCity } from '@/config/airports';
 import { daysUntil } from './WatchCard';
@@ -241,6 +242,9 @@ export function WatchDetailSheet({ open, onClose, watch, onMutated }: Props): Re
         <SignalPill signal={signal} />
       </div>
 
+      {/* === Intel Panel (PR #5) — building 或 ready 都顯示，null 才不顯示 === */}
+      {watch.quote?.intel && <IntelPanel intel={watch.quote.intel} />}
+
       {/* === Chart === */}
       {watch.quote && watch.quote.history.length >= 2 && (
         <div className="card chart-card">
@@ -248,10 +252,21 @@ export function WatchDetailSheet({ open, onClose, watch, onMutated }: Props): Re
             <span className="chart-title">近 {watch.quote.history.length} 天走勢</span>
             <span className="chart-legend">
               <span className="lgd lgd-line"></span><span>價格</span>
+              {watch.quote.intel?.status === 'ready' && (
+                <>
+                  <span className="lgd lgd-band"></span><span>典型區間</span>
+                </>
+              )}
               <span className="lgd lgd-target"></span><span>目標</span>
             </span>
           </div>
-          <PriceChart history={watch.quote.history} target={target} />
+          <PriceChart
+            history={watch.quote.history}
+            target={target}
+            band={watch.quote.intel?.status === 'ready'
+              ? { p25: watch.quote.intel.p25, p75: watch.quote.intel.p75 }
+              : null}
+          />
         </div>
       )}
 
@@ -458,6 +473,12 @@ export function WatchDetailSheet({ open, onClose, watch, onMutated }: Props): Re
           height: 2px;
         }
         .lgd-line { background: var(--ios-cyan); }
+        .lgd-band {
+          background: var(--ios-label-3);
+          opacity: 0.35;
+          width: 14px;
+          height: 6px;
+        }
         .lgd-target {
           background: transparent;
           border-top: 2px dashed var(--ios-green);
