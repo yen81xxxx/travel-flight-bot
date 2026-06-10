@@ -97,6 +97,12 @@ export default function WatchlistView({ liffId }: Props) {
 
   // DigestHero 只在 filter=all 時顯示；pickDigestWatch 內部做 hit 過濾
   const digestWatch = filter === 'all' ? pickDigestWatch(watches) : null;
+  // PR #5 de-dup rule (設計手冊 §4.1)：被選為 digest 的那筆從下方 list 排除，
+  // 避免同一條路線/價格在主畫面同時出現兩次。
+  // 該 watch 仍可在「已達標」filter 看到 — 那個 tab 不會顯示 digest hero。
+  const listedWatches = digestWatch
+    ? filtered.filter(w => w.id !== digestWatch.id)
+    : filtered;
 
   // === Sheet handlers ===（PR #4a 完整接上、PR #4b 加 notify-target）
   // 全部走 sheet state，不再 navigate 出去。舊三條路由 (search/subscriptions/settings)
@@ -194,9 +200,17 @@ export default function WatchlistView({ liffId }: Props) {
         </div>
       ) : (
         <div className="watch-list">
-          {filtered.map(w => (
+          {/* PR #5: digest 顯示時，下方 list 加「其他追蹤 · N」section header — 視覺分開 hero 跟一般項 */}
+          {digestWatch && listedWatches.length > 0 && (
+            <div className="list-section-label tnum">其他追蹤 · {listedWatches.length}</div>
+          )}
+          {listedWatches.map(w => (
             <WatchCard key={w.id} watch={w} onOpen={openWatch} />
           ))}
+          {/* digest 把唯一的 watch 吃掉時：list 就空 — 仍顯示提示但不再 redundant 列 */}
+          {digestWatch && listedWatches.length === 0 && (
+            <div className="list-section-label">就是上面那條，沒別的追蹤</div>
+          )}
         </div>
       )}
 
@@ -336,6 +350,14 @@ export default function WatchlistView({ liffId }: Props) {
         .empty-hint {
           font-size: 12.5px;
           color: var(--ios-label-3);
+        }
+        .list-section-label {
+          font-size: 11px;
+          font-weight: 600;
+          color: var(--ios-label-3);
+          letter-spacing: 1.4px;
+          text-transform: uppercase;
+          margin: 8px 4px 10px;
         }
 
         .fab {

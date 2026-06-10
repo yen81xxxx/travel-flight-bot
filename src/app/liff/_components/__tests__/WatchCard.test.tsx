@@ -174,3 +174,44 @@ describe('WatchCard — 單程 / 不限日期', () => {
     expect(container.textContent).toContain('不限定日期');
   });
 });
+
+describe('WatchCard — PR #5 intel integration', () => {
+  it('intel.status="building" → 顯示「情報建立中 · 再 N 天解鎖」', () => {
+    const w: WatchItem = {
+      ...baseWatch,
+      quote: { ...baseWatch.quote!, intel: { status: 'building', tracked: 5, remaining: 9, target: 14, pct: 36, days: 60 } }
+    };
+    const { getByTestId, container } = render(<WatchCard watch={w} onOpen={() => {}} />);
+    expect(getByTestId('building-state')).toBeInTheDocument();
+    expect(container.textContent).toContain('情報建立中');
+    expect(container.textContent).toContain('再 9 天');
+    // 不應該顯示判斷字眼
+    expect(container.textContent).not.toContain('建議入手');
+    expect(container.textContent).not.toContain('建議再等');
+  });
+
+  it('intel.status="ready" → 顯示 percentile bar', () => {
+    const w: WatchItem = {
+      ...baseWatch,
+      quote: {
+        ...baseWatch.quote!,
+        intel: {
+          status: 'ready', verdict: 'buy', headline: '現在就是好時機',
+          percentile: 12, lo: 10000, hi: 14500, p25: 11200, p50: 12500, p75: 13800,
+          confidence: '高', reasons: [], days: 65, hitTarget: true, tracked: 30
+        }
+      }
+    };
+    const { container } = render(<WatchCard watch={w} onOpen={() => {}} />);
+    expect(container.querySelector('[data-testid="percentile-bar"]')).toBeInTheDocument();
+  });
+
+  it('intel=null (graceful degrade) → 回退到 SignalPill（PR #3 行為）', () => {
+    const w: WatchItem = {
+      ...baseWatch,
+      quote: { ...baseWatch.quote!, intel: null }
+    };
+    const { container } = render(<WatchCard watch={w} onOpen={() => {}} />);
+    expect(container.querySelector('[data-testid="signal-pill"]')).toBeInTheDocument();
+  });
+});

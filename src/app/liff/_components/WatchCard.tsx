@@ -23,6 +23,7 @@ import { getCity } from '@/config/airports';
 import { Icon } from './Icon';
 import { Sparkline } from './Sparkline';
 import { SignalPill } from './SignalPill';
+import { PercentileBar } from './PercentileBar';
 
 interface Props {
   watch: WatchItem;
@@ -175,16 +176,47 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
       </div>
 
       {/* ---- 4. signal row ---- */}
-      <div className="wc-signal-row">
-        <SignalPill signal={signal} compact />
-        {dist != null && (
-          <span className={`wc-target tnum ${below ? 'below' : ''}`}>
-            {below
-              ? <>已低於目標 NT${ntFmt(-dist)}</>
-              : <><span className="lead">距目標</span> NT${ntFmt(dist)}</>}
-          </span>
-        )}
-      </div>
+      {/*
+        PR #5 intel-aware：
+          - intel.status='building' → 顯示「情報建立中」進度條，不假裝有 verdict
+          - intel.status='ready' → percentile bar 給「便宜/貴」第一眼判斷
+          - intel=null → 退到 PR #3 的原 signal pill（避免砍掉 graceful degrade）
+      */}
+      {w.quote?.intel?.status === 'building' ? (
+        <div className="wc-building" data-testid="building-state">
+          <div className="wc-building-text">
+            <Icon name="hourglass" size={12} stroke={2} />
+            <span>情報建立中 · 再 {w.quote.intel.remaining} 天解鎖判斷</span>
+          </div>
+          <div className="wc-building-bar">
+            <div className="wc-building-fill" style={{ width: `${w.quote.intel.pct}%` }} />
+          </div>
+        </div>
+      ) : w.quote?.intel?.status === 'ready' ? (
+        <div className="wc-signal-row">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <PercentileBar percentile={w.quote.intel.percentile} compact />
+          </div>
+          {dist != null && (
+            <span className={`wc-target tnum ${below ? 'below' : ''}`}>
+              {below
+                ? <>已低於目標 NT${ntFmt(-dist)}</>
+                : <><span className="lead">距目標</span> NT${ntFmt(dist)}</>}
+            </span>
+          )}
+        </div>
+      ) : (
+        <div className="wc-signal-row">
+          <SignalPill signal={signal} compact />
+          {dist != null && (
+            <span className={`wc-target tnum ${below ? 'below' : ''}`}>
+              {below
+                ? <>已低於目標 NT${ntFmt(-dist)}</>
+                : <><span className="lead">距目標</span> NT${ntFmt(dist)}</>}
+            </span>
+          )}
+        </div>
+      )}
 
       <style jsx>{`
         .watch-card {
@@ -352,6 +384,30 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
           font-weight: 700;
         }
         .wc-target .lead { color: var(--ios-label-3); }
+        .wc-building {
+          margin-top: 12px;
+          padding-top: 12px;
+          border-top: 0.5px solid var(--ios-hairline);
+        }
+        .wc-building-text {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 12px;
+          color: var(--ios-label-2);
+          margin-bottom: 6px;
+        }
+        .wc-building-bar {
+          height: 4px;
+          background: var(--ios-fill-2);
+          border-radius: 2px;
+          overflow: hidden;
+        }
+        .wc-building-fill {
+          height: 100%;
+          background: var(--ios-blue);
+          transition: width 0.3s ease;
+        }
       `}</style>
     </article>
   );

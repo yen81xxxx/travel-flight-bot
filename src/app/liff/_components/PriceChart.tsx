@@ -22,6 +22,11 @@ interface Props {
   /** 主線色 — 預設 cyan（廉航味），呼叫端可給 yellow 表示傳統 */
   accent?: string;
   height?: number;
+  /**
+   * PR #5: 典型區間 (25th–75th percentile)。給就在背景畫一條半透明帶，
+   * 讓使用者「目視」現在價位相對於常態的位置。null 時不畫。
+   */
+  band?: { p25: number; p75: number } | null;
 }
 
 /**
@@ -54,7 +59,8 @@ export function PriceChart({
   history,
   target,
   accent = 'var(--ios-cyan)',
-  height = 172
+  height = 172,
+  band = null
 }: Props): React.ReactElement | null {
   // useId 在最上面 — react-hooks/rules-of-hooks 不准 hook 在 early return 之後
   const reactId = React.useId();
@@ -70,8 +76,12 @@ export function PriceChart({
   const padB = 24;
 
   const prices = history.map(h => h.p);
+  // 算 y 軸範圍時也納入 band 上下緣，避免 band 被剪掉視覺斷裂
+  const scaleInputs = band
+    ? [...prices, band.p25, band.p75]
+    : prices;
   // max 不在 render 用（span 已從 computePriceChartScale 預算）— 只 destructure 用得到的
-  const { min, span } = computePriceChartScale(prices, target);
+  const { min, span } = computePriceChartScale(scaleInputs, target);
 
   const x = (i: number): number => padL + (i / (history.length - 1)) * (W - padL - padR);
   const y = (p: number): number => padT + (1 - (p - min) / span) * (H - padT - padB);
@@ -102,6 +112,19 @@ export function PriceChart({
           <stop offset="100%" stopColor={accent} stopOpacity="0.02" />
         </linearGradient>
       </defs>
+
+      {/* PR #5: 典型區間 band (p25–p75) — 畫在 target 之前、line 之後（半透明灰、視覺最 background） */}
+      {band && (
+        <rect
+          x={padL}
+          y={y(band.p75)}
+          width={W - padL - padR}
+          height={Math.max(0, y(band.p25) - y(band.p75))}
+          fill="var(--ios-label-3)"
+          opacity="0.12"
+          data-testid="typical-range-band"
+        />
+      )}
 
       {/* 目標線 (dashed) + 右側 label */}
       <line

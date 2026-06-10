@@ -15,6 +15,7 @@
 import { analyzeFlights, type TimeFilter } from '@/lib/flights';
 import type { FlightQuote, Subscription } from '@/types';
 import type { WatchQuote, PricePoint } from '@/app/liff/_types';
+import { computePriceIntel } from '@/app/liff/_lib/priceIntel';
 
 /** 每個機場 (fanout) 的 outbound+return 兩堆 flight 報價 */
 export interface AirportFlights {
@@ -118,12 +119,38 @@ export function buildWatchQuote(
     currentType = 'trad';
   }
 
+  const deltaPct = computeDeltaPct(currentBest, src.weekAgoMin);
+  const history = dailyToHistory(src.daily);
+
+  // === PR #5: Price Intelligence — server-side 算好附在 quote 一起回 ===
+  // 集中算的好處：
+  //   1. 同樣的結果可以拿去做 push copy (cron / sub-checker 不用各自重寫)
+  //   2. 客戶端不用算統計，省 CPU
+  //   3. 邏輯只有一份，trust 的關鍵
+  const daysUntilDeparture = computeDaysUntil(sub.outbound_date);
+  const intel = computePriceIntel(history, currentBest, Number(sub.max_price), daysUntilDeparture, deltaPct);
+
   return {
     currentBest,
     currentType,
     lcc: bestLcc,
     trad: bestTrad,
-    deltaPct: computeDeltaPct(currentBest, src.weekAgoMin),
-    history: dailyToHistory(src.daily)
+    deltaPct,
+    history,
+    intel
   };
+}
+
+/**
+ * 從 outbound_date 算還剩幾天。null / 壞日期 → null（前端會跳過 days reason）。
+ * 純字串切，不靠 Date 解析 → 避免 UTC vs local 時區把今天算成明天。
+ */
+export function computeDaysUntil(yyyymmdd: string | null | undefined): number | null {
+  if (!yyyymmdd) return null;
+  const parts = yyyymmdd.split('-').map(p => parseInt(p, 10));
+  if (parts.length !== 3 || parts.some(isNaN)) return null;
+  const target = Date.UTC(parts[0], parts[1] - 1, parts[2]);
+  const today = new Date();
+  const todayUTC = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.round((target - todayUTC) / 86400000);
 }
