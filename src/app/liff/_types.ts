@@ -89,4 +89,12 @@ export interface WatchWithQuote {
 
   /** 新增：本次回傳的即時報價 — 沒有快取資料就 null */
   quote: WatchQuote | null;
+
+  /**
+   * G1: 此 watch 目前的成員數。
+   * 個人訂閱永遠 0；群組訂閱建立者會自動 +1。
+   * 卡片右上顯示「N 人在追」pill 用這個。
+   * 0 → 不顯示 pill；1 (只有建立者) → 顯示「我」；≥2 → 顯示「N 人」。
+   */
+  memberCount?: number;
 }

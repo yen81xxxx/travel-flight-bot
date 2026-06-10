@@ -158,7 +158,10 @@ export function AddWatchSheet({
           destination,
           maxPrice: parseInt(maxPriceStr, 10),
           outboundDate,
-          ...(isOneWay ? {} : { returnDate })
+          ...(isOneWay ? {} : { returnDate }),
+          // G1: 建群組訂閱時把建立者 user 自動加入 group_member
+          // 個人訂閱（sourceId 是 user）時 backend 會忽略此欄
+          ...(notifyTarget === 'group' && userId ? { creatorUserId: userId } : {})
         })
       });
       const data = await res.json();

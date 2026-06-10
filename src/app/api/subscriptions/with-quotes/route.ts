@@ -56,17 +56,51 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
   const subs = (subsData ?? []) as Subscription[];
 
+  // === G1: 用一條 query 拿所有訂閱的成員計數（避免 N+1） ===
+  // group_member 表存 (subscription_id, line_user_id) 每筆 row 是一個成員，
+  // 我們只需要每個 subscription_id 的 member 數量。
+  const subIds = subs.map(s => s.id!).filter(Boolean);
+  const memberCountBySub = await fetchMemberCounts(supabase, subIds);
+
   // === Step 2: 對每筆訂閱算 quote — 平行跑（沒互相依賴） ===
-  // 注意：每筆 3 個 DB query。N=10 訂閱會發 30 條 query — 可接受
-  // （LIFF 不頻繁打）。之後性能瓶頸再優化成單 query + JS-side group。
   const watches: WatchWithQuote[] = await Promise.all(
     subs.map(async (sub): Promise<WatchWithQuote> => {
       const quote = await computeQuoteForSub(supabase, sub, days);
-      return { ...subToApi(sub), quote };
+      return {
+        ...subToApi(sub),
+        quote,
+        memberCount: memberCountBySub.get(sub.id!) ?? 0
+      };
     })
   );
 
   return NextResponse.json({ ok: true, watches });
+}
+
+/**
+ * G1: 一次查 N 個 subscription 的 member 數量。
+ * 用 group by 在 supabase client 端 — 撈所有 subscription_id 再 in-mem count，
+ * 避免 supabase JS SDK 對 group_by 的支援不太穩。
+ */
+async function fetchMemberCounts(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  subIds: number[]
+): Promise<Map<number, number>> {
+  const m = new Map<number, number>();
+  if (subIds.length === 0) return m;
+  const { data, error } = await supabase
+    .from('group_member')
+    .select('subscription_id')
+    .in('subscription_id', subIds);
+  if (error) {
+    console.warn('[with-quotes] member count fetch failed:', error.message);
+    return m;
+  }
+  for (const row of (data ?? []) as { subscription_id: number }[]) {
+    m.set(row.subscription_id, (m.get(row.subscription_id) ?? 0) + 1);
+  }
+  return m;
 }
 
 /**

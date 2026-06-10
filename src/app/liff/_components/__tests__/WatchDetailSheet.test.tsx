@@ -159,3 +159,97 @@ describe('WatchDetailSheet', () => {
     });
   });
 });
+
+describe('WatchDetailSheet — G1 group join/leave', () => {
+  beforeEach(() => {
+    // Setup fetch mock that handles all 3 endpoints: flights, group GET, group POST
+    global.fetch = jest.fn((url: string | URL | Request, init?: RequestInit) => {
+      const u = typeof url === 'string' ? url : url.toString();
+      if (u.includes('/api/subscriptions/flights')) {
+        return Promise.resolve({
+          json: () => Promise.resolve({ ok: true, outbound: [], return: [] })
+        } as Response);
+      }
+      if (u.includes('/api/group-watch/') && !init?.method) {
+        // GET members — default empty
+        return Promise.resolve({
+          json: () => Promise.resolve({ ok: true, members: [] })
+        } as Response);
+      }
+      if (u.includes('/api/group-watch/') && init?.method === 'POST') {
+        return Promise.resolve({
+          json: () => Promise.resolve({ ok: true, action: 'joined' })
+        } as Response);
+      }
+      return Promise.resolve({
+        json: () => Promise.resolve({ ok: true })
+      } as Response);
+    }) as unknown as typeof fetch;
+  });
+
+  it('個人訂閱 → 不顯示 group block', () => {
+    const personalWatch: WatchItem = { ...baseWatch, source_type: 'user', _source: 'personal' };
+    const { queryByTestId } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={personalWatch} userId="Uabc" />
+    );
+    expect(queryByTestId('group-block')).toBeNull();
+  });
+
+  it('群組訂閱 + user 不是 member → 顯示「+ 我也要追」按鈕', async () => {
+    const groupWatch: WatchItem = { ...baseWatch, source_type: 'group', _source: 'group' };
+    const { findByTestId } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={groupWatch} userId="Uabc" />
+    );
+    await findByTestId('group-block');
+    expect(await findByTestId('join-button')).toBeInTheDocument();
+  });
+
+  it('群組訂閱 + 點 join → POST 帶 action=join + userId + onMutated 觸發', async () => {
+    const groupWatch: WatchItem = { ...baseWatch, source_type: 'group', _source: 'group' };
+    const onMutated = jest.fn();
+    const { findByTestId } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={groupWatch} userId="Uabc" onMutated={onMutated} />
+    );
+    const btn = await findByTestId('join-button');
+    fireEvent.click(btn);
+    await waitFor(() => {
+      const calls = (global.fetch as unknown as jest.Mock).mock.calls;
+      const postCall = calls.find(c => (c[1] as RequestInit)?.method === 'POST' && c[0].toString().includes('/api/group-watch/'));
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body);
+      expect(body.action).toBe('join');
+      expect(body.userId).toBe('Uabc');
+    });
+    expect(onMutated).toHaveBeenCalled();
+  });
+
+  it('群組訂閱 + members 有 caller → 顯示「離開追蹤」按鈕', async () => {
+    (global.fetch as unknown as jest.Mock).mockImplementation((url: string | URL | Request) => {
+      const u = typeof url === 'string' ? url : url.toString();
+      if (u.includes('/api/group-watch/')) {
+        return Promise.resolve({
+          json: () => Promise.resolve({
+            ok: true,
+            members: [{ line_user_id: 'Uabc', display_name: 'Alice', accepted_target: null, joined_at: '2026-06-01' }]
+          })
+        } as Response);
+      }
+      return Promise.resolve({ json: () => Promise.resolve({ ok: true, outbound: [], return: [] }) } as Response);
+    });
+    const groupWatch: WatchItem = { ...baseWatch, source_type: 'group', _source: 'group' };
+    const { findByTestId } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={groupWatch} userId="Uabc" />
+    );
+    expect(await findByTestId('leave-button')).toBeInTheDocument();
+  });
+
+  it('userId=null (沒登入) → 不顯示 join/leave 按鈕，但仍顯示 members 數', async () => {
+    const groupWatch: WatchItem = { ...baseWatch, source_type: 'group', _source: 'group' };
+    const { findByTestId, queryByTestId } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={groupWatch} userId={null} />
+    );
+    await findByTestId('group-block');
+    expect(queryByTestId('join-button')).toBeNull();
+    expect(queryByTestId('leave-button')).toBeNull();
+  });
+});
