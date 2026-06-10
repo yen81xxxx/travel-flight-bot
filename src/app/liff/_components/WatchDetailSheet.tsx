@@ -70,6 +70,14 @@ interface GroupMember {
   joined_at: string;
 }
 
+interface DateOption {
+  id: number;
+  out_date: string;
+  ret_date: string | null;
+  voters: { line_user_id: string; display_name: string | null }[];
+  voteCount: number;
+}
+
 const ntFmt = (n: number | null | undefined): string => n != null ? n.toLocaleString() : '—';
 
 export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutated }: Props): React.ReactElement {
@@ -109,6 +117,14 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
   const [myTargetInput, setMyTargetInput] = useState('');
   const [targetSavePending, setTargetSavePending] = useState(false);
   const myMember = members.find(m => m.line_user_id === userId);
+
+  // === G3: date poll state
+  const [pollOptions, setPollOptions] = useState<DateOption[]>([]);
+  const [myVote, setMyVote] = useState<number | null>(null);
+  const [showAddOption, setShowAddOption] = useState(false);
+  const [newOutDate, setNewOutDate] = useState('');
+  const [newRetDate, setNewRetDate] = useState('');
+  const [pollPending, setPollPending] = useState(false);
 
   // 每次新 watch 進來時，把 form state reset 為該 watch 的值
   useEffect(() => {
@@ -155,6 +171,28 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
         setDerivedTarget(null);
       });
   }, [watch, open]);
+
+  // G3: 撈 poll options + 自己投了哪個（userId 帶進去 query string）
+  useEffect(() => {
+    if (!watch || !open || watch.source_type !== 'group') {
+      setPollOptions([]);
+      setMyVote(null);
+      return;
+    }
+    const qs = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+    fetch(`/api/group-watch/${watch.id}/poll${qs}`)
+      .then(r => r.json())
+      .then((data: { ok: boolean; options?: DateOption[]; myVote?: number | null }) => {
+        if (data.ok) {
+          setPollOptions(data.options ?? []);
+          setMyVote(data.myVote ?? null);
+        }
+      })
+      .catch(() => {
+        setPollOptions([]);
+        setMyVote(null);
+      });
+  }, [watch, open, userId]);
 
   // G1: join / leave handlers
   const handleJoin = async () => {
@@ -207,6 +245,102 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
     if (!myMember) return;
     setMyTargetInput(myMember.accepted_target != null ? String(myMember.accepted_target) : '');
     setEditingMyTarget(true);
+  };
+
+  /** G3: 投票 / 換票 */
+  const handleVote = async (optionId: number) => {
+    if (!watch?.id || !userId || pollPending) return;
+    setPollPending(true);
+    try {
+      const res = await fetch(`/api/group-watch/${watch.id}/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'vote', userId, optionId })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      // 樂觀更新：把舊投票從 voters 移除、加進新 option
+      setPollOptions(opts => opts.map(o => {
+        const voters = o.voters.filter(v => v.line_user_id !== userId);
+        const isNew = o.id === optionId;
+        if (isNew) {
+          const myMem = members.find(m => m.line_user_id === userId);
+          voters.push({ line_user_id: userId, display_name: myMem?.display_name ?? null });
+        }
+        return { ...o, voters, voteCount: voters.length };
+      }));
+      setMyVote(optionId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPollPending(false);
+    }
+  };
+
+  /** G3: 新增日期候選 */
+  const handleAddOption = async () => {
+    if (!watch?.id || !userId || pollPending) return;
+    if (!newOutDate) {
+      setError('需要選去程日期');
+      return;
+    }
+    setPollPending(true);
+    try {
+      const res = await fetch(`/api/group-watch/${watch.id}/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add-option',
+          userId,
+          outDate: newOutDate,
+          retDate: newRetDate || null
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      // 樂觀更新：把新 option 加到 list（id 用 server 回傳的）
+      if (data.optionId) {
+        setPollOptions(opts => {
+          // 避免重複（同 outDate+retDate 已存在）
+          if (opts.some(o => o.id === data.optionId)) return opts;
+          return [...opts, {
+            id: data.optionId,
+            out_date: newOutDate,
+            ret_date: newRetDate || null,
+            voters: [],
+            voteCount: 0
+          }].sort((a, b) => a.out_date.localeCompare(b.out_date));
+        });
+      }
+      setShowAddOption(false);
+      setNewOutDate('');
+      setNewRetDate('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPollPending(false);
+    }
+  };
+
+  /** G3: 移除日期候選 (任何 member 都能 — 簡化版) */
+  const handleRemoveOption = async (optionId: number) => {
+    if (!watch?.id || !userId || pollPending) return;
+    setPollPending(true);
+    try {
+      const res = await fetch(`/api/group-watch/${watch.id}/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'remove-option', userId, optionId })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      setPollOptions(opts => opts.filter(o => o.id !== optionId));
+      if (myVote === optionId) setMyVote(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPollPending(false);
+    }
   };
 
   /** G2: 儲存「我的目標」→ POST set-target → 樂觀更新 members + derivedTarget */
@@ -475,6 +609,119 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
                 <Icon name="plus" size={13} /> <span>我也要追</span>
               </button>
             )
+          )}
+        </div>
+      )}
+
+      {/* === G3: Date poll — 只群組訂閱 + 是 member 才顯示（投票需要 member 身份）=== */}
+      {isGroupWatch && isMember && (
+        <div className="poll-block" data-testid="poll-block">
+          <div className="pb-head">
+            <Icon name="calendar" size={13} stroke={2} />
+            <span>日期投票</span>
+            {pollOptions.length > 0 && (
+              <span className="pb-count">· {pollOptions.length} 個候選</span>
+            )}
+          </div>
+
+          {pollOptions.length === 0 ? (
+            <div className="pb-empty">還沒有日期候選</div>
+          ) : (
+            <ul className="pb-options" data-testid="poll-options">
+              {pollOptions.map(o => {
+                const isMine = myVote === o.id;
+                return (
+                  <li key={o.id} className={`pb-option ${isMine ? 'mine' : ''}`} data-testid={`poll-option-${o.id}`}>
+                    <button
+                      type="button"
+                      className="pb-radio-row"
+                      onClick={() => handleVote(o.id)}
+                      disabled={pollPending}
+                      data-testid={`vote-button-${o.id}`}
+                    >
+                      <span className={`pb-radio ${isMine ? 'checked' : ''}`}>
+                        {isMine && <Icon name="check" size={10} stroke={3} />}
+                      </span>
+                      <span className="pb-date tnum">
+                        {o.out_date}{o.ret_date ? ` – ${o.ret_date}` : ' 單程'}
+                      </span>
+                      <span className="pb-votes tnum">{o.voteCount} 票</span>
+                    </button>
+                    {o.voters.length > 0 && (
+                      <div className="pb-voters">
+                        {o.voters.map(v => (
+                          <span key={v.line_user_id} className="pb-voter" title={v.line_user_id}>
+                            {v.display_name ?? '匿名'}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {/* 移除按鈕 — 任何 member 都能 remove (簡化版) */}
+                    <button
+                      type="button"
+                      className="pb-remove"
+                      onClick={() => handleRemoveOption(o.id)}
+                      disabled={pollPending}
+                      aria-label="刪除選項"
+                      data-testid={`remove-option-${o.id}`}
+                    >
+                      <Icon name="close" size={12} />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {/* 新增日期選項 */}
+          {!showAddOption ? (
+            <button
+              type="button"
+              className="pb-add-trigger"
+              onClick={() => setShowAddOption(true)}
+              data-testid="open-add-option"
+            >
+              <Icon name="plus" size={12} /> <span>新增日期候選</span>
+            </button>
+          ) : (
+            <div className="pb-add-form" data-testid="add-option-form">
+              <div className="pb-add-dates">
+                <label>
+                  <span>去程</span>
+                  <input
+                    type="date"
+                    value={newOutDate}
+                    onChange={e => setNewOutDate(e.target.value)}
+                    min={new Date().toISOString().slice(0, 10)}
+                    data-testid="new-out-date"
+                  />
+                </label>
+                <label>
+                  <span>回程（可選）</span>
+                  <input
+                    type="date"
+                    value={newRetDate}
+                    onChange={e => setNewRetDate(e.target.value)}
+                    min={newOutDate || new Date().toISOString().slice(0, 10)}
+                    data-testid="new-ret-date"
+                  />
+                </label>
+              </div>
+              <div className="pb-add-actions">
+                <button type="button" onClick={() => { setShowAddOption(false); setNewOutDate(''); setNewRetDate(''); }} className="pb-cancel">
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddOption}
+                  disabled={pollPending || !newOutDate}
+                  className="pb-confirm"
+                  data-testid="confirm-add-option"
+                >
+                  {pollPending ? '新增中…' : '加入候選'}
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -1080,6 +1327,172 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
           opacity: 0.5;
           cursor: not-allowed;
         }
+        /* ---- G3 date poll ---- */
+        .poll-block {
+          background: var(--ios-bg-tertiary);
+          border-radius: var(--r-card);
+          padding: 12px 14px;
+          margin-top: 14px;
+        }
+        .pb-head {
+          display: inline-flex;
+          align-items: baseline;
+          gap: 5px;
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--ios-label-2);
+        }
+        .pb-count {
+          color: var(--ios-label-3);
+          font-weight: 500;
+        }
+        .pb-empty {
+          font-size: 12px;
+          color: var(--ios-label-3);
+          padding: 10px 0;
+        }
+        .pb-options {
+          list-style: none;
+          margin: 8px 0 0;
+          padding: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .pb-option {
+          background: var(--ios-bg-secondary);
+          border-radius: 10px;
+          padding: 10px 10px 8px;
+          position: relative;
+        }
+        .pb-option.mine {
+          border: 1px solid var(--ios-blue);
+        }
+        .pb-radio-row {
+          appearance: none;
+          background: transparent;
+          border: none;
+          padding: 0;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          cursor: pointer;
+          width: 100%;
+          color: var(--ios-label);
+        }
+        .pb-radio {
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          border: 1.5px solid var(--ios-label-3);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .pb-radio.checked {
+          background: var(--ios-blue);
+          border-color: var(--ios-blue);
+          color: #fff;
+        }
+        .pb-date {
+          flex: 1;
+          text-align: left;
+          font-size: 13px;
+          font-weight: 600;
+        }
+        .pb-votes {
+          font-size: 11.5px;
+          color: var(--ios-label-2);
+        }
+        .pb-voters {
+          display: flex;
+          gap: 4px;
+          flex-wrap: wrap;
+          margin-top: 6px;
+          padding-left: 26px;
+        }
+        .pb-voter {
+          font-size: 10.5px;
+          background: var(--ios-fill-2);
+          color: var(--ios-label-2);
+          padding: 2px 8px;
+          border-radius: 999px;
+        }
+        .pb-remove {
+          position: absolute;
+          top: 6px;
+          right: 6px;
+          appearance: none;
+          background: transparent;
+          border: none;
+          color: var(--ios-label-3);
+          cursor: pointer;
+          padding: 4px;
+        }
+        .pb-add-trigger {
+          margin-top: 10px;
+          appearance: none;
+          background: var(--ios-fill-2);
+          border: 1px dashed var(--ios-hairline);
+          color: var(--ios-blue);
+          padding: 8px;
+          width: 100%;
+          border-radius: 10px;
+          font-size: 12.5px;
+          font-weight: 600;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+        }
+        .pb-add-form {
+          margin-top: 10px;
+          padding: 10px;
+          background: var(--ios-bg-secondary);
+          border-radius: 10px;
+        }
+        .pb-add-dates {
+          display: flex;
+          gap: 8px;
+        }
+        .pb-add-dates label {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          font-size: 11px;
+          color: var(--ios-label-2);
+        }
+        .pb-add-dates input {
+          appearance: none;
+          background: var(--ios-fill-2);
+          border: none;
+          border-radius: 8px;
+          padding: 7px 9px;
+          color: var(--ios-label);
+          font-family: var(--mono);
+          font-size: 13px;
+        }
+        .pb-add-actions {
+          display: flex;
+          gap: 6px;
+          margin-top: 8px;
+        }
+        .pb-cancel, .pb-confirm {
+          flex: 1;
+          appearance: none;
+          border: none;
+          padding: 8px;
+          border-radius: 8px;
+          font-size: 12.5px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+        .pb-cancel { background: var(--ios-fill-2); color: var(--ios-label-2); }
+        .pb-confirm { background: var(--ios-blue); color: #fff; }
+        .pb-confirm:disabled { opacity: 0.5; cursor: not-allowed; }
       `}</style>
     </BottomSheet>
   );
