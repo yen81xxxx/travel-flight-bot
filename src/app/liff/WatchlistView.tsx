@@ -225,6 +225,7 @@ export default function WatchlistView({ liffId }: Props) {
         open={sheet.kind === 'detail'}
         onClose={closeSheet}
         watch={sheet.kind === 'detail' ? sheet.watch : null}
+        userId={sourceId}
         onMutated={refetch}
       />
       <AddWatchSheet

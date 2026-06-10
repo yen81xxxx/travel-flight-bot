@@ -215,3 +215,30 @@ describe('WatchCard — PR #5 intel integration', () => {
     expect(container.querySelector('[data-testid="signal-pill"]')).toBeInTheDocument();
   });
 });
+
+describe('WatchCard — G1 group members pill', () => {
+  it('group source + memberCount >= 1 → 顯示「N 人在追」pill', () => {
+    const w: WatchItem = { ...baseWatch, _source: 'group', memberCount: 3 };
+    const { getByTestId, container } = render(<WatchCard watch={w} onOpen={() => {}} />);
+    expect(getByTestId('members-pill')).toBeInTheDocument();
+    expect(container.textContent).toContain('3 人在追');
+  });
+
+  it('personal source → 不顯示 members pill (個人訂閱不該有成員)', () => {
+    const w: WatchItem = { ...baseWatch, _source: 'personal', memberCount: 5 };
+    const { queryByTestId } = render(<WatchCard watch={w} onOpen={() => {}} />);
+    expect(queryByTestId('members-pill')).toBeNull();
+  });
+
+  it('group source 但 memberCount=0 → 不顯示 (沒人加入時藏起來)', () => {
+    const w: WatchItem = { ...baseWatch, _source: 'group', memberCount: 0 };
+    const { queryByTestId } = render(<WatchCard watch={w} onOpen={() => {}} />);
+    expect(queryByTestId('members-pill')).toBeNull();
+  });
+
+  it('group source 但 memberCount=undefined → 不顯示', () => {
+    const w: WatchItem = { ...baseWatch, _source: 'group', memberCount: undefined };
+    const { queryByTestId } = render(<WatchCard watch={w} onOpen={() => {}} />);
+    expect(queryByTestId('members-pill')).toBeNull();
+  });
+});

@@ -18,7 +18,12 @@ const PostBody = z.object({
   maxPriceTraditional: z.number().positive().nullable().optional(),
   outboundDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  label: z.string().optional()
+  label: z.string().optional(),
+  // G1: 建立群組訂閱時帶建立者的 LINE userId — 用來自動加入 group_member
+  // 這樣群組訂閱一建立就有 1 個 member，避免「沒人是 member 但卡片有 N 人在追=0」奇怪狀態
+  // 個人訂閱 (sourceId 是 Uxxx) 忽略此欄位
+  creatorUserId: z.string().optional(),
+  creatorDisplayName: z.string().optional()
 }).refine(
   (data) => {
     const tw1 = isTaiwanAirport(data.origin);
@@ -141,13 +146,34 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       max_price: body.maxPrice,
       max_price_traditional: body.maxPriceTraditional ?? null,
       label: body.label ?? null,
-      paused: false
+      paused: false,
+      // G1: 紀錄建立者 — 不控制權限，純資料 (group watch 沒 owner)
+      created_by_user_id: body.creatorUserId ?? null
     })
     .select()
     .single();
 
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  }
+
+  // G1: 群組訂閱 + creatorUserId 提供 → 自動把建立者加入 group_member
+  // 這樣群組訂閱一建立就有 1 個 member，「N 人在追」立刻 = 1
+  // 失敗不擋 — subscription 已建立，member 漏寫之後 user 自己 "+ 我也要追" 即可
+  if (sourceType === 'group' && body.creatorUserId && data?.id) {
+    const { error: memberErr } = await supabase
+      .from('group_member')
+      .upsert(
+        {
+          subscription_id: data.id,
+          line_user_id: body.creatorUserId,
+          display_name: body.creatorDisplayName ?? null
+        },
+        { onConflict: 'subscription_id,line_user_id', ignoreDuplicates: false }
+      );
+    if (memberErr) {
+      console.warn('[subscriptions POST] auto-add creator to group_member failed:', memberErr.message);
+    }
   }
   // 推確認訊息（新建）
   await safePush(body.sourceId, formatConfirm({

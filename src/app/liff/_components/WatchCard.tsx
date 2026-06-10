@@ -127,6 +127,13 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
               <Icon name="pause" size={11} stroke={2} /> 已暫停
             </span>
           )}
+          {/* G1: 群組訂閱顯示「N 人在追」— 個人訂閱永遠 0，不顯示 */}
+          {w._source === 'group' && (w.memberCount ?? 0) >= 1 && (
+            <span className="members-pill" data-testid="members-pill">
+              <Icon name="people" size={11} stroke={2} />
+              {w.memberCount} 人在追
+            </span>
+          )}
           <span className={`src-pill ${w._source}`}>
             <Icon name={w._source === 'group' ? 'people' : 'person'} size={12} stroke={2} />
             {w._source === 'group' ? '群組' : '個人'}
@@ -276,6 +283,17 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
         .src-pill.group {
           background: rgba(191, 90, 242, 0.18);
           color: var(--ios-purple);
+        }
+        .members-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          padding: 3px 8px;
+          border-radius: var(--r-pill);
+          font-size: 10.5px;
+          font-weight: 600;
+          background: var(--ios-fill-2);
+          color: var(--ios-label-2);
         }
         /* ---- row 2 ---- */
         .wc-meta {

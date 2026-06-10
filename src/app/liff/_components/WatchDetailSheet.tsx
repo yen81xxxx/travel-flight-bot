@@ -52,13 +52,27 @@ interface Props {
   open: boolean;
   onClose: () => void;
   watch: WatchItem | null;
+  /**
+   * G1: 當前 LIFF user 的 LINE userId — 用來：
+   *   - 顯示「+ 我也要追」或「離開追蹤」按鈕（要知道 caller 是不是 member）
+   *   - join/leave endpoint 帶 userId
+   * null 表示 user 沒登入 LINE，按鈕都不顯示。
+   */
+  userId?: string | null;
   /** 編輯 / 刪除成功後 caller 重新撈 list */
   onMutated?: () => void;
 }
 
+interface GroupMember {
+  line_user_id: string;
+  display_name: string | null;
+  accepted_target: number | null;
+  joined_at: string;
+}
+
 const ntFmt = (n: number | null | undefined): string => n != null ? n.toLocaleString() : '—';
 
-export function WatchDetailSheet({ open, onClose, watch, onMutated }: Props): React.ReactElement {
+export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutated }: Props): React.ReactElement {
   // === edit state（每次 open / watch 改變時從 watch 帶進來）===
   const [maxPriceStr, setMaxPriceStr] = useState('');
   const [tradEnabled, setTradEnabled] = useState(false);
@@ -84,6 +98,12 @@ export function WatchDetailSheet({ open, onClose, watch, onMutated }: Props): Re
   const [showAllOutbound, setShowAllOutbound] = useState(false);
   const [showAllReturn, setShowAllReturn] = useState(false);
 
+  // === G1: group members + join/leave state
+  const [members, setMembers] = useState<GroupMember[]>([]);
+  const [joinLeavePending, setJoinLeavePending] = useState(false);
+  const isGroupWatch = watch?.source_type === 'group';
+  const isMember = members.some(m => m.line_user_id === userId);
+
   // 每次新 watch 進來時，把 form state reset 為該 watch 的值
   useEffect(() => {
     if (!watch || !open) return;
@@ -106,6 +126,65 @@ export function WatchDetailSheet({ open, onClose, watch, onMutated }: Props): Re
     setShowAllOutbound(false);
     setShowAllReturn(false);
   }, [watch, open]);
+
+  // G1: 撈 group members — 只在 open + 是群組訂閱時撈
+  useEffect(() => {
+    if (!watch || !open || watch.source_type !== 'group') {
+      setMembers([]);
+      return;
+    }
+    fetch(`/api/group-watch/${watch.id}`)
+      .then(r => r.json())
+      .then((data: { ok: boolean; members?: GroupMember[] }) => {
+        setMembers(data.ok && data.members ? data.members : []);
+      })
+      .catch(() => setMembers([]));  // 失敗就當沒成員，UI 退到「+ 我也要追」狀態
+  }, [watch, open]);
+
+  // G1: join / leave handlers
+  const handleJoin = async () => {
+    if (!watch?.id || !userId || joinLeavePending) return;
+    setJoinLeavePending(true);
+    try {
+      const res = await fetch(`/api/group-watch/${watch.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'join', userId })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      // 樂觀更新 — 立刻把自己加進 members 顯示
+      setMembers(ms => ms.some(m => m.line_user_id === userId)
+        ? ms
+        : [...ms, { line_user_id: userId, display_name: null, accepted_target: null, joined_at: new Date().toISOString() }]
+      );
+      onMutated?.();  // 觸發外層 refetch，更新 memberCount
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setJoinLeavePending(false);
+    }
+  };
+
+  const handleLeave = async () => {
+    if (!watch?.id || !userId || joinLeavePending) return;
+    setJoinLeavePending(true);
+    try {
+      const res = await fetch(`/api/group-watch/${watch.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'leave', userId })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      setMembers(ms => ms.filter(m => m.line_user_id !== userId));
+      onMutated?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setJoinLeavePending(false);
+    }
+  };
 
   // 撈 6h 內快取的逐筆航班 — 只在 open + 有 outbound_date 時撈
   useEffect(() => {
@@ -241,6 +320,52 @@ export function WatchDetailSheet({ open, onClose, watch, onMutated }: Props): Re
         </div>
         <SignalPill signal={signal} />
       </div>
+
+      {/* === G1: Group block — 只群組訂閱顯示 === */}
+      {isGroupWatch && (
+        <div className="group-block" data-testid="group-block">
+          <div className="gb-head">
+            <Icon name="people" size={13} stroke={2} />
+            <span>{members.length} 人正在追蹤這條路線</span>
+          </div>
+
+          {members.length > 0 && (
+            <div className="gb-avatars" data-testid="member-list">
+              {members.slice(0, 6).map(m => (
+                <span key={m.line_user_id} className="gb-avatar" title={m.display_name ?? m.line_user_id}>
+                  {(m.display_name ?? m.line_user_id).slice(0, 1).toUpperCase()}
+                </span>
+              ))}
+              {members.length > 6 && <span className="gb-avatar more">+{members.length - 6}</span>}
+            </div>
+          )}
+
+          {/* Join / Leave button (要有 userId 才顯示，沒登入不顯示) */}
+          {userId && (
+            isMember ? (
+              <button
+                type="button"
+                className="gb-leave"
+                onClick={handleLeave}
+                disabled={joinLeavePending}
+                data-testid="leave-button"
+              >
+                <Icon name="close" size={13} /> <span>離開追蹤</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="gb-join"
+                onClick={handleJoin}
+                disabled={joinLeavePending}
+                data-testid="join-button"
+              >
+                <Icon name="plus" size={13} /> <span>我也要追</span>
+              </button>
+            )
+          )}
+        </div>
+      )}
 
       {/* === Intel Panel (PR #5) — building 或 ready 都顯示，null 才不顯示 === */}
       {watch.quote?.intel && <IntelPanel intel={watch.quote.intel} />}
@@ -678,6 +803,68 @@ export function WatchDetailSheet({ open, onClose, watch, onMutated }: Props): Re
           padding: 16px;
           color: var(--ios-label-3);
           font-size: 12.5px;
+        }
+        /* ---- G1 group block ---- */
+        .group-block {
+          background: rgba(191, 90, 242, 0.10);
+          border: 1px solid rgba(191, 90, 242, 0.30);
+          border-radius: var(--r-card);
+          padding: 12px 14px;
+          margin-top: 14px;
+        }
+        .gb-head {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--ios-purple);
+        }
+        .gb-avatars {
+          display: flex;
+          margin-top: 8px;
+          gap: 4px;
+          flex-wrap: wrap;
+        }
+        .gb-avatar {
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          background: var(--ios-purple);
+          color: #fff;
+          font-size: 12px;
+          font-weight: 700;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .gb-avatar.more {
+          background: var(--ios-fill-2);
+          color: var(--ios-label-2);
+          font-size: 11px;
+        }
+        .gb-join, .gb-leave {
+          appearance: none;
+          border: none;
+          background: var(--ios-purple);
+          color: #fff;
+          padding: 8px 14px;
+          border-radius: 999px;
+          font-size: 12.5px;
+          font-weight: 700;
+          cursor: pointer;
+          margin-top: 10px;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .gb-leave {
+          background: var(--ios-fill-2);
+          color: var(--ios-label-2);
+        }
+        .gb-join:disabled, .gb-leave:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
       `}</style>
     </BottomSheet>
