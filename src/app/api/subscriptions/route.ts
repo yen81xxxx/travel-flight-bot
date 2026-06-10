@@ -158,8 +158,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   // G1: 群組訂閱 + creatorUserId 提供 → 自動把建立者加入 group_member
-  // 這樣群組訂閱一建立就有 1 個 member，「N 人在追」立刻 = 1
-  // 失敗不擋 — subscription 已建立，member 漏寫之後 user 自己 "+ 我也要追" 即可
+  // G2: 同時把建立者的 accepted_target 設成他剛輸入的 max_price (這是他的「我能接受」)
+  //     → 共識計算第一個 member 就有 input，不會出現「沒人設目標 / max_price 0」狀態
+  //     → 第二個 member 加入後共識才會跟著動
   if (sourceType === 'group' && body.creatorUserId && data?.id) {
     const { error: memberErr } = await supabase
       .from('group_member')
@@ -167,7 +168,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         {
           subscription_id: data.id,
           line_user_id: body.creatorUserId,
-          display_name: body.creatorDisplayName ?? null
+          display_name: body.creatorDisplayName ?? null,
+          accepted_target: body.maxPrice
         },
         { onConflict: 'subscription_id,line_user_id', ignoreDuplicates: false }
       );

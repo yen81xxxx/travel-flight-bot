@@ -103,6 +103,12 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
   const [joinLeavePending, setJoinLeavePending] = useState(false);
   const isGroupWatch = watch?.source_type === 'group';
   const isMember = members.some(m => m.line_user_id === userId);
+  // === G2: consensus + my-target edit state
+  const [derivedTarget, setDerivedTarget] = useState<number | null>(null);
+  const [editingMyTarget, setEditingMyTarget] = useState(false);
+  const [myTargetInput, setMyTargetInput] = useState('');
+  const [targetSavePending, setTargetSavePending] = useState(false);
+  const myMember = members.find(m => m.line_user_id === userId);
 
   // 每次新 watch 進來時，把 form state reset 為該 watch 的值
   useEffect(() => {
@@ -135,10 +141,19 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
     }
     fetch(`/api/group-watch/${watch.id}`)
       .then(r => r.json())
-      .then((data: { ok: boolean; members?: GroupMember[] }) => {
-        setMembers(data.ok && data.members ? data.members : []);
+      .then((data: { ok: boolean; members?: GroupMember[]; derivedTarget?: number | null }) => {
+        if (data.ok) {
+          setMembers(data.members ?? []);
+          setDerivedTarget(data.derivedTarget ?? null);
+        } else {
+          setMembers([]);
+          setDerivedTarget(null);
+        }
       })
-      .catch(() => setMembers([]));  // 失敗就當沒成員，UI 退到「+ 我也要追」狀態
+      .catch(() => {
+        setMembers([]);
+        setDerivedTarget(null);
+      });
   }, [watch, open]);
 
   // G1: join / leave handlers
@@ -178,11 +193,48 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
       setMembers(ms => ms.filter(m => m.line_user_id !== userId));
+      if (data.derivedTarget != null) setDerivedTarget(data.derivedTarget);
       onMutated?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setJoinLeavePending(false);
+    }
+  };
+
+  /** G2: 開啟「我的目標」編輯模式 → 預填當前值 */
+  const handleStartEditMyTarget = () => {
+    if (!myMember) return;
+    setMyTargetInput(myMember.accepted_target != null ? String(myMember.accepted_target) : '');
+    setEditingMyTarget(true);
+  };
+
+  /** G2: 儲存「我的目標」→ POST set-target → 樂觀更新 members + derivedTarget */
+  const handleSaveMyTarget = async () => {
+    if (!watch?.id || !userId || targetSavePending) return;
+    const num = myTargetInput === '' ? null : parseInt(myTargetInput, 10);
+    if (num != null && (isNaN(num) || num <= 0)) {
+      setError('目標價需是正整數，或留空表示「沒意見」');
+      return;
+    }
+    setTargetSavePending(true);
+    try {
+      const res = await fetch(`/api/group-watch/${watch.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set-target', userId, target: num })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      // 樂觀更新：自己這條的 accepted_target 改成新值
+      setMembers(ms => ms.map(m => m.line_user_id === userId ? { ...m, accepted_target: num } : m));
+      if (data.derivedTarget != null) setDerivedTarget(data.derivedTarget);
+      setEditingMyTarget(false);
+      onMutated?.();  // 外層 refetch (max_price 可能變了)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTargetSavePending(false);
     }
   };
 
@@ -321,27 +373,87 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
         <SignalPill signal={signal} />
       </div>
 
-      {/* === G1: Group block — 只群組訂閱顯示 === */}
+      {/* === G1+G2: Group block — 只群組訂閱顯示 === */}
       {isGroupWatch && (
         <div className="group-block" data-testid="group-block">
           <div className="gb-head">
             <Icon name="people" size={13} stroke={2} />
             <span>{members.length} 人正在追蹤這條路線</span>
+            {derivedTarget != null && members.length >= 2 && (
+              <span className="gb-derived tnum" data-testid="derived-target">
+                · 群組目標 NT${derivedTarget.toLocaleString()}（取最大）
+              </span>
+            )}
           </div>
 
+          {/* G2: members list — 每筆顯示 avatar + name + 個人目標 (全公開) */}
           {members.length > 0 && (
-            <div className="gb-avatars" data-testid="member-list">
-              {members.slice(0, 6).map(m => (
-                <span key={m.line_user_id} className="gb-avatar" title={m.display_name ?? m.line_user_id}>
-                  {(m.display_name ?? m.line_user_id).slice(0, 1).toUpperCase()}
-                </span>
-              ))}
-              {members.length > 6 && <span className="gb-avatar more">+{members.length - 6}</span>}
+            <ul className="gb-members" data-testid="member-list">
+              {members.map(m => {
+                const isMe = m.line_user_id === userId;
+                return (
+                  <li key={m.line_user_id} className={`gb-member ${isMe ? 'is-me' : ''}`}>
+                    <span className="gb-avatar">
+                      {(m.display_name ?? m.line_user_id).slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className="gb-name">
+                      {m.display_name ?? '匿名'}
+                      {isMe && <span className="gb-me-tag">我</span>}
+                    </span>
+                    <span className="gb-target tnum">
+                      {m.accepted_target != null
+                        ? `NT$${Number(m.accepted_target).toLocaleString()}`
+                        : <span className="gb-no-target">沒意見</span>}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {/* G2: My target editor — 只 member 看得到，編輯中改用 input */}
+          {userId && isMember && !editingMyTarget && (
+            <button
+              type="button"
+              className="gb-edit-target"
+              onClick={handleStartEditMyTarget}
+              data-testid="edit-my-target-button"
+            >
+              <Icon name="pencil" size={12} /> <span>編輯我的目標價</span>
+            </button>
+          )}
+          {userId && isMember && editingMyTarget && (
+            <div className="gb-target-edit" data-testid="my-target-editor">
+              <div className="gb-target-input">
+                <span>NT$</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={myTargetInput}
+                  onChange={e => setMyTargetInput(e.target.value)}
+                  placeholder="留空 = 沒意見"
+                  data-testid="my-target-input"
+                />
+              </div>
+              <div className="gb-target-actions">
+                <button type="button" onClick={() => setEditingMyTarget(false)} className="gb-cancel">
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveMyTarget}
+                  disabled={targetSavePending}
+                  className="gb-save"
+                  data-testid="save-my-target-button"
+                >
+                  {targetSavePending ? '儲存中…' : '儲存'}
+                </button>
+              </div>
             </div>
           )}
 
-          {/* Join / Leave button (要有 userId 才顯示，沒登入不顯示) */}
-          {userId && (
+          {/* G1 Join / Leave button — 只在沒登入時隱藏 */}
+          {userId && !editingMyTarget && (
             isMember ? (
               <button
                 type="button"
@@ -813,36 +925,138 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
           margin-top: 14px;
         }
         .gb-head {
-          display: inline-flex;
-          align-items: center;
+          display: flex;
+          align-items: baseline;
           gap: 5px;
           font-size: 12px;
           font-weight: 600;
           color: var(--ios-purple);
-        }
-        .gb-avatars {
-          display: flex;
-          margin-top: 8px;
-          gap: 4px;
           flex-wrap: wrap;
         }
+        .gb-derived {
+          color: var(--ios-label-2);
+          font-weight: 500;
+          font-size: 11.5px;
+        }
+        /* G2 member list */
+        .gb-members {
+          list-style: none;
+          margin: 10px 0 0;
+          padding: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .gb-member {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 8px;
+          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.03);
+        }
+        .gb-member.is-me {
+          background: rgba(191, 90, 242, 0.12);
+        }
         .gb-avatar {
-          width: 28px;
-          height: 28px;
+          width: 24px;
+          height: 24px;
           border-radius: 50%;
           background: var(--ios-purple);
           color: #fff;
-          font-size: 12px;
+          font-size: 11px;
           font-weight: 700;
           display: inline-flex;
           align-items: center;
           justify-content: center;
+          flex-shrink: 0;
         }
-        .gb-avatar.more {
+        .gb-name {
+          flex: 1;
+          font-size: 13px;
+          color: var(--ios-label);
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          min-width: 0;
+        }
+        .gb-me-tag {
+          font-size: 10px;
+          font-weight: 700;
+          padding: 1.5px 5px;
+          border-radius: 4px;
+          background: var(--ios-purple);
+          color: #fff;
+        }
+        .gb-target {
+          font-size: 13px;
+          font-weight: 700;
+          color: var(--ios-label);
+        }
+        .gb-no-target {
+          color: var(--ios-label-3);
+          font-weight: 400;
+          font-size: 12px;
+        }
+        /* G2 my-target editor */
+        .gb-edit-target {
+          appearance: none;
+          background: transparent;
+          border: 1px solid rgba(191, 90, 242, 0.35);
+          color: var(--ios-purple);
+          padding: 7px 12px;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          margin-top: 10px;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .gb-target-edit {
+          margin-top: 10px;
+          padding: 10px;
+          background: var(--ios-bg-secondary);
+          border-radius: 10px;
+        }
+        .gb-target-input {
+          display: flex;
+          align-items: center;
+          gap: 6px;
           background: var(--ios-fill-2);
-          color: var(--ios-label-2);
-          font-size: 11px;
+          padding: 8px 12px;
+          border-radius: 8px;
         }
+        .gb-target-input span { color: var(--ios-label-2); font-size: 12px; }
+        .gb-target-input input {
+          flex: 1;
+          background: transparent;
+          border: none;
+          color: var(--ios-label);
+          font-size: 15px;
+          font-weight: 700;
+          font-family: var(--mono);
+        }
+        .gb-target-input input:focus { outline: none; }
+        .gb-target-actions {
+          display: flex;
+          gap: 6px;
+          margin-top: 8px;
+        }
+        .gb-cancel, .gb-save {
+          flex: 1;
+          appearance: none;
+          border: none;
+          padding: 8px;
+          border-radius: 8px;
+          font-size: 12.5px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+        .gb-cancel { background: var(--ios-fill-2); color: var(--ios-label-2); }
+        .gb-save { background: var(--ios-purple); color: #fff; }
+        .gb-save:disabled { opacity: 0.5; cursor: not-allowed; }
         .gb-join, .gb-leave {
           appearance: none;
           border: none;

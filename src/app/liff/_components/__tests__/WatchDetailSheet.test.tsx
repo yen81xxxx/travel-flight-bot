@@ -253,3 +253,106 @@ describe('WatchDetailSheet — G1 group join/leave', () => {
     expect(queryByTestId('leave-button')).toBeNull();
   });
 });
+
+describe('WatchDetailSheet — G2 consensus target + my-target editor', () => {
+  beforeEach(() => {
+    // Mock fetch that returns 2 members with targets, derived = max
+    global.fetch = jest.fn((url: string | URL | Request, init?: RequestInit) => {
+      const u = typeof url === 'string' ? url : url.toString();
+      if (u.includes('/api/subscriptions/flights')) {
+        return Promise.resolve({ json: () => Promise.resolve({ ok: true, outbound: [], return: [] }) } as Response);
+      }
+      if (u.includes('/api/group-watch/') && !init?.method) {
+        return Promise.resolve({
+          json: () => Promise.resolve({
+            ok: true,
+            members: [
+              { line_user_id: 'Uabc', display_name: 'Alice', accepted_target: 12000, joined_at: '2026-06-01' },
+              { line_user_id: 'Uxyz', display_name: 'Bob',   accepted_target: 18000, joined_at: '2026-06-02' }
+            ],
+            consensusRule: 'max',
+            derivedTarget: 18000
+          })
+        } as Response);
+      }
+      if (u.includes('/api/group-watch/') && init?.method === 'POST') {
+        const body = JSON.parse(init.body as string);
+        return Promise.resolve({
+          json: () => Promise.resolve({
+            ok: true,
+            action: body.action === 'set-target' ? 'target-set' : 'joined',
+            derivedTarget: 25000  // simulate derived recomputed after target change
+          })
+        } as Response);
+      }
+      return Promise.resolve({ json: () => Promise.resolve({ ok: true }) } as Response);
+    }) as unknown as typeof fetch;
+  });
+
+  it('群組訂閱載入後 → 顯示每個 member 的 target (全公開)', async () => {
+    const groupWatch: WatchItem = { ...baseWatch, source_type: 'group', _source: 'group' };
+    const { findByTestId, container } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={groupWatch} userId="Uabc" />
+    );
+    await findByTestId('member-list');
+    expect(container.textContent).toContain('Alice');
+    expect(container.textContent).toContain('Bob');
+    expect(container.textContent).toContain('12,000');
+    expect(container.textContent).toContain('18,000');
+  });
+
+  it('member 數 >= 2 → 顯示群組目標（取最大）', async () => {
+    const groupWatch: WatchItem = { ...baseWatch, source_type: 'group', _source: 'group' };
+    const { findByTestId, container } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={groupWatch} userId="Uabc" />
+    );
+    await findByTestId('derived-target');
+    expect(container.textContent).toContain('群組目標 NT$18,000');
+    expect(container.textContent).toContain('取最大');
+  });
+
+  it('member 點「編輯我的目標」→ 顯示 input + 預填當前值', async () => {
+    const groupWatch: WatchItem = { ...baseWatch, source_type: 'group', _source: 'group' };
+    const { findByTestId } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={groupWatch} userId="Uabc" />
+    );
+    const editBtn = await findByTestId('edit-my-target-button');
+    fireEvent.click(editBtn);
+    const editor = await findByTestId('my-target-editor');
+    expect(editor).toBeInTheDocument();
+    const input = await findByTestId('my-target-input') as HTMLInputElement;
+    expect(input.value).toBe('12000');  // Alice 的當前 target
+  });
+
+  it('儲存我的新目標 → POST set-target + 樂觀更新 + onMutated', async () => {
+    const onMutated = jest.fn();
+    const groupWatch: WatchItem = { ...baseWatch, source_type: 'group', _source: 'group' };
+    const { findByTestId } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={groupWatch} userId="Uabc" onMutated={onMutated} />
+    );
+    fireEvent.click(await findByTestId('edit-my-target-button'));
+    const input = await findByTestId('my-target-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '25000' } });
+    fireEvent.click(await findByTestId('save-my-target-button'));
+    await waitFor(() => {
+      const postCall = (global.fetch as unknown as jest.Mock).mock.calls.find(
+        c => (c[1] as RequestInit)?.method === 'POST' &&
+             JSON.parse((c[1] as RequestInit).body as string).action === 'set-target'
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body);
+      expect(body.target).toBe(25000);
+      expect(body.userId).toBe('Uabc');
+    });
+    expect(onMutated).toHaveBeenCalled();
+  });
+
+  it('非 member → 不顯示「編輯我的目標」按鈕', async () => {
+    const groupWatch: WatchItem = { ...baseWatch, source_type: 'group', _source: 'group' };
+    const { findByTestId, queryByTestId } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={groupWatch} userId="Uzzz" />
+    );
+    await findByTestId('member-list');
+    expect(queryByTestId('edit-my-target-button')).toBeNull();
+  });
+});
