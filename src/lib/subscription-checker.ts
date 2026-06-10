@@ -3,6 +3,7 @@ import { searchFlights, AllKeysExhaustedError } from './serpapi';
 import { analyzeFlights } from './flights';
 import { pushText } from './line';
 import { buildAlertFlex } from './flex-message';
+import { buildGroupAlertFlex } from './group-flex';
 import { getLineClient } from './line';
 import { formatAirport, getCityAirports } from '@/config/airports';
 import type { Subscription } from '@/types';
@@ -255,19 +256,27 @@ async function sendAlert(
   returnDate: string | undefined  // 單程訂閱無 returnDate
 ): Promise<void> {
   const cheapest = analysis.cheapestRoundTripPrice ?? 0;
+  const airline = analysis.cheapestAirline ?? '—';
 
-  // Flex message 失敗時 fallback 純文字
+  // G4: source_type='group' → 改 push group flex（紫色 + N 人在追 + 投票領先 + LIFF deep link）
+  const isGroupAlert = sub.source_type === 'group' && sub.id != null;
+
   try {
-    const flex = buildAlertFlex({
-      origin: sub.origin,
-      destination: sub.destination,
-      outboundDate,
-      returnDate: returnDate ?? null,
-      cheapestPrice: cheapest,
-      threshold: Number(sub.max_price),
-      airline: analysis.cheapestAirline ?? '—',
-      sourceId: sub.source_id
-    });
+    let flex: object;
+    if (isGroupAlert) {
+      flex = await buildGroupFlexForSub(sub, cheapest, airline, outboundDate, returnDate);
+    } else {
+      flex = buildAlertFlex({
+        origin: sub.origin,
+        destination: sub.destination,
+        outboundDate,
+        returnDate: returnDate ?? null,
+        cheapestPrice: cheapest,
+        threshold: Number(sub.max_price),
+        airline,
+        sourceId: sub.source_id
+      });
+    }
     const client = getLineClient();
     await client.pushMessage({
       to: sub.source_id,
@@ -275,9 +284,79 @@ async function sendAlert(
       messages: [flex]
     });
   } catch (e) {
-    console.warn('[sub-checker] flex push failed, falling back to text:', e);
-    await pushText(sub.source_id, formatAlertText(sub, cheapest, outboundDate, returnDate, analysis.cheapestAirline ?? '—'));
+    // G4: LINE quota / push error — log + fallback text，cron 繼續跑其他訂閱
+    // 配額用光的 error message 通常含 'monthly limit' / 'quota' / 429
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/quota|monthly.?limit|429/i.test(msg)) {
+      console.error('[sub-checker] LINE quota exceeded — group alerts may stop until next month:', msg);
+      // 仍 fallback 文字版（個人 free plan 還有空間）— 跟既有行為一致
+    } else {
+      console.warn('[sub-checker] flex push failed, falling back to text:', e);
+    }
+    await pushText(sub.source_id, formatAlertText(sub, cheapest, outboundDate, returnDate, airline));
   }
+}
+
+/**
+ * G4: 撈該 group watch 的 members + 票數最高的選項，組 group flex。
+ * 失敗（拿不到 members 等）→ fallback 成個人 flex（仍能 push 但少了「N 人在追」資訊）。
+ */
+async function buildGroupFlexForSub(
+  sub: Subscription,
+  cheapest: number,
+  airline: string,
+  outboundDate: string,
+  returnDate: string | undefined
+): Promise<object> {
+  const { getSupabase } = await import('./supabase');
+  const supabase = getSupabase();
+  const [memRes, voteRes] = await Promise.all([
+    supabase
+      .from('group_member')
+      .select('display_name, line_user_id')
+      .eq('subscription_id', sub.id!),
+    supabase
+      .from('date_vote')
+      .select('date_option_id')
+      .eq('subscription_id', sub.id!)
+  ]);
+  const memberRows = (memRes.data ?? []) as { display_name: string | null; line_user_id: string }[];
+  const topMemberNames = memberRows
+    .map(m => m.display_name ?? m.line_user_id.slice(-4))  // 沒名字用 userId 後 4 碼
+    .slice(0, 3);
+
+  // 算最高票的 option（純 JS group by）
+  const voteCountByOption = new Map<number, number>();
+  for (const v of (voteRes.data ?? []) as { date_option_id: number }[]) {
+    voteCountByOption.set(v.date_option_id, (voteCountByOption.get(v.date_option_id) ?? 0) + 1);
+  }
+  let topVote: { out_date: string; ret_date: string | null; voteCount: number } | null = null;
+  if (voteCountByOption.size > 0) {
+    const [topOptId, topCount] = [...voteCountByOption.entries()].sort((a, b) => b[1] - a[1])[0];
+    const { data: opt } = await supabase
+      .from('date_option')
+      .select('out_date, ret_date')
+      .eq('id', topOptId)
+      .maybeSingle();
+    if (opt) {
+      topVote = { out_date: opt.out_date, ret_date: opt.ret_date, voteCount: topCount };
+    }
+  }
+
+  return buildGroupAlertFlex({
+    origin: sub.origin,
+    destination: sub.destination,
+    outboundDate,
+    returnDate: returnDate ?? null,
+    cheapestPrice: cheapest,
+    threshold: Number(sub.max_price),
+    airline,
+    groupId: sub.source_id,
+    subscriptionId: sub.id!,
+    memberCount: memberRows.length,
+    topMemberNames,
+    topVote
+  });
 }
 
 function formatAlertText(
