@@ -63,6 +63,39 @@ export interface Subscription {
   last_notified_price?: number | null;
   label?: string | null;
   created_at?: string;
+  // G0: 群組共識規則。只有 source_type='group' 訂閱才用，個人訂閱忽略此欄位
+  consensus_rule?: 'max' | 'avg' | 'manual' | null;
+  // G0: 建立者 LINE userId — 紀錄用，**不**控制權限（group watch 沒 owner）
+  created_by_user_id?: string | null;
+}
+
+/** G0: 群組成員（subscriptions: id 1 → N）。個人訂閱永遠 0 筆。*/
+export interface GroupMember {
+  id?: number;
+  subscription_id: number;
+  line_user_id: string;
+  display_name: string | null;
+  /** 該成員自己能接受的價格上限，null = 跟著 derived target、不影響共識 */
+  accepted_target: number | null;
+  joined_at?: string;
+}
+
+/** G0: 群組日期候選（G3 用，G0 先上 schema） */
+export interface DateOption {
+  id?: number;
+  subscription_id: number;
+  out_date: string;        // YYYY-MM-DD
+  ret_date: string | null; // YYYY-MM-DD 或 null = 該選項是單程
+  created_at?: string;
+}
+
+/** G0: 群組日期投票（G3 用）*/
+export interface DateVote {
+  id?: number;
+  date_option_id: number;
+  subscription_id: number;
+  line_user_id: string;
+  created_at?: string;
 }
 
 export interface NotificationSettings {
