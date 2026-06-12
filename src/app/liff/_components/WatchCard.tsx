@@ -158,38 +158,56 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
         )}
       </div>
 
-      {/* ---- 3. price row ---- */}
-      <div className="wc-price-row">
-        <div className="wc-price-left">
-          <span className="wc-now-label">{currentBest != null ? '目前最低' : '目標價'}</span>
-          <div className="wc-now">
-            <span className="ccy">NT$</span>
-            <span className="val tnum">{ntFmt(currentBest ?? Number(w.max_price))}</span>
+      {/* ---- 3. price row ----
+        PR #19: quote=null（新路線冷啟動，報價還沒進來）→ 換成「報價更新中」panel，
+        不顯示假數字 / NaN / dash 數學（手冊 §4.6 degraded path）。
+        有 quote → 原本的價格 + sparkline。
+      */}
+      {w.quote == null ? (
+        <div className="wc-updating" data-testid="quote-updating">
+          <div className="wc-upd-head">
+            <Icon name="hourglass" size={13} stroke={2} />
+            <span>報價更新中</span>
           </div>
-          {carrierLabel && <span className="wc-carrier">{carrierLabel}</span>}
+          <div className="wc-upd-desc">
+            尚未取得這條航線的即時報價。你的目標價 NT${ntFmt(Number(w.max_price))} 已生效，
+            仍會在達標時通知你。
+          </div>
         </div>
-        <div className="wc-spark-wrap">
-          {showDelta && (
-            <span className={`wc-delta ${down ? 'down' : 'up'}`}>
-              <Icon name={down ? 'trendDown' : 'trendUp'} size={15} stroke={2.1} />
-              {Math.abs(deltaPct!).toFixed(1)}%
-            </span>
-          )}
-          {showSparkline && (
-            <Sparkline history={history} width={84} height={34} />
-          )}
-          {showSparkline && <span className="spark-caption">近 {history.length} 天</span>}
+      ) : (
+        <div className="wc-price-row">
+          <div className="wc-price-left">
+            <span className="wc-now-label">目前最低</span>
+            <div className="wc-now">
+              <span className="ccy">NT$</span>
+              <span className="val tnum">{ntFmt(currentBest)}</span>
+            </div>
+            {carrierLabel && <span className="wc-carrier">{carrierLabel}</span>}
+          </div>
+          <div className="wc-spark-wrap">
+            {showDelta && (
+              <span className={`wc-delta ${down ? 'down' : 'up'}`}>
+                <Icon name={down ? 'trendDown' : 'trendUp'} size={15} stroke={2.1} />
+                {Math.abs(deltaPct!).toFixed(1)}%
+              </span>
+            )}
+            {showSparkline && (
+              <Sparkline history={history} width={84} height={34} />
+            )}
+            {showSparkline && <span className="spark-caption">近 {history.length} 天</span>}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* ---- 4. signal row ---- */}
-      {/*
+      {/* ---- 4. signal row ----
         PR #5 intel-aware：
           - intel.status='building' → 顯示「情報建立中」進度條，不假裝有 verdict
           - intel.status='ready' → percentile bar 給「便宜/貴」第一眼判斷
-          - intel=null → 退到 PR #3 的原 signal pill（避免砍掉 graceful degrade）
+          - intel=null（但有 quote）→ 退到 PR #3 的原 signal pill
+        PR #19: quote=null（degraded card）→ 整個 signal row 跳過，
+        「報價更新中」panel 已涵蓋訊息，不再顯示假的「監控中」pill（手冊 §4.6）。
       */}
-      {w.quote?.intel?.status === 'building' ? (
+      {w.quote == null ? null : w.quote.intel?.status === 'building' ? (
         <div className="wc-building" data-testid="building-state">
           <div className="wc-building-text">
             <Icon name="hourglass" size={12} stroke={2} />
@@ -199,7 +217,7 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
             <div className="wc-building-fill" style={{ width: `${w.quote.intel.pct}%` }} />
           </div>
         </div>
-      ) : w.quote?.intel?.status === 'ready' ? (
+      ) : w.quote.intel?.status === 'ready' ? (
         <div className="wc-signal-row">
           <div style={{ flex: 1, minWidth: 0 }}>
             <PercentileBar percentile={w.quote.intel.percentile} compact />
@@ -402,6 +420,27 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
           font-weight: 700;
         }
         .wc-target .lead { color: var(--ios-label-3); }
+        .wc-updating {
+          margin-top: 14px;
+          padding: 12px;
+          background: var(--ios-fill-3);
+          border: 0.5px dashed var(--ios-hairline);
+          border-radius: 10px;
+        }
+        .wc-upd-head {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 12.5px;
+          font-weight: 600;
+          color: var(--ios-label-2);
+        }
+        .wc-upd-desc {
+          font-size: 12px;
+          color: var(--ios-label-3);
+          line-height: 1.5;
+          margin-top: 4px;
+        }
         .wc-building {
           margin-top: 12px;
           padding-top: 12px;

@@ -27,6 +27,9 @@ import { Icon } from './_components/Icon';
 import { WatchDetailSheet } from './_components/WatchDetailSheet';
 import { AddWatchSheet } from './_components/AddWatchSheet';
 import { SettingsSheet } from './_components/SettingsSheet';
+import { EmptyOnboarding, type QuickStartRoute } from './_components/EmptyOnboarding';
+import { LoadingState } from './_components/SkeletonCard';
+import { ErrorState } from './_components/ErrorState';
 
 interface Props {
   liffId: string;
@@ -84,10 +87,11 @@ export default function WatchlistView({ liffId }: Props) {
 
   // === Sheet routing state ===
   // 一次只開一個 sheet — 用 single field 控制（避免兩個同時開的狀態組合）
+  // PR #19: add 多帶 optional prefill（EmptyOnboarding quick-start 預填路線）
   const [sheet, setSheet] = useState<
     | { kind: 'none' }
     | { kind: 'detail'; watch: WatchItem }
-    | { kind: 'add' }
+    | { kind: 'add'; prefill?: QuickStartRoute | null }
     | { kind: 'settings' }
   >({ kind: 'none' });
   const closeSheet = () => setSheet({ kind: 'none' });
@@ -108,7 +112,9 @@ export default function WatchlistView({ liffId }: Props) {
   // 全部走 sheet state，不再 navigate 出去。舊三條路由 (search/subscriptions/settings)
   // PR #4b 改成 redirect /liff，本檔不再連結它們。
   const goToSettings = () => setSheet({ kind: 'settings' });
-  const goToAdd = () => setSheet({ kind: 'add' });
+  const goToAdd = () => setSheet({ kind: 'add', prefill: null });
+  // PR #19: EmptyOnboarding 熱門航線 chip → 開 AddWatchSheet 並預填路線
+  const quickStart = (route: QuickStartRoute) => setSheet({ kind: 'add', prefill: route });
   const openWatch = (w: WatchItem) => setSheet({ kind: 'detail', watch: w });
   // SettingsSheet 改個人設定，sourceId 用個人 (個人 + 群組同時打開的情境，群組設定本不該被覆寫)
   const settingsSourceId = sourceId;
@@ -179,24 +185,25 @@ export default function WatchlistView({ liffId }: Props) {
         ))}
       </div>
 
-      {/* ---- Watch list ---- */}
-      {error && <div className="error-banner">{error}</div>}
-
-      {loading && watches.length === 0 ? (
-        <div className="empty">
-          <Spinner />
-        </div>
+      {/* ---- Watch list — PR #19 四態：error / loading / empty-onboarding / list ---- */}
+      {error && watches.length === 0 ? (
+        /* fetch 全掛且沒任何快取資料 → 全屏可重試 ErrorState（手冊 §4.6） */
+        <ErrorState
+          offline={typeof navigator !== 'undefined' && !navigator.onLine}
+          onRetry={refetch}
+        />
+      ) : loading && watches.length === 0 ? (
+        /* 載入中 → shimmer 骨架 ×3（取代 Spinner） */
+        <LoadingState />
+      ) : watches.length === 0 ? (
+        /* 0 追蹤 → 新用戶 onboarding（手冊 §4.6，藏 FAB） */
+        <EmptyOnboarding onAdd={goToAdd} onQuickStart={quickStart} />
       ) : filtered.length === 0 ? (
+        /* 有追蹤但 filter 篩到空 → 輕量空狀態（不是 onboarding） */
         <div className="empty">
           <Icon name="bookmark" size={42} style={{ color: 'var(--ios-label-3)' }} />
-          <div className="empty-title">
-            {watches.length === 0 ? '還沒有追蹤' : '沒有符合的追蹤'}
-          </div>
-          <div className="empty-hint">
-            {watches.length === 0
-              ? '按下方「＋ 新增追蹤」開始監控航班降價'
-              : '試試切換上方篩選'}
-          </div>
+          <div className="empty-title">沒有符合的追蹤</div>
+          <div className="empty-hint">試試切換上方篩選</div>
         </div>
       ) : (
         <div className="watch-list">
@@ -211,14 +218,18 @@ export default function WatchlistView({ liffId }: Props) {
           {digestWatch && listedWatches.length === 0 && (
             <div className="list-section-label">就是上面那條，沒別的追蹤</div>
           )}
+          {/* 有快取資料但這輪 fetch 失敗 → 輕量 banner（不蓋掉現有 list） */}
+          {error && <div className="error-banner">部分資料載入失敗，顯示的是先前的快取。</div>}
         </div>
       )}
 
-      {/* ---- FAB ---- */}
-      <button className="fab pressable" type="button" onClick={goToAdd} aria-label="新增追蹤">
-        <Icon name="plus" size={18} stroke={2.4} />
-        <span>新增追蹤</span>
-      </button>
+      {/* ---- FAB — PR #19: onboarding / loading / error 全屏狀態時藏（手冊規定，避免雙 CTA） ---- */}
+      {watches.length > 0 && !((error || loading) && watches.length === 0) && (
+        <button className="fab pressable" type="button" onClick={goToAdd} aria-label="新增追蹤">
+          <Icon name="plus" size={18} stroke={2.4} />
+          <span>新增追蹤</span>
+        </button>
+      )}
 
       {/* ---- Sheets ---- */}
       <WatchDetailSheet
@@ -234,6 +245,7 @@ export default function WatchlistView({ liffId }: Props) {
         userId={sourceId}
         groupCtxId={groupCtxId}
         defaultNotifyTarget={defaultNotifyTarget}
+        prefillRoute={sheet.kind === 'add' ? (sheet.prefill ?? null) : null}
         onCreated={refetch}
       />
       <SettingsSheet

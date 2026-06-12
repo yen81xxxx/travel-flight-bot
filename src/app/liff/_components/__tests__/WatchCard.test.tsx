@@ -242,3 +242,34 @@ describe('WatchCard — G1 group members pill', () => {
     expect(queryByTestId('members-pill')).toBeNull();
   });
 });
+
+describe('WatchCard — PR #19 報價更新中 degraded panel', () => {
+  it('quote=null → 顯示「報價更新中」panel + 目標價已生效文案', () => {
+    const w: WatchItem = { ...baseWatch, quote: null };
+    const { getByTestId, container } = render(<WatchCard watch={w} onOpen={() => {}} />);
+    expect(getByTestId('quote-updating')).toBeInTheDocument();
+    expect(container.textContent).toContain('報價更新中');
+    expect(container.textContent).toContain('仍會在達標時通知你');
+  });
+
+  it('quote=null → 不顯示 signal row（無假「監控中」pill）', () => {
+    const w: WatchItem = { ...baseWatch, quote: null };
+    const { queryByTestId } = render(<WatchCard watch={w} onOpen={() => {}} />);
+    expect(queryByTestId('signal-pill')).toBeNull();
+    expect(queryByTestId('percentile-bar')).toBeNull();
+    expect(queryByTestId('building-state')).toBeNull();
+  });
+
+  it('quote=null → 不顯示 NaN / dash 數學', () => {
+    const w: WatchItem = { ...baseWatch, quote: null };
+    const { container } = render(<WatchCard watch={w} onOpen={() => {}} />);
+    expect(container.textContent).not.toContain('NaN');
+    expect(container.textContent).not.toContain('目前最低');
+  });
+
+  it('有 quote → 不顯示更新中 panel（正常價格區）', () => {
+    const { queryByTestId, container } = render(<WatchCard watch={baseWatch} onOpen={() => {}} />);
+    expect(queryByTestId('quote-updating')).toBeNull();
+    expect(container.textContent).toContain('目前最低');
+  });
+});
