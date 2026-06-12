@@ -1,39 +1,110 @@
-<!--
-  Rich Menu 圖片模板（2500×843，4 個按鈕橫排）
-  使用方法：
-    1. 用任何線上工具把這個 SVG 轉成 PNG（搜尋「svg to png 2500x843」）
-       例如：https://www.svgconverter.com/svg-png
-    2. 把 PNG 存成 menu-image.png 放這個資料夾
-    3. 跑 node scripts/rich-menu/setup.mjs
--->
-<svg xmlns="http://www.w3.org/2000/svg" width="2500" height="843" viewBox="0 0 2500 843">
-  <!-- 漸層背景 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="2500" height="1686" viewBox="0 0 2500 1686">
+  <!-- ============================================================
+       Travl Rich Menu — 2×3 深色版（LINE_SURFACE_SPEC §B）
+       對齊 design_reference/line/richmenu.css：
+         bg #15151a、cell 漸層 #1f1f25→#1a1a1f、icon chip 16% tint、
+         新增追蹤 featured（綠 chip 反白 icon）、白 label + 半透明 sub
+       轉檔：node scripts/rich-menu/render-png.mjs → menu-image.png
+       ============================================================ -->
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#1a2238"/>
-      <stop offset="100%" stop-color="#0a0e1a"/>
+    <linearGradient id="cell" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f1f25"/>
+      <stop offset="1" stop-color="#1a1a1f"/>
     </linearGradient>
+    <linearGradient id="cellFeature" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#173424"/>
+      <stop offset="1" stop-color="#16241c"/>
+    </linearGradient>
+    <style>
+      .label { font: 700 76px 'Microsoft JhengHei','PingFang TC','Noto Sans CJK TC',sans-serif; fill: #ffffff; text-anchor: middle; }
+      .sub   { font: 500 48px 'Microsoft JhengHei','PingFang TC','Noto Sans CJK TC',sans-serif; fill: rgba(235,235,245,0.45); text-anchor: middle; }
+      .ic    { fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
   </defs>
-  <rect width="2500" height="843" fill="url(#bg)"/>
 
-  <!-- 分隔線 -->
-  <line x1="625" y1="120" x2="625" y2="723" stroke="#2a3450" stroke-width="2"/>
-  <line x1="1250" y1="120" x2="1250" y2="723" stroke="#2a3450" stroke-width="2"/>
-  <line x1="1875" y1="120" x2="1875" y2="723" stroke="#2a3450" stroke-width="2"/>
+  <!-- 底色 -->
+  <rect width="2500" height="1686" fill="#15151a"/>
 
-  <!-- 第 1 格：查航班 -->
-  <text x="312.5" y="380" font-family="Arial, sans-serif" font-size="180" fill="#60a5fa" text-anchor="middle">🔍</text>
-  <text x="312.5" y="540" font-family="'PingFang TC', 'Microsoft YaHei', sans-serif" font-size="76" font-weight="bold" fill="#ffffff" text-anchor="middle">查航班</text>
+  <!-- cells（留 2px gap 露出底色當格線；featured = 新增追蹤） -->
+  <rect x="2"    y="2"   width="829" height="839" fill="url(#cell)"/>
+  <rect x="835"  y="2"   width="830" height="839" fill="url(#cellFeature)"/>
+  <rect x="1669" y="2"   width="829" height="839" fill="url(#cell)"/>
+  <rect x="2"    y="845" width="829" height="839" fill="url(#cell)"/>
+  <rect x="835"  y="845" width="830" height="839" fill="url(#cell)"/>
+  <rect x="1669" y="845" width="829" height="839" fill="url(#cell)"/>
 
-  <!-- 第 2 格：我的訂閱 -->
-  <text x="937.5" y="380" font-family="Arial, sans-serif" font-size="180" fill="#22c55e" text-anchor="middle">📋</text>
-  <text x="937.5" y="540" font-family="'PingFang TC', 'Microsoft YaHei', sans-serif" font-size="76" font-weight="bold" fill="#ffffff" text-anchor="middle">我的訂閱</text>
+  <!-- ===== Cell 1：查航班（藍）===== -->
+  <g>
+    <rect x="331.5" y="220" width="170" height="170" rx="48" fill="rgba(10,132,255,0.16)"/>
+    <g transform="translate(356.5,245) scale(5)" class="ic" stroke="#0a84ff">
+      <circle cx="11" cy="11" r="7"/>
+      <path d="M16.5 16.5 L22 22"/>
+    </g>
+    <text class="label" x="416.5" y="560">查航班</text>
+    <text class="sub"   x="416.5" y="650">即時報價</text>
+  </g>
 
-  <!-- 第 3 格：設定 -->
-  <text x="1562.5" y="380" font-family="Arial, sans-serif" font-size="180" fill="#a78bfa" text-anchor="middle">⚙️</text>
-  <text x="1562.5" y="540" font-family="'PingFang TC', 'Microsoft YaHei', sans-serif" font-size="76" font-weight="bold" fill="#ffffff" text-anchor="middle">設定</text>
+  <!-- ===== Cell 2：新增追蹤（綠 featured — chip 實心、icon 深綠）===== -->
+  <g>
+    <rect x="1165" y="220" width="170" height="170" rx="48" fill="#30d158"/>
+    <g transform="translate(1190,245) scale(5)" class="ic" stroke="#06351a" stroke-width="2.4">
+      <path d="M12 4 L12 20 M4 12 L20 12"/>
+    </g>
+    <text class="label" x="1250" y="560" fill="#7ee2a0">新增追蹤</text>
+    <text class="sub"   x="1250" y="650" fill="rgba(126,226,160,0.65)">設目標價</text>
+  </g>
 
-  <!-- 第 4 格：說明 -->
-  <text x="2187.5" y="380" font-family="Arial, sans-serif" font-size="180" fill="#fb923c" text-anchor="middle">ℹ️</text>
-  <text x="2187.5" y="540" font-family="'PingFang TC', 'Microsoft YaHei', sans-serif" font-size="76" font-weight="bold" fill="#ffffff" text-anchor="middle">說明</text>
+  <!-- ===== Cell 3：我的訂閱（青）===== -->
+  <g>
+    <rect x="1998.5" y="220" width="170" height="170" rx="48" fill="rgba(100,210,255,0.16)"/>
+    <g transform="translate(2023.5,245) scale(5)" class="ic" stroke="#64d2ff">
+      <circle cx="5" cy="6" r="1.4" fill="#64d2ff" stroke="none"/>
+      <circle cx="5" cy="12" r="1.4" fill="#64d2ff" stroke="none"/>
+      <circle cx="5" cy="18" r="1.4" fill="#64d2ff" stroke="none"/>
+      <path d="M9.5 6 L20 6 M9.5 12 L20 12 M9.5 18 L20 18"/>
+    </g>
+    <text class="label" x="2083.5" y="560">我的訂閱</text>
+    <text class="sub"   x="2083.5" y="650">追蹤清單</text>
+  </g>
+
+  <!-- ===== Cell 4：今日機票（橘）===== -->
+  <g>
+    <rect x="331.5" y="1063" width="170" height="170" rx="48" fill="rgba(255,159,10,0.16)"/>
+    <g transform="translate(356.5,1088) scale(5)" class="ic" stroke="#ff9f0a">
+      <circle cx="12" cy="12" r="4.2"/>
+      <path d="M12 2.5 L12 5 M12 19 L12 21.5 M2.5 12 L5 12 M19 12 L21.5 12 M5.3 5.3 L7 7 M17 17 L18.7 18.7 M18.7 5.3 L17 7 M7 17 L5.3 18.7"/>
+    </g>
+    <text class="label" x="416.5" y="1403">今日機票</text>
+    <text class="sub"   x="416.5" y="1493">今日摘要</text>
+  </g>
+
+  <!-- ===== Cell 5：群組追蹤（紫）===== -->
+  <g>
+    <rect x="1165" y="1063" width="170" height="170" rx="48" fill="rgba(191,90,242,0.16)"/>
+    <g transform="translate(1190,1088) scale(5)" class="ic" stroke="#bf5af2">
+      <circle cx="9" cy="8.5" r="3.6"/>
+      <path d="M2.8 20 C2.8 16.2 5.6 14 9 14 C12.4 14 15.2 16.2 15.2 20"/>
+      <circle cx="17.3" cy="9.5" r="2.7"/>
+      <path d="M16.8 13.6 C19.6 13.9 21.5 15.8 21.5 18.8"/>
+    </g>
+    <text class="label" x="1250" y="1403">群組追蹤</text>
+    <text class="sub"   x="1250" y="1493">跟朋友一起</text>
+  </g>
+
+  <!-- ===== Cell 6：通知設定（灰）===== -->
+  <g>
+    <rect x="1998.5" y="1063" width="170" height="170" rx="48" fill="rgba(255,255,255,0.08)"/>
+    <g transform="translate(2023.5,1088) scale(5)" class="ic" stroke="rgba(255,255,255,0.85)">
+      <path d="M18 9.5 a6 6 0 0 0 -12 0 c0 6 -2.5 7.5 -2.5 7.5 L20.5 17 c0 0 -2.5 -1.5 -2.5 -7.5 Z"/>
+      <path d="M10.2 20.5 a2 2 0 0 0 3.6 0"/>
+    </g>
+    <text class="label" x="2083.5" y="1403">通知設定</text>
+    <text class="sub"   x="2083.5" y="1493">靜音・摘要</text>
+  </g>
+
+  <!-- cell 間 hairline -->
+  <rect x="832"  y="120" width="2" height="600" fill="rgba(255,255,255,0.05)"/>
+  <rect x="1666" y="120" width="2" height="600" fill="rgba(255,255,255,0.05)"/>
+  <rect x="832"  y="963" width="2" height="600" fill="rgba(255,255,255,0.05)"/>
+  <rect x="1666" y="963" width="2" height="600" fill="rgba(255,255,255,0.05)"/>
 </svg>
