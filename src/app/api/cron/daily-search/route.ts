@@ -6,6 +6,7 @@ import { getLineClient } from '@/lib/line';
 import { getSupabase } from '@/lib/supabase';
 import { checkAllSubscriptions } from '@/lib/subscription-checker';
 import { cleanupOldRecords, getQuotaStats } from '@/lib/cleanup';
+import { sendOpsAlertIfNeeded } from '@/lib/ops-alert';
 import { buildDailyFlex, buildMultiSubsDailyFlex } from '@/lib/flex-message';
 import { getCityAirports } from '@/config/airports';
 import { getAirlineCategory } from '@/config/airlines';
@@ -291,26 +292,41 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
 
   // ============================================
   // 7) 寫一筆 search_runs 總結
+  // R4-B: 配額爆掉也算 partial — search_runs 寫 success 會騙人，
+  // ops-alert 的「今天已告警過」dedup 也靠這個 status 判斷
   // ============================================
+  const errorParts = [
+    ...(pushedFail > 0 ? [`${pushedFail} push failed`] : []),
+    ...(allKeysExhausted ? ['serpapi all keys exhausted'] : [])
+  ];
   await supabase.from('search_runs').insert({
     triggered_by: 'cron',
-    status: pushedFail === 0 ? 'success' : 'partial',
+    status: errorParts.length === 0 ? 'success' : 'partial',
     started_at: startedAt.toISOString(),
     finished_at: new Date().toISOString(),
     serpapi_calls: totalSerpapiCalls,
     duration_ms: Date.now() - startedAt.getTime(),
-    error_message: pushedFail > 0 ? `${pushedFail} push failed` : null
+    error_message: errorParts.length > 0 ? errorParts.join('; ') : null
   });
 
   // ============================================
   // 8) 跑訂閱降價檢查（這邊用每筆訂閱實際的日期，跟上面合併查詢的 cache 共用）
   // ============================================
-  let subResult = { total: 0, notified: 0, skipped: 0, errors: 0, serpapiCalls: 0 };
+  let subResult = { total: 0, notified: 0, skipped: 0, errors: 0, serpapiCalls: 0, allKeysExhausted: false };
   try {
     subResult = await checkAllSubscriptions();
   } catch (err) {
     console.error('[cron] subscription check failed:', err);
   }
+
+  // ============================================
+  // 8b) R4-B: 系統性異常 → 推文字告警給 admin（同一天只發一次）
+  // ============================================
+  const opsAlert = await sendOpsAlertIfNeeded(supabase, {
+    allKeysExhausted: allKeysExhausted || subResult.allKeysExhausted,
+    pushedFail,
+    subErrors: subResult.errors
+  });
 
   // ============================================
   // 9) 清理 + 配額
@@ -345,6 +361,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
       fallback: fallbackResult
     },
     subscriptions: subResult,
+    opsAlert,
     cleanup,
     quota
   });
