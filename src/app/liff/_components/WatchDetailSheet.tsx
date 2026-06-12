@@ -1421,14 +1421,15 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
         }
         .pb-remove {
           position: absolute;
-          top: 6px;
-          right: 6px;
+          top: 0;
+          right: 0;
           appearance: none;
           background: transparent;
           border: none;
           color: var(--ios-label-3);
           cursor: pointer;
-          padding: 4px;
+          /* PR #21 §4.6a: tap target ≥44px（12px icon + 16px padding 四邊 = 44px） */
+          padding: 16px;
         }
         .pb-add-trigger {
           margin-top: 10px;

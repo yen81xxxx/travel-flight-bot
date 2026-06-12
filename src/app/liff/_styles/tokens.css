@@ -79,3 +79,40 @@
   -webkit-tap-highlight-color: transparent;
 }
 .pressable:active { transform: scale(0.97); }
+
+/* ============================================================
+   PR #21 — 微互動（手冊 §4.9）：list 一次性進場 fade-rise + capped stagger
+   只在使用者沒要求 reduced-motion 時跑（§4.6a）。≤0.42s、一次性、不循環。
+   ============================================================ */
+@media (prefers-reduced-motion: no-preference) {
+  .watch-card,
+  .digest {
+    animation: card-enter 0.42s cubic-bezier(0.22, 0.7, 0.3, 1) both;
+  }
+  .watch-list .watch-card:nth-child(1) { animation-delay: 0.02s; }
+  .watch-list .watch-card:nth-child(2) { animation-delay: 0.07s; }
+  .watch-list .watch-card:nth-child(3) { animation-delay: 0.12s; }
+  .watch-list .watch-card:nth-child(4) { animation-delay: 0.17s; }
+  /* capped：第 5 張以後不再加深 delay（避免長清單尾巴等很久） */
+  .watch-list .watch-card:nth-child(n+5) { animation-delay: 0.2s; }
+}
+@keyframes card-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   PR #21 — 全域 reduced-motion 剎車（§4.6a）：
+   使用者系統設定「減少動態效果」時，所有動畫/過場立即完成。
+   個別元件（skeleton shimmer、succ-check 描邊）另有自己的 gate，
+   這條是保底 — 新加的動畫忘記 gate 也不會漏。
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -159,7 +159,7 @@ export default function WatchlistView({ liffId }: Props) {
           <div className="eyebrow">FLIGHT TRACKER</div>
           <h1 className="page-title">追蹤清單<span className="dot-blue">.</span></h1>
         </div>
-        <button className="icon-btn" type="button" onClick={goToSettings} aria-label="設定">
+        <button className="icon-btn" type="button" onClick={goToSettings} aria-label="通知偏好設定">
           <Icon name="gear" size={20} stroke={1.9} />
         </button>
       </header>
@@ -295,8 +295,9 @@ export default function WatchlistView({ liffId }: Props) {
           background: var(--ios-fill-2);
           border: none;
           color: var(--ios-label);
-          width: 36px;
-          height: 36px;
+          /* PR #21 §4.6a: tap target ≥44px */
+          width: 44px;
+          height: 44px;
           border-radius: 50%;
           display: inline-flex;
           align-items: center;

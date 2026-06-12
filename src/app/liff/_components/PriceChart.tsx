@@ -98,12 +98,21 @@ export function PriceChart({
   const below = prices[prices.length - 1] <= target;
   const gid = 'pc' + reactId.replace(/:/g, '');
 
+  // PR #21 a11y（手冊 §4.6a）：完整圖表的資料摘要 — 區間 / 目前 / 目標 / 高低於目標
+  const loPrice = Math.min(...prices);
+  const hiPrice = Math.max(...prices);
+  const ariaLabel =
+    `價格走勢圖：區間 NT$${loPrice.toLocaleString()} 至 NT$${hiPrice.toLocaleString()}，` +
+    `目前 NT$${prices[prices.length - 1].toLocaleString()}，目標價 NT$${target.toLocaleString()}，` +
+    `目前${below ? '已低於' : '高於'}目標。`;
+
   return (
     <svg
       width="100%"
       viewBox={`0 0 ${W} ${H}`}
       style={{ display: 'block', overflow: 'visible' }}
-      aria-hidden="true"
+      role="img"
+      aria-label={ariaLabel}
       data-testid="price-chart"
     >
       <defs>
