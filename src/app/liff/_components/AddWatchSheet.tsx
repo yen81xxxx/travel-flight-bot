@@ -45,6 +45,11 @@ interface Props {
    * 'me' = 個人 / 'group' = 群組。沒設時 caller 傳 'me' 當保險預設。
    */
   defaultNotifyTarget?: 'me' | 'group';
+  /**
+   * PR #19: EmptyOnboarding 熱門航線 quick-start 用 — 開 sheet 時預填路線。
+   * null = 不預填（沿用上次 / 預設 TPE→NRT）。每次 open 且有值時都套用。
+   */
+  prefillRoute?: { o: string; d: string } | null;
   /** 訂閱成功後通知 caller refetch watchlist */
   onCreated?: () => void;
 }
@@ -52,7 +57,7 @@ interface Props {
 const todayISO = (): string => new Date().toISOString().slice(0, 10);
 
 export function AddWatchSheet({
-  open, onClose, userId, groupCtxId, defaultNotifyTarget = 'me', onCreated
+  open, onClose, userId, groupCtxId, defaultNotifyTarget = 'me', prefillRoute = null, onCreated
 }: Props): React.ReactElement {
   // === 通知對象 ===
   // 只有 userId + groupCtxId 都有時，user 可選；其中一邊不存在就只能用另一邊。
@@ -80,13 +85,18 @@ export function AddWatchSheet({
   const [error, setError] = useState<string | null>(null);
 
   // 每次 open 重置（避免上次殘留）+ 開啟時帶當下 defaultNotifyTarget
+  // PR #19: prefillRoute 有值時套用（EmptyOnboarding 熱門航線 quick-start）
   useEffect(() => {
     if (open) {
       setError(null);
       setPreview(null);
       setNotifyTarget(defaultNotifyTarget);
+      if (prefillRoute) {
+        setOrigin(prefillRoute.o);
+        setDestination(prefillRoute.d);
+      }
     }
-  }, [open, defaultNotifyTarget]);
+  }, [open, defaultNotifyTarget, prefillRoute]);
 
   // swap 出發 / 抵達 — 確保仍維持「一台一日」
   const handleSwap = () => {
