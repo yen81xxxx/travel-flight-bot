@@ -14,9 +14,9 @@
  */
 import * as React from 'react';
 import type { PriceIntel } from '../_types';
-import { VERDICT_META } from '../_lib/priceIntel';
 import { Icon, type IconName, ICON_NAMES } from './Icon';
 import { PercentileBar } from './PercentileBar';
+import { VerdictBadge } from './VerdictBadge';
 
 interface Props {
   intel: PriceIntel;
@@ -53,7 +53,7 @@ export function IntelPanel({ intel }: Props): React.ReactElement {
   }
 
   // status === 'ready'
-  const meta = VERDICT_META[intel.verdict];
+  // PR #20: badge 換用統一 VerdictBadge（手冊 §4.8 — 卡片/hero/digest 同一顆）
   return (
     <div className="intel-panel ready" data-testid="intel-panel-ready" data-verdict={intel.verdict}>
       <div className="ip-eyebrow">
@@ -61,14 +61,7 @@ export function IntelPanel({ intel }: Props): React.ReactElement {
         <span>智能判斷 · 信心度 {intel.confidence}</span>
       </div>
       <div className="ip-headline-row">
-        <span
-          className="ip-verdict-badge"
-          style={{ color: meta.color, background: meta.bg }}
-          data-testid="verdict-badge"
-        >
-          <Icon name={safeIconName(meta.icon)} size={14} stroke={2.2} />
-          {meta.label}
-        </span>
+        <VerdictBadge intel={intel} />
         <span className="ip-headline">{intel.headline}</span>
       </div>
 
@@ -114,16 +107,6 @@ const styles = `
     gap: 8px;
     margin-top: 8px;
     flex-wrap: wrap;
-  }
-  .ip-verdict-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 5px 10px;
-    border-radius: 999px;
-    font-size: 12.5px;
-    font-weight: 700;
-    flex-shrink: 0;
   }
   .ip-headline {
     font-size: 17px;
