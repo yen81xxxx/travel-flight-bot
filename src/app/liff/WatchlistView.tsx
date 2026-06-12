@@ -59,13 +59,17 @@ export function computeFilterCounts(watches: WatchItem[]): Record<FilterKey, num
 export function parseDeepLink(search: string): {
   action: 'add' | 'settings' | null;
   filter: FilterKey | null;
+  /** R4-C: 量測來源標記（群組卡「我也要追」帶 src=group-alert）— 白名單外回 null */
+  src: 'group-alert' | null;
 } {
   const params = new URLSearchParams(search);
   const a = params.get('action');
   const f = params.get('filter');
+  const s = params.get('src');
   return {
     action: a === 'add' || a === 'settings' ? a : null,
-    filter: f === 'hit' || f === 'group' || f === 'personal' ? f : null
+    filter: f === 'hit' || f === 'group' || f === 'personal' ? f : null,
+    src: s === 'group-alert' ? s : null
   };
 }
 
@@ -119,13 +123,29 @@ export default function WatchlistView({ liffId }: Props) {
   const closeSheet = () => setSheet({ kind: 'none' });
 
   // L3: Rich Menu deep links（與 ?ctx= 同機制 — liff.line.me 把 query 帶進 app）
+  // R4-C: ?src= 暫存進 state，等 LIFF 登入拿到 userId 後記一筆點擊
+  const [pendingTrackSrc, setPendingTrackSrc] = useState<'group-alert' | null>(null);
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const { action, filter: deepFilter } = parseDeepLink(window.location.search);
+    const { action, filter: deepFilter, src } = parseDeepLink(window.location.search);
     if (action === 'add') setSheet({ kind: 'add', prefill: null });
     else if (action === 'settings') setSheet({ kind: 'settings' });
     if (deepFilter) setFilter(deepFilter);
+    if (src) setPendingTrackSrc(src);
   }, []);
+
+  // R4-C: 量測「我也要追」點擊 — fire-and-forget，失敗不影響主流程。
+  // 等 sourceId（LIFF profile）就緒才送，點擊才能對回 group_member 算轉換。
+  useEffect(() => {
+    if (!pendingTrackSrc || !sourceId) return;
+    const src = pendingTrackSrc;
+    setPendingTrackSrc(null); // 先清 — 同一次打開只記一次
+    fetch('/api/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ src, ctx: groupCtxId, userId: sourceId })
+    }).catch(() => { /* 量測掛了就算了 — 不能反過來干擾 LIFF */ });
+  }, [pendingTrackSrc, sourceId, groupCtxId]);
 
   const counts = useMemo(() => computeFilterCounts(watches), [watches]);
   const filtered = useMemo(() => applyFilter(watches, filter), [watches, filter]);
