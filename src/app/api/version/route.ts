@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
  * 輕量部署版本端點 — 用來無副作用驗證 Vercel 是否已經部署新 code。
  * 改卡片版面或關鍵邏輯時 bump CARD_VERSION，部署後 curl 這條就能立刻知道是否已生效。
  */
-const CARD_VERSION = 'v43-digest-carousel-noteworthy-2026-06-12';
+const CARD_VERSION = 'v44-history-card-a4-text-a5-2026-06-12';
 
 export async function GET(): Promise<NextResponse> {
   return NextResponse.json({

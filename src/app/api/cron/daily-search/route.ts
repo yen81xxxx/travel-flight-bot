@@ -332,7 +332,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     ok: pushedFail === 0,
     // 部署版本標記 — 改卡片版面時 bump 一下，方便從 API 回應驗證新 code 是否真的上線
-    cardVersion: 'v43-digest-carousel-noteworthy-2026-06-12',
+    cardVersion: 'v44-history-card-a4-text-a5-2026-06-12',
     daily: {
       sourcesTargeted: targets.length,
       sourcesOptedOut: optedOut.size,
