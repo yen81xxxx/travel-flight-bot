@@ -1200,7 +1200,8 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
           gap: 8px;
           padding: 6px 8px;
           border-radius: 8px;
-          background: rgba(255, 255, 255, 0.03);
+          /* T1: 白 3% overlay 在 light 主題隱形 — 換 fill token 兩邊都成立 */
+          background: var(--ios-fill-3);
         }
         .gb-member.is-me {
           background: rgba(191, 90, 242, 0.12);

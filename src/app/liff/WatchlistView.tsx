@@ -20,6 +20,7 @@ import { useKnownGroupCtxs } from '@/hooks/useKnownGroupCtxs';
 import { useSessionStorage } from '@/hooks/useSessionStorage';
 import { Spinner } from '@/components';
 import { useWatchlist, type WatchItem } from './_hooks/useWatchlist';
+import { useTheme } from './_hooks/useTheme';
 import { deriveSignal } from './_lib/signal';
 import { WatchCard } from './_components/WatchCard';
 import { DigestHero, pickDigestWatch } from './_components/DigestHero';
@@ -83,6 +84,9 @@ export default function WatchlistView({ liffId }: Props) {
 
   const { watches, loading, error, refetch } = useWatchlist(sourceId, knownGroupCtxs);
 
+  // T1 主題：resolved 掛到根元素 data-theme（dark 時也掛 — 顯式比隱式好查）
+  const { mode: themeMode, resolved: themeResolved, setMode: setThemeMode } = useTheme();
+
   const [filter, setFilter] = useState<FilterKey>('all');
 
   // === Sheet routing state ===
@@ -136,7 +140,7 @@ export default function WatchlistView({ liffId }: Props) {
   // 還沒 LIFF ready → spinner（不要 flash 空 list）
   if (liffId && !liffReady) {
     return (
-      <div className="loading-wrap">
+      <div className="loading-wrap" data-theme={themeResolved}>
         <Spinner />
         <style jsx>{`
           .loading-wrap {
@@ -152,7 +156,7 @@ export default function WatchlistView({ liffId }: Props) {
   }
 
   return (
-    <div className="wl-wrap">
+    <div className="wl-wrap" data-theme={themeResolved}>
       {/* ---- Header ---- */}
       <header className="wl-head">
         <div>
@@ -252,6 +256,8 @@ export default function WatchlistView({ liffId }: Props) {
         open={sheet.kind === 'settings'}
         onClose={closeSheet}
         sourceId={settingsSourceId}
+        themeMode={themeMode}
+        onThemeChange={setThemeMode}
       />
 
       <style jsx>{`

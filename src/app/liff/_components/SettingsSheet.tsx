@@ -15,11 +15,15 @@ import { useEffect, useState } from 'react';
 import { BottomSheet } from './BottomSheet';
 import { IOSToggle } from './IOSToggle';
 import { Icon } from './Icon';
+import type { ThemeMode } from '../_hooks/useTheme';
 
 interface Props {
   open: boolean;
   onClose: () => void;
   sourceId: string | null;
+  /** T1 主題：目前模式 + 切換 callback（即時生效；持久化在 useTheme 內） */
+  themeMode: ThemeMode;
+  onThemeChange: (mode: ThemeMode) => void;
 }
 
 interface SettingsState {
@@ -39,7 +43,7 @@ const DEFAULT_STATE: SettingsState = {
   defaultNotifyTarget: 'me'
 };
 
-export function SettingsSheet({ open, onClose, sourceId }: Props): React.ReactElement {
+export function SettingsSheet({ open, onClose, sourceId, themeMode, onThemeChange }: Props): React.ReactElement {
   const [state, setState] = useState<SettingsState>(DEFAULT_STATE);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -101,6 +105,33 @@ export function SettingsSheet({ open, onClose, sourceId }: Props): React.ReactEl
 
   return (
     <BottomSheet open={open} onClose={onClose} title="設定" subtitle="通知 · 靜音 · 預設選項">
+      {/* 外觀主題 — 本機設定（localStorage），不需登入、即時生效、不走儲存按鈕 */}
+      <div className="set-row theme-row">
+        <div className="set-row-left">
+          <div className="set-row-title">外觀</div>
+          <div className="set-row-desc">跟隨系統會依裝置的深淺色自動切換</div>
+        </div>
+        <div className="notify-segmented" role="radiogroup" aria-label="外觀主題">
+          {([
+            { key: 'dark', label: '深色', icon: 'moon' },
+            { key: 'light', label: '淺色', icon: 'sun' },
+            { key: 'system', label: '跟隨系統', icon: null }
+          ] as const).map(opt => (
+            <button
+              key={opt.key}
+              type="button"
+              role="radio"
+              aria-checked={themeMode === opt.key}
+              className={themeMode === opt.key ? 'seg active' : 'seg'}
+              onClick={() => onThemeChange(opt.key)}
+              data-testid={`theme-${opt.key}`}
+            >
+              {opt.icon && <Icon name={opt.icon} size={12} stroke={2} />} {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {!sourceId ? (
         <div className="hint">需要先登入 LINE 才能調整通知設定。</div>
       ) : loading ? (
