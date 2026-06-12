@@ -65,6 +65,63 @@
   --r-card: 16px;
   --r-field: 12px;
   --r-pill: 999px;
+
+  /* content text tokens（THEMING_SPEC）— 新元件偏好 --tx-*，與 --ios-label* 同義並存 */
+  --tx-strong: #ffffff;
+  --tx-soft: rgba(235, 235, 245, 0.8);
+}
+
+/* ============================================================
+   Light theme（THEMING_SPEC）
+   Dark 是基底（:root）；這塊是唯一覆寫面。data-theme="light" 掛在
+   LIFF 根元素（WatchlistView 的 .wl-wrap）整頁翻面，元件 0 改動。
+
+   語意色換成 iOS「淺色系統值」（比 dark 亮色深 — 白底才有對比）。
+   白字留在彩色面上的地方（filled 按鈕/頭像/FAB/toggle knob）本來
+   就硬編 #fff、不吃 token，兩個主題都正確。
+   ============================================================ */
+[data-theme='light'] {
+  /* surfaces */
+  --ios-bg: #f2f2f7;
+  --ios-bg-secondary: #ffffff;
+  --ios-bg-tertiary: #f2f2f7;
+  --card-grad: linear-gradient(180deg, #ffffff 0%, #ffffff 100%);
+
+  /* fills */
+  --ios-fill: rgba(120, 120, 128, 0.2);
+  --ios-fill-2: rgba(120, 120, 128, 0.12);
+  --ios-fill-3: rgba(120, 120, 128, 0.08);
+
+  /* separators / borders */
+  --ios-separator: rgba(60, 60, 67, 0.36);
+  --ios-separator-2: rgba(60, 60, 67, 0.24);
+  --ios-hairline: rgba(60, 60, 67, 0.18);
+
+  /* legacy aliases */
+  --ios-bg-grouped: #f2f2f7;
+  --ios-separator-opaque: #c6c6c8;
+  --ios-label-secondary: rgba(60, 60, 67, 0.6);
+  --ios-label-tertiary: rgba(60, 60, 67, 0.3);
+
+  /* labels */
+  --ios-label: #000000;
+  --ios-label-2: rgba(60, 60, 67, 0.6);
+  --ios-label-3: rgba(60, 60, 67, 0.3);
+  --ios-label-4: rgba(60, 60, 67, 0.18);
+
+  /* semantic palette — iOS light system values */
+  --ios-blue: #007aff;
+  --ios-green: #248a3d;
+  --ios-orange: #c93400;
+  --ios-red: #d70015;
+  --ios-yellow: #9a7d00;
+  --ios-cyan: #0071a4;
+  --ios-purple: #8944ab;
+  --ios-pink: #d30f45;
+
+  /* content text tokens */
+  --tx-strong: #000000;
+  --tx-soft: rgba(60, 60, 67, 0.7);
 }
 
 /* tabular numerals helper — used by prices & deltas everywhere */
