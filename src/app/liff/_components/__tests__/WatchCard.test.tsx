@@ -190,7 +190,7 @@ describe('WatchCard — PR #5 intel integration', () => {
     expect(container.textContent).not.toContain('建議再等');
   });
 
-  it('intel.status="ready" → 顯示 percentile bar', () => {
+  it('intel.status="ready" → 顯示 VerdictBadge + 百分位文字 row（PR #20 §4.8 新版排法）', () => {
     const w: WatchItem = {
       ...baseWatch,
       quote: {
@@ -203,7 +203,12 @@ describe('WatchCard — PR #5 intel integration', () => {
       }
     };
     const { container } = render(<WatchCard watch={w} onOpen={() => {}} />);
-    expect(container.querySelector('[data-testid="percentile-bar"]')).toBeInTheDocument();
+    const badge = container.querySelector('[data-testid="verdict-badge"]');
+    expect(badge).toBeInTheDocument();
+    expect(badge?.getAttribute('data-verdict')).toBe('buy');
+    // 卡片改用百分位文字 row（PercentileBar gradient 保留給 IntelPanel）
+    expect(container.querySelector('[data-testid="percentile-text"]')).toBeInTheDocument();
+    expect(container.textContent).toContain('第 12 百分位');
   });
 
   it('intel=null (graceful degrade) → 回退到 SignalPill（PR #3 行為）', () => {

@@ -23,7 +23,7 @@ import { getCity } from '@/config/airports';
 import { Icon } from './Icon';
 import { Sparkline } from './Sparkline';
 import { SignalPill } from './SignalPill';
-import { PercentileBar } from './PercentileBar';
+import { VerdictBadge } from './VerdictBadge';
 
 interface Props {
   watch: WatchItem;
@@ -200,36 +200,54 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
       )}
 
       {/* ---- 4. signal row ----
-        PR #5 intel-aware：
-          - intel.status='building' → 顯示「情報建立中」進度條，不假裝有 verdict
-          - intel.status='ready' → percentile bar 給「便宜/貴」第一眼判斷
-          - intel=null（但有 quote）→ 退到 PR #3 的原 signal pill
-        PR #19: quote=null（degraded card）→ 整個 signal row 跳過，
-        「報價更新中」panel 已涵蓋訊息，不再顯示假的「監控中」pill（手冊 §4.6）。
+        PR #20 (手冊 §4.8 新版排法，components.jsx 為準)：
+          - intel.status='building' → 「情報建立中」pill + 下方進度條 + 已追蹤天數
+          - intel.status='ready'    → VerdictBadge (sm) + 距目標；下方百分位文字 row
+          - intel=null（但有 quote）→ 退到 SignalPill（graceful degrade 路徑保留）
+        PR #19: quote=null（degraded card）→ 全部跳過。
       */}
       {w.quote == null ? null : w.quote.intel?.status === 'building' ? (
-        <div className="wc-building" data-testid="building-state">
-          <div className="wc-building-text">
-            <Icon name="hourglass" size={12} stroke={2} />
-            <span>情報建立中 · 再 {w.quote.intel.remaining} 天解鎖判斷</span>
-          </div>
-          <div className="wc-building-bar">
-            <div className="wc-building-fill" style={{ width: `${w.quote.intel.pct}%` }} />
-          </div>
-        </div>
-      ) : w.quote.intel?.status === 'ready' ? (
-        <div className="wc-signal-row">
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <PercentileBar percentile={w.quote.intel.percentile} compact />
-          </div>
-          {dist != null && (
-            <span className={`wc-target tnum ${below ? 'below' : ''}`}>
-              {below
-                ? <>已低於目標 NT${ntFmt(-dist)}</>
-                : <><span className="lead">距目標</span> NT${ntFmt(dist)}</>}
+        <>
+          <div className="wc-signal-row" data-testid="building-state">
+            <span className="building-pill">
+              <Icon name="hourglass" size={14} stroke={2} />情報建立中
             </span>
-          )}
-        </div>
+            {dist != null && (
+              <span className={`wc-target tnum ${below ? 'below' : ''}`}>
+                {below
+                  ? <>已低於目標 NT${ntFmt(-dist)}</>
+                  : <><span className="lead">距目標</span> NT${ntFmt(dist)}</>}
+              </span>
+            )}
+          </div>
+          <div className="wc-building">
+            <div className="wc-building-bar">
+              <div className="wc-building-fill" style={{ width: `${w.quote.intel.pct}%` }} />
+            </div>
+            <span className="wc-building-txt tnum">
+              已追蹤 <strong>{w.quote.intel.tracked}</strong> 天 · 再 <strong>{w.quote.intel.remaining}</strong> 天解鎖買進建議
+            </span>
+          </div>
+        </>
+      ) : w.quote.intel?.status === 'ready' ? (
+        <>
+          <div className="wc-signal-row">
+            <VerdictBadge intel={w.quote.intel} size="sm" />
+            {dist != null && (
+              <span className={`wc-target tnum ${below ? 'below' : ''}`}>
+                {below
+                  ? <>已低於目標 NT${ntFmt(-dist)}</>
+                  : <><span className="lead">距目標</span> NT${ntFmt(dist)}</>}
+              </span>
+            )}
+          </div>
+          <div className="wc-pctl-row">
+            <span className="wc-pctl tnum" data-testid="percentile-text">
+              <Icon name="sliders" size={12} stroke={2} />
+              近 {w.quote.intel.tracked} 天位於第 <strong>{w.quote.intel.percentile}</strong> 百分位
+            </span>
+          </div>
+        </>
       ) : (
         <div className="wc-signal-row">
           <SignalPill signal={signal} compact />
@@ -441,29 +459,57 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
           line-height: 1.5;
           margin-top: 4px;
         }
-        .wc-building {
-          margin-top: 12px;
-          padding-top: 12px;
-          border-top: 0.5px solid var(--ios-hairline);
-        }
-        .wc-building-text {
+        .building-pill {
           display: inline-flex;
           align-items: center;
           gap: 5px;
+          padding: 5px 11px 5px 8px;
+          border-radius: 999px;
           font-size: 12px;
+          font-weight: 700;
           color: var(--ios-label-2);
-          margin-bottom: 6px;
+          background: var(--ios-fill-2);
+          white-space: nowrap;
+        }
+        .wc-building {
+          margin-top: 8px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
         }
         .wc-building-bar {
-          height: 4px;
+          height: 5px;
+          border-radius: 999px;
           background: var(--ios-fill-2);
-          border-radius: 2px;
           overflow: hidden;
         }
         .wc-building-fill {
           height: 100%;
-          background: var(--ios-blue);
-          transition: width 0.3s ease;
+          border-radius: 999px;
+          background: var(--ios-label-3);
+          transition: width 0.4s ease;
+        }
+        .wc-building-txt {
+          font-size: 11px;
+          color: var(--ios-label-3);
+        }
+        .wc-building-txt strong {
+          color: var(--ios-label-2);
+          font-weight: 700;
+          margin: 0 1px;
+        }
+        .wc-pctl-row { margin-top: 6px; }
+        .wc-pctl {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 11px;
+          color: var(--ios-label-3);
+        }
+        .wc-pctl strong {
+          color: var(--ios-label-2);
+          font-weight: 700;
+          margin: 0 1px;
         }
       `}</style>
     </article>
