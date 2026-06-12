@@ -1,5 +1,63 @@
 import { formatAirport, getCity, getCityAirports } from '@/config/airports';
 import { getAirlineCodesByCategory, type AirlineCategory } from '@/config/airlines';
+import type { Verdict } from '@/app/liff/_lib/priceIntel';
+
+/* ============================================================
+   L1 — 推播卡深色設計語言（LINE_SURFACE_SPEC §A）
+   Flex JSON 不認 CSS var，這裡用跟 tokens.css :root 同值的 hex。
+   LINE Flex 支援 #RRGGBBAA — tint 背景跟 LIFF 的 rgba 同語言。
+   ============================================================ */
+export const FLEX_DARK = {
+  cardBg: '#1b1b1f',
+  text: '#ffffff',
+  soft: '#ebebf599',   // ≈ rgba(235,235,245,0.6)
+  faint: '#ebebf54d',  // ≈ rgba(235,235,245,0.3)
+  green: '#30d158',
+  greenTint: '#30d15820',
+  red: '#ff453a',
+  blue: '#0a84ff',
+  cyan: '#64d2ff',
+  cyanTint: '#64d2ff26',
+  yellow: '#ffd60a',
+  yellowTint: '#ffd60a2e',
+  barDim: '#3a3a3e'
+} as const;
+
+/** verdict → 推播 badge 的字面 + 配色（與 LIFF VerdictBadge 同語意、hex 版） */
+export const VERDICT_FLEX_META: Record<Verdict, { label: string; fg: string; bg: string }> = {
+  'buy':      { label: '建議入手', fg: '#06351a', bg: '#30d158' },
+  'lean-buy': { label: '可考慮',   fg: '#06283a', bg: '#64d2ff' },
+  'watch':    { label: '觀察中',   fg: '#ffffff', bg: '#3a3a3e' },
+  'wait':     { label: '建議再等', fg: '#3a2102', bg: '#ff9f0a' }
+};
+
+/** 推播卡的航司顯示列 — sub-checker 從 analyzeFlights 結果導出後傳進來 */
+export interface CarrierDisplay {
+  tag: 'lcc' | 'trad' | null;
+  line: string;
+}
+
+/**
+ * 從 analyzeFlights 的兩類結果導出 carrier 顯示（純函數）。
+ * 規則同 quote-builder currentBest：取較便宜者、同價優先 LCC。
+ */
+export function deriveCarrierDisplay(
+  lccCombo: { outboundAirline: string; returnAirline: string; price: number } | null,
+  traditionalRoundTrip: { airline: string; price: number } | null,
+  fallbackAirline: string | null
+): CarrierDisplay | null {
+  if (lccCombo && (!traditionalRoundTrip || lccCombo.price <= traditionalRoundTrip.price)) {
+    const line = lccCombo.outboundAirline === lccCombo.returnAirline
+      ? lccCombo.outboundAirline
+      : `${lccCombo.outboundAirline} → ${lccCombo.returnAirline}`;
+    return { tag: 'lcc', line };
+  }
+  if (traditionalRoundTrip) {
+    return { tag: 'trad', line: `${traditionalRoundTrip.airline}・同家來回` };
+  }
+  if (fallbackAirline) return { tag: null, line: fallbackAirline };
+  return null;
+}
 
 interface AlertFlexProps {
   origin: string;
@@ -12,6 +70,42 @@ interface AlertFlexProps {
   // 這條訂閱的 source_id（user 或 group）。給「我的訂閱」按鈕帶 ctx 用，
   // 不傳就 fallback 到普通連結（個人訂閱情境）
   sourceId?: string;
+  // === L1 新增（全部 optional — 拿不到就降級、推播照發） ===
+  /** priceIntel verdict（與 LIFF 同引擎算出）；null/undefined = 不顯示 badge */
+  verdict?: Verdict | null;
+  /** 週變化 %（負 = 跌）；null = 藏 delta */
+  deltaPct?: number | null;
+  /** 30 天每日最低（升冪）— mini 歷史 bars；空 = 藏 */
+  dailyMins?: number[];
+  /** 航司顯示列（deriveCarrierDisplay 的輸出）；null = 退回 airline 字串 */
+  carrier?: CarrierDisplay | null;
+}
+
+/** dailyMins → Flex mini bars（stacked box 模擬 sparkline — Flex 沒有 SVG） */
+export function buildMiniBars(dailyMins: number[]): object | null {
+  if (dailyMins.length < 2) return null;
+  const bars = dailyMins.slice(-14);
+  const lo = Math.min(...bars);
+  const hi = Math.max(...bars);
+  const span = hi - lo || 1;
+  return {
+    type: 'box',
+    layout: 'horizontal',
+    height: '28px',
+    spacing: '3px',
+    alignItems: 'flex-end',
+    margin: 'md',
+    contents: bars.map((p, i) => ({
+      type: 'box',
+      layout: 'vertical',
+      contents: [{ type: 'filler' }],
+      // 價格越低 bar 越矮（跟 LIFF sparkline 同向：高度 = 價格）
+      height: `${Math.round(8 + ((p - lo) / span) * 20)}px`,
+      backgroundColor: i === bars.length - 1 ? FLEX_DARK.green : FLEX_DARK.barDim,
+      cornerRadius: '2px',
+      flex: 1
+    }))
+  };
 }
 
 /** 顯示日期區間的小工具：來回顯示 'YYYY-MM-DD ~ YYYY-MM-DD'，單程顯示 '單程 YYYY-MM-DD' */
@@ -63,117 +157,199 @@ interface DailyFlexProps {
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://travel-flight-bot.vercel.app';
 
 /**
- * 降價提醒 Flex Message
+ * 價格達標提醒 Flex Message — L1 深色版（LINE_SURFACE_SPEC §A2）
+ *
+ * 設計語言對齊 LIFF：深色卡 #1b1b1f、零 emoji、verdict badge（同
+ * priceIntel 引擎）、tabular 價格、mini 歷史 bars、主 CTA 留在 Travl
+ *（看走勢與航班），Skyscanner 是次要 ghost（產品決議：convenience link）。
+ *
+ * 所有 L1 新欄位 optional — intel 撈不到就少 badge/delta/bars，推播照發。
  */
 export function buildAlertFlex(props: AlertFlexProps) {
   const drop = props.threshold - props.cheapestPrice;
   const dropPct = Math.round((drop / props.threshold) * 100);
-  // 邊界情況：當降幅 < 1%（例如 NT$ 18,538 vs 門檻 18,546，只差 NT$ 8）顯示「降價 0%」
-  // 會看起來像 bug。改成「達到目標價」+ 顯示絕對便宜金額。
+  // 邊界情況：降幅 < 1%（例如只差 NT$ 8）寫「低 0%」看起來像 bug
+  // → 改寫成「達到目標價」語氣（沿用舊卡的處理，文案换新）
   const isAtThreshold = dropPct < 1;
-  const title = isAtThreshold ? '🎯 達到目標價' : '🔔 降價提醒';
-  const compareLine = isAtThreshold
-    ? `達到你的門檻 NT$ ${props.threshold.toLocaleString()}（便宜 NT$ ${drop.toLocaleString()}）`
-    : `比門檻 NT$ ${props.threshold.toLocaleString()} 低 ${dropPct}%`;
+  const targetLine = isAtThreshold
+    ? `達到你的目標價 NT$${props.threshold.toLocaleString()}（便宜 NT$${drop.toLocaleString()}）`
+    : `已跌破你的目標價 NT$${props.threshold.toLocaleString()}（低 NT$${drop.toLocaleString()}）`;
+
+  const verdictMeta = props.verdict ? VERDICT_FLEX_META[props.verdict] : null;
+
+  // delta：負 = 跌（綠 ▼）、正 = 漲（紅 ▲）。|Δ| < 0.05 視為持平不顯示。
+  const delta = props.deltaPct != null && Math.abs(props.deltaPct) >= 0.05
+    ? {
+        type: 'text',
+        text: `${props.deltaPct < 0 ? '▼' : '▲'} ${Math.abs(props.deltaPct)}%`,
+        size: 'sm',
+        weight: 'bold',
+        color: props.deltaPct < 0 ? FLEX_DARK.green : FLEX_DARK.red,
+        flex: 0,
+        gravity: 'bottom'
+      }
+    : null;
+
+  const bars = props.dailyMins ? buildMiniBars(props.dailyMins) : null;
+
+  // carrier 列：tag pill（廉航青 / 傳統黃）+ 航司字串
+  const carrier = props.carrier ?? (props.airline ? { tag: null, line: props.airline } : null);
+  const carrierRow = carrier
+    ? {
+        type: 'box',
+        layout: 'baseline',
+        margin: 'md',
+        spacing: 'sm',
+        contents: [
+          ...(carrier.tag
+            ? [{
+                type: 'text',
+                text: carrier.tag === 'lcc' ? '廉航' : '傳統',
+                size: 'xxs',
+                weight: 'bold',
+                color: carrier.tag === 'lcc' ? FLEX_DARK.cyan : FLEX_DARK.yellow,
+                flex: 0
+              }]
+            : []),
+          {
+            type: 'text',
+            text: carrier.line,
+            size: 'xs',
+            color: FLEX_DARK.soft,
+            wrap: true
+          }
+        ]
+      }
+    : null;
+
+  const verdictSuffix = verdictMeta ? `（${verdictMeta.label}）` : '';
   return {
     type: 'flex',
-    altText: `${title}：${formatAirport(props.origin)} → ${formatAirport(props.destination)} NT$ ${props.cheapestPrice.toLocaleString()}`,
+    altText: `價格達標：${props.origin} → ${props.destination} NT$${props.cheapestPrice.toLocaleString()}${verdictSuffix}`,
     contents: {
       type: 'bubble',
       size: 'kilo',
+      // hero strip：綠 tint 上「價格達標」+ verdict badge（spec §A2）
       header: {
         type: 'box',
-        layout: 'vertical',
+        layout: 'horizontal',
+        alignItems: 'center',
         contents: [
           {
             type: 'text',
-            text: title,
+            text: '價格達標',
             weight: 'bold',
-            size: 'lg',
-            color: '#ffffff'
-          }
+            size: 'sm',
+            color: FLEX_DARK.green,
+            flex: 1
+          },
+          ...(verdictMeta
+            ? [{
+                type: 'box',
+                layout: 'vertical',
+                flex: 0,
+                backgroundColor: verdictMeta.bg,
+                cornerRadius: '999px',
+                paddingAll: '4px',
+                paddingStart: '10px',
+                paddingEnd: '10px',
+                contents: [
+                  {
+                    type: 'text',
+                    text: verdictMeta.label,
+                    size: 'xxs',
+                    weight: 'bold',
+                    color: verdictMeta.fg
+                  }
+                ]
+              }]
+            : [])
         ],
-        backgroundColor: '#ff7a45',
-        paddingAll: '16px'
+        backgroundColor: '#102818',
+        paddingAll: '12px',
+        paddingStart: '16px',
+        paddingEnd: '12px'
       },
       body: {
         type: 'box',
         layout: 'vertical',
-        spacing: 'md',
+        backgroundColor: FLEX_DARK.cardBg,
+        paddingAll: '16px',
         contents: [
           {
-            type: 'box',
-            layout: 'horizontal',
-            contents: [
-              {
-                type: 'text',
-                text: '✈️',
-                size: 'lg',
-                flex: 0
-              },
-              {
-                type: 'text',
-                text: `${formatAirport(props.origin)} → ${formatAirport(props.destination)}`,
-                weight: 'bold',
-                size: 'md',
-                wrap: true,
-                margin: 'md'
-              }
-            ]
-          },
-          {
             type: 'text',
-            text: formatDateRange(props.outboundDate, props.returnDate),
-            size: 'sm',
-            color: '#666666'
-          },
-          { type: 'separator', margin: 'md' },
-          {
-            type: 'box',
-            layout: 'baseline',
-            contents: [
-              {
-                type: 'text',
-                text: 'NT$',
-                size: 'sm',
-                color: '#666666',
-                flex: 0
-              },
-              {
-                type: 'text',
-                text: props.cheapestPrice.toLocaleString(),
-                weight: 'bold',
-                size: '3xl',
-                color: '#ff7a45',
-                margin: 'sm'
-              }
-            ]
-          },
-          {
-            type: 'text',
-            text: compareLine,
-            size: 'xs',
-            color: '#4ade80',
+            text: `${getCity(props.origin)} → ${getCity(props.destination)}`,
+            weight: 'bold',
+            size: 'lg',
+            color: FLEX_DARK.text,
             wrap: true
           },
           {
+            type: 'text',
+            text: `${props.origin} → ${props.destination}・${props.returnDate ? `${props.outboundDate} ~ ${props.returnDate}` : `單程 ${props.outboundDate}`}`,
+            size: 'xs',
+            color: FLEX_DARK.faint,
+            margin: 'xs'
+          },
+          {
             type: 'box',
             layout: 'horizontal',
-            margin: 'md',
+            margin: 'lg',
+            contents: [
+              {
+                type: 'box',
+                layout: 'vertical',
+                flex: 1,
+                contents: [
+                  {
+                    type: 'text',
+                    text: '目前最低',
+                    size: 'xxs',
+                    color: FLEX_DARK.faint
+                  },
+                  {
+                    type: 'box',
+                    layout: 'baseline',
+                    contents: [
+                      {
+                        type: 'text',
+                        text: 'NT$',
+                        size: 'sm',
+                        color: FLEX_DARK.soft,
+                        flex: 0
+                      },
+                      {
+                        type: 'text',
+                        text: props.cheapestPrice.toLocaleString(),
+                        weight: 'bold',
+                        size: '3xl',
+                        color: FLEX_DARK.text,
+                        margin: 'sm',
+                        flex: 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              ...(delta ? [delta] : [])
+            ]
+          },
+          ...(bars ? [bars] : []),
+          ...(carrierRow ? [carrierRow] : []),
+          {
+            type: 'box',
+            layout: 'vertical',
+            margin: 'lg',
+            backgroundColor: FLEX_DARK.greenTint,
+            cornerRadius: '8px',
+            paddingAll: '10px',
             contents: [
               {
                 type: 'text',
-                text: '🏢 主推',
+                text: targetLine,
                 size: 'xs',
-                color: '#888888',
-                flex: 2
-              },
-              {
-                type: 'text',
-                text: props.airline,
-                size: 'sm',
-                weight: 'bold',
-                flex: 5
+                color: FLEX_DARK.green,
+                wrap: true
               }
             ]
           }
@@ -183,29 +359,37 @@ export function buildAlertFlex(props: AlertFlexProps) {
         type: 'box',
         layout: 'vertical',
         spacing: 'sm',
+        backgroundColor: FLEX_DARK.cardBg,
+        paddingAll: '16px',
+        paddingTop: '0px',
         contents: [
           {
             type: 'button',
             style: 'primary',
-            color: '#ff7a45',
+            color: FLEX_DARK.blue,
             height: 'sm',
             action: {
               type: 'uri',
-              label: '🔍 用 Skyscanner 訂（已帶條件）',
-              uri: flightSearchUrl(props)
+              label: '看走勢與航班',
+              uri: subscriptionsUrlFor(props.sourceId)
             }
           },
           {
+            // Skyscanner = 次要 ghost（產品決議：convenience、永遠排在 in-app CTA 下面）
             type: 'button',
-            style: 'secondary',
+            style: 'link',
             height: 'sm',
             action: {
               type: 'uri',
-              label: '📋 我的訂閱',
-              uri: subscriptionsUrlFor(props.sourceId)
+              label: '用 Skyscanner 訂',
+              uri: flightSearchUrl(props)
             }
           }
         ]
+      },
+      styles: {
+        header: { separator: false },
+        body: { separator: false }
       }
     }
   };
