@@ -51,6 +51,24 @@ export function computeFilterCounts(watches: WatchItem[]): Record<FilterKey, num
   return { all: watches.length, hit, personal, group };
 }
 
+/**
+ * L3: Rich Menu deep link 解析 — 純函數方便單測。
+ *   ?action=add|settings → 開對應 sheet；?filter=hit|group|personal → 預設 filter
+ * 不認得的值一律 null（rich menu 圖按錯版本 / 使用者亂改 URL 都不能炸）
+ */
+export function parseDeepLink(search: string): {
+  action: 'add' | 'settings' | null;
+  filter: FilterKey | null;
+} {
+  const params = new URLSearchParams(search);
+  const a = params.get('action');
+  const f = params.get('filter');
+  return {
+    action: a === 'add' || a === 'settings' ? a : null,
+    filter: f === 'hit' || f === 'group' || f === 'personal' ? f : null
+  };
+}
+
 /** 套 filter — 純函數方便單測 */
 export function applyFilter(watches: WatchItem[], filter: FilterKey): WatchItem[] {
   if (filter === 'all') return watches;
@@ -99,6 +117,15 @@ export default function WatchlistView({ liffId }: Props) {
     | { kind: 'settings' }
   >({ kind: 'none' });
   const closeSheet = () => setSheet({ kind: 'none' });
+
+  // L3: Rich Menu deep links（與 ?ctx= 同機制 — liff.line.me 把 query 帶進 app）
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const { action, filter: deepFilter } = parseDeepLink(window.location.search);
+    if (action === 'add') setSheet({ kind: 'add', prefill: null });
+    else if (action === 'settings') setSheet({ kind: 'settings' });
+    if (deepFilter) setFilter(deepFilter);
+  }, []);
 
   const counts = useMemo(() => computeFilterCounts(watches), [watches]);
   const filtered = useMemo(() => applyFilter(watches, filter), [watches, filter]);
