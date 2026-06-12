@@ -19,6 +19,8 @@ interface CheckResult {
   serpapiCalls: number;
   /** G5: 因為被群組 alert 覆蓋而 skip 的個人 alert 數 — log 觀察用，沒到 throw */
   dedupedByGroup: number;
+  /** R4-B: SerpApi 全 key 配額用盡 — 給 ops-alert 當系統性訊號 */
+  allKeysExhausted: boolean;
 }
 
 interface NotificationSettings {
@@ -44,7 +46,7 @@ function getTodayDateString(): string {
  */
 export async function checkAllSubscriptions(): Promise<CheckResult> {
   const supabase = getSupabase();
-  const result: CheckResult = { total: 0, notified: 0, skipped: 0, errors: 0, serpapiCalls: 0, dedupedByGroup: 0 };
+  const result: CheckResult = { total: 0, notified: 0, skipped: 0, errors: 0, serpapiCalls: 0, dedupedByGroup: 0, allKeysExhausted: false };
 
   const { data: subs, error } = await supabase
     .from('subscriptions')
@@ -301,6 +303,7 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
     }
   }));
 
+  result.allKeysExhausted = allKeysExhausted;
   return result;
 }
 
