@@ -581,52 +581,325 @@ interface MultiSubsDailyFlexProps {
   cachedAt?: string | null;
 }
 
+/* ============================================================
+   L2 — 每日摘要 carousel（LINE_SURFACE_SPEC §A1）
+   舊版：總覽 + 全部訂閱傾倒（11 張）。
+   新版：lead bubble（總結 + 打開 Travl）+ 只放「值得看」的路線
+   （達標 or 明顯變動），cap 9 — 不再 dump 全部。
+   ============================================================ */
+
+/** digest 一張 route bubble 值得看的變動門檻（%）— 跟 priceIntel reason 同級距 */
+export const NOTEWORTHY_DELTA_PCT = 3;
+
+/** 該 item 是否「達標」— 任一分類跌破各自目標（lcc←maxPrice / trad←maxPriceTraditional??maxPrice） */
+export function isItemHit(item: MultiSubsItem): boolean {
+  if (item.lcc && item.lcc.price <= item.maxPrice) return true;
+  const tradTarget = item.maxPriceTraditional ?? item.maxPrice;
+  if (item.traditional && item.traditional.price <= tradTarget) return true;
+  return false;
+}
+
+/** 取該 item 最大幅度的 vsPrev delta（跨類 + 各分類取絕對值最大者）；全 null → null */
+export function bestDelta(item: MultiSubsItem): number | null {
+  const candidates = [item.vsPrevPct, item.lcc?.vsPrevPct, item.traditional?.vsPrevPct]
+    .filter((x): x is number => x != null);
+  if (candidates.length === 0) return null;
+  return candidates.reduce((a, b) => (Math.abs(b) > Math.abs(a) ? b : a));
+}
+
+/** 過濾「值得看」：達標 or |delta| ≥ 門檻。達標排前面、再按 |delta| 大到小。 */
+export function pickNoteworthy(items: MultiSubsItem[]): MultiSubsItem[] {
+  return items
+    .filter(it => isItemHit(it) || Math.abs(bestDelta(it) ?? 0) >= NOTEWORTHY_DELTA_PCT)
+    .sort((a, b) => {
+      const hitDiff = Number(isItemHit(b)) - Number(isItemHit(a));
+      if (hitDiff !== 0) return hitDiff;
+      return Math.abs(bestDelta(b) ?? 0) - Math.abs(bestDelta(a) ?? 0);
+    });
+}
+
 export function buildMultiSubsDailyFlex(props: MultiSubsDailyFlexProps) {
-  // Carousel 上限 12 個 bubble — 1 個總覽 + 11 個訂閱（夠用）
-  const overviewBubble = buildOverviewBubble(props.items.length, props.sourceId, props.cachedAt);
-  const subBubbles = props.items.slice(0, 11).map(item => buildSubBubble(item, props.sourceId));
+  const hits = props.items.filter(isItemHit);
+  const noteworthy = pickNoteworthy(props.items);
+  // LINE carousel 上限 12 — lead 1 張 + noteworthy cap 9（留餘裕）
+  const routeBubbles = noteworthy.slice(0, 9).map(item => buildRouteBubble(item, props.sourceId));
+  const quotaExhausted = props.items.some(it => it.errorReason === 'quota-exhausted');
+
+  const lowest = hits
+    .map(it => it.cheapestPrice)
+    .filter((p): p is number => p != null)
+    .reduce<number | null>((min, p) => (min == null || p < min ? p : min), null);
+
+  const lead = buildDigestLeadBubble({
+    total: props.items.length,
+    hitCount: hits.length,
+    noteworthyCount: noteworthy.length,
+    lowest,
+    quotaExhausted,
+    sourceId: props.sourceId,
+    cachedAt: props.cachedAt ?? null
+  });
+
+  const altText = hits.length > 0
+    ? `今日機票摘要：${hits.length} 條已達標，最低 NT$${(lowest ?? 0).toLocaleString()}`
+    : '今日機票摘要：今天沒有航線跌破目標價';
 
   return {
     type: 'flex',
-    altText: `今日機票 ${props.items.length} 筆訂閱`,
+    altText,
     contents: {
       type: 'carousel',
-      contents: [overviewBubble, ...subBubbles]
+      contents: [lead, ...routeBubbles]
     }
   };
 }
 
-/** Carousel 第一張：總覽 bubble */
-function buildOverviewBubble(count: number, sourceId: string, cachedAt?: string | null): Record<string, unknown> {
-  const cacheHint = cachedAt ? `（抓 ${formatTaipeiHmFromIso(cachedAt)} 的快取）` : '';
+/** Lead bubble — 總結 + 打開 Travl（spec §A1） */
+function buildDigestLeadBubble(p: {
+  total: number;
+  hitCount: number;
+  noteworthyCount: number;
+  lowest: number | null;
+  quotaExhausted: boolean;
+  sourceId: string;
+  cachedAt: string | null;
+}): Record<string, unknown> {
+  // 總結句 — 按狀態分三種，誠實描述（沒變化就說沒變化）
+  let summary: string;
+  if (p.hitCount > 0 && p.lowest != null) {
+    summary = `你追蹤的 ${p.total} 條航線今天有 ${p.hitCount} 條跌破目標價，最低 NT$${p.lowest.toLocaleString()}。`;
+  } else if (p.noteworthyCount > 0) {
+    summary = `今天沒有航線跌破目標價，但有 ${p.noteworthyCount} 條明顯變動，往右滑看詳細。`;
+  } else {
+    summary = `你追蹤的 ${p.total} 條航線今天都沒有大變化，持續監控中。`;
+  }
+
+  const bodyContents: Record<string, unknown>[] = [
+    {
+      type: 'box',
+      layout: 'baseline',
+      spacing: 'sm',
+      contents: [
+        {
+          type: 'text',
+          text: String(p.hitCount),
+          size: '3xl',
+          weight: 'bold',
+          color: p.hitCount > 0 ? FLEX_DARK.green : FLEX_DARK.faint,
+          flex: 0
+        },
+        { type: 'text', text: '條已達標', size: 'sm', color: FLEX_DARK.soft, flex: 0 }
+      ]
+    },
+    { type: 'text', text: summary, size: 'sm', color: FLEX_DARK.text, wrap: true, margin: 'md' }
+  ];
+
+  if (p.quotaExhausted) {
+    // 部分路線配額暫滿 — 不藏（fail loud），但也不佔 route bubble 位置
+    bodyContents.push({
+      type: 'text',
+      text: '部分路線今日查詢額度暫滿，明日自動恢復。',
+      size: 'xxs',
+      color: '#ff9f0a',
+      wrap: true,
+      margin: 'md'
+    });
+  }
+
+  const cacheHint = p.cachedAt ? `（抓 ${formatTaipeiHmFromIso(p.cachedAt)} 的快取）` : '';
+  bodyContents.push({
+    type: 'text',
+    text: `${formatTaipeiHm()} 更新${cacheHint}`,
+    size: 'xxs',
+    color: FLEX_DARK.faint,
+    margin: 'md',
+    wrap: true
+  });
+
   return {
     type: 'bubble',
     size: 'kilo',
+    header: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: FLEX_DARK.cardBg,
+      paddingAll: '16px',
+      paddingBottom: '0px',
+      contents: [
+        { type: 'text', text: '今日機票摘要', weight: 'bold', size: 'md', color: FLEX_DARK.text }
+      ]
+    },
     body: {
       type: 'box',
       layout: 'vertical',
-      spacing: 'md',
-      contents: [
-        { type: 'text', text: '✈️', size: '4xl', align: 'center' },
-        { type: 'text', text: '今日機票', weight: 'bold', size: 'xl', align: 'center', color: '#1a2238' },
-        { type: 'text', text: `${count} 筆訂閱`, size: 'lg', align: 'center', color: '#666666' },
-        { type: 'separator', margin: 'lg' },
-        { type: 'text', text: '👉 左右滑動切換各訂閱', size: 'sm', align: 'center', color: '#94a3b8', margin: 'lg', wrap: true },
-        { type: 'text', text: `🕐 ${formatTaipeiHm()} 更新${cacheHint}`, size: 'xs', color: '#94a3b8', align: 'center', wrap: true }
-      ]
+      backgroundColor: FLEX_DARK.cardBg,
+      paddingAll: '16px',
+      paddingTop: '12px',
+      contents: bodyContents
     },
     footer: {
       type: 'box',
       layout: 'vertical',
-      spacing: 'sm',
+      backgroundColor: FLEX_DARK.cardBg,
+      paddingAll: '16px',
+      paddingTop: '0px',
       contents: [{
         type: 'button',
         style: 'primary',
-        color: '#1a2238',
+        color: FLEX_DARK.blue,
         height: 'sm',
         action: {
           type: 'uri',
-          label: '📋 管理我的訂閱',
+          label: '打開 Travl 看全部',
+          uri: subscriptionsUrlFor(p.sourceId)
+        }
+      }]
+    }
+  };
+}
+
+/** noteworthy route bubble — 已達標/監控中 + 路線 + 勝出分類價 + delta（spec §A1） */
+function buildRouteBubble(item: MultiSubsItem, sourceId: string): Record<string, unknown> {
+  const hit = isItemHit(item);
+  const delta = bestDelta(item);
+
+  // 勝出分類（cheapest）的 tag — 沒料就不放
+  const tag = item.cheapestCategory === 'lcc'
+    ? { text: '廉航', color: FLEX_DARK.cyan }
+    : item.cheapestCategory === 'full-service'
+      ? { text: '傳統', color: FLEX_DARK.yellow }
+      : null;
+
+  const showAirport = item.cheapestAirport && item.cheapestAirport !== item.destination;
+  const destLabel = showAirport
+    ? `${getCity(item.destination)} (${item.cheapestAirport})`
+    : formatAirport(item.destination);
+  const dateText = item.returnDate
+    ? `${item.outboundDate} ~ ${item.returnDate}`
+    : `單程 ${item.outboundDate}`;
+
+  const bodyContents: Record<string, unknown>[] = [
+    {
+      type: 'text',
+      text: `${formatAirport(item.origin)} → ${destLabel}`,
+      weight: 'bold',
+      size: 'md',
+      color: FLEX_DARK.text,
+      wrap: true
+    },
+    { type: 'text', text: dateText, size: 'xs', color: FLEX_DARK.faint, margin: 'xs' }
+  ];
+  if (item.label) {
+    bodyContents.push({ type: 'text', text: item.label, size: 'xxs', color: FLEX_DARK.faint, margin: 'xs' });
+  }
+
+  if (item.cheapestPrice != null) {
+    bodyContents.push({
+      type: 'box',
+      layout: 'horizontal',
+      margin: 'md',
+      contents: [
+        {
+          type: 'box',
+          layout: 'baseline',
+          flex: 1,
+          contents: [
+            { type: 'text', text: 'NT$', size: 'sm', color: FLEX_DARK.soft, flex: 0 },
+            {
+              type: 'text',
+              text: item.cheapestPrice.toLocaleString(),
+              size: 'xxl',
+              weight: 'bold',
+              color: FLEX_DARK.text,
+              margin: 'sm',
+              flex: 0
+            }
+          ]
+        },
+        ...(delta != null && Math.abs(delta) >= 1
+          ? [{
+              type: 'text',
+              text: `${delta < 0 ? '▼' : '▲'} ${Math.abs(delta)}%`,
+              size: 'sm',
+              weight: 'bold',
+              color: delta < 0 ? FLEX_DARK.green : FLEX_DARK.red,
+              flex: 0,
+              gravity: 'bottom'
+            }]
+          : [])
+      ]
+    });
+
+    // 目標價對照 — 達標綠 / 未達灰（與 LIFF 語言一致）
+    const target = item.cheapestCategory === 'full-service'
+      ? (item.maxPriceTraditional ?? item.maxPrice)
+      : item.maxPrice;
+    const diff = Math.abs(item.cheapestPrice - target);
+    bodyContents.push({
+      type: 'text',
+      text: hit
+        ? `低於目標 NT$${target.toLocaleString()}（省 NT$${diff.toLocaleString()}）`
+        : `目標 NT$${target.toLocaleString()}・還差 NT$${diff.toLocaleString()}`,
+      size: 'xs',
+      color: hit ? FLEX_DARK.green : FLEX_DARK.soft,
+      margin: 'sm',
+      wrap: true
+    });
+  } else if (item.errorReason === 'quota-exhausted') {
+    bodyContents.push({
+      type: 'text', text: '今日查詢額度暫滿，明日自動恢復', size: 'sm', color: '#ff9f0a', margin: 'md', wrap: true
+    });
+  } else {
+    bodyContents.push({
+      type: 'text', text: '此條件查無符合航班', size: 'sm', color: FLEX_DARK.faint, margin: 'md', wrap: true
+    });
+  }
+
+  return {
+    type: 'bubble',
+    size: 'kilo',
+    header: {
+      type: 'box',
+      layout: 'horizontal',
+      alignItems: 'center',
+      backgroundColor: hit ? '#102818' : '#222226',
+      paddingAll: '12px',
+      paddingStart: '16px',
+      contents: [
+        {
+          type: 'text',
+          text: hit ? '已達標' : '監控中',
+          weight: 'bold',
+          size: 'sm',
+          color: hit ? FLEX_DARK.green : FLEX_DARK.soft,
+          flex: 1
+        },
+        ...(tag
+          ? [{ type: 'text', text: tag.text, size: 'xs', weight: 'bold', color: tag.color, flex: 0 }]
+          : [])
+      ]
+    },
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: FLEX_DARK.cardBg,
+      paddingAll: '16px',
+      contents: bodyContents
+    },
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: FLEX_DARK.cardBg,
+      paddingAll: '16px',
+      paddingTop: '0px',
+      contents: [{
+        type: 'button',
+        style: 'primary',
+        color: FLEX_DARK.blue,
+        height: 'sm',
+        action: {
+          type: 'uri',
+          label: '看走勢與航班',
           uri: subscriptionsUrlFor(sourceId)
         }
       }]
@@ -634,224 +907,6 @@ function buildOverviewBubble(count: number, sourceId: string, cachedAt?: string 
   };
 }
 
-/**
- * 卡片內單一分類段（廉航 or 傳統）：3 段組成
- *   行 1：✈️ 廉航 · 台灣虎航       NT$ 13,414
- *   行 2：   比目標價低 NT$ 9,614（40%）· 較昨日 ↓5%
- *   行 3：   [ 🛒 用 Skyscanner 訂廉航 ]   ← 各自的 Skyscanner 按鈕
- * 沒資料時行 1 顯示「— 查無」，無行 2、無按鈕
- */
-function buildCategoryRowsForBubble(
-  icon: string,
-  label: string,
-  data: MultiSubsItem['lcc'] | MultiSubsItem['traditional'] | null | undefined,
-  maxPrice: number,
-  origin: string,
-  outboundDate: string,
-  returnDate: string | null  // null = 單程訂閱
-): Record<string, unknown>[] {
-  if (!data) {
-    return [{
-      type: 'box',
-      layout: 'baseline',
-      margin: 'md',
-      contents: [
-        { type: 'text', text: `${icon} ${label}`, size: 'sm', color: '#666666', flex: 4 },
-        { type: 'text', text: '— 查無', size: 'sm', color: '#cbd5e1', flex: 5, align: 'end' }
-      ]
-    }];
-  }
-
-  // 航司名稱：傳統就是同家、廉航 mix-and-match 簡寫成「虎航+捷星」（去掉「航空」「台灣」減字數）
-  let airlineName: string;
-  if ('airline' in data) {
-    airlineName = data.airline;
-  } else if (data.outboundAirline === data.returnAirline) {
-    airlineName = data.outboundAirline;
-  } else {
-    const short = (s: string) => s.replace(/航空$/, '').replace(/^台灣/, '');
-    airlineName = `${short(data.outboundAirline)}+${short(data.returnAirline)}`;
-  }
-  const labelText = `${icon} ${label} · ${airlineName}`;
-
-  const priceColor = data.price <= maxPrice ? '#22c55e' : '#ff7a45';
-  // 廉航 fallback 是「去程估算」，加 ＊ 標示提醒實際訂票價可能差幾百元
-  const isEst = 'isEstimate' in data && data.isEstimate === true;
-  const priceText = `NT$ ${data.price.toLocaleString()}${isEst ? '＊' : ''}`;
-
-  // 目標價比較（per category）— 顯示目標價本身當錨點
-  const diff = data.price - maxPrice;
-  const diffPct = Math.round((Math.abs(diff) / maxPrice) * 100);
-  const isBelow = diff <= 0;
-  const diffAbs = Math.abs(diff).toLocaleString();
-  const targetStr = maxPrice.toLocaleString();
-  const thBase = isBelow
-    ? `比目標 NT$ ${targetStr} 低 NT$ ${diffAbs}（${diffPct}%）`
-    : `比目標 NT$ ${targetStr} 高 NT$ ${diffAbs}（${diffPct}%）`;
-  // vs 昨日 delta 加在目標價比較行尾（變化 < 1% 不顯示）
-  const deltaPct = data.vsPrevPct;
-  let deltaSegment = '';
-  if (deltaPct != null && Math.abs(deltaPct) >= 1) {
-    deltaSegment = deltaPct < 0 ? ` · 較昨日 ↓${Math.abs(deltaPct)}%` : ` · 較昨日 ↑${deltaPct}%`;
-  }
-  const thColor = isBelow ? '#22c55e' : '#94a3b8';
-
-  // Skyscanner 按鈕：依分類帶不同航司篩選
-  const category: AirlineCategory = 'airline' in data ? 'full-service' : 'lcc';
-  const skyscannerUrl = skyscannerUrlForCategory(category, origin, data.airport, outboundDate, returnDate);
-
-  return [
-    {
-      type: 'box',
-      layout: 'baseline',
-      margin: 'md',
-      contents: [
-        { type: 'text', text: labelText, size: 'sm', color: '#666666', flex: 5, wrap: false },
-        { type: 'text', text: priceText, size: 'md', weight: 'bold', color: priceColor, flex: 4, align: 'end' }
-      ]
-    },
-    {
-      type: 'text',
-      text: `${thBase}${deltaSegment}`,
-      size: 'xs',
-      color: thColor,
-      align: 'end',
-      margin: 'xs',
-      wrap: true
-    },
-    // Skyscanner 改成 iOS 風 text link，視覺輕量不跟 footer 大按鈕打架
-    {
-      type: 'text',
-      text: '🔗 用 Skyscanner 訂 ›',
-      size: 'xs',
-      color: '#0a84ff',  // iOS link blue
-      align: 'end',
-      margin: 'xs',
-      action: {
-        type: 'uri',
-        label: `用 Skyscanner 訂${label}`,
-        uri: skyscannerUrl
-      }
-    }
-  ];
-}
-
-/** Carousel 第 2~N 張：每筆訂閱一個 bubble（hero 動態渲染城市主題圖）*/
-function buildSubBubble(item: MultiSubsItem, sourceId: string): Record<string, unknown> {
-  const showAirport = item.cheapestAirport && item.cheapestAirport !== item.destination;
-  const destCity = getCity(item.destination);
-  const destLabel = showAirport
-    ? `${destCity} (${item.cheapestAirport})`
-    : formatAirport(item.destination);
-  const routeText = `${formatAirport(item.origin)} → ${destLabel}`;
-  // 單程：'📅 單程 02-04'；來回：'📅 02-04 ~ 04-04'
-  const dateText = item.returnDate
-    ? `📅 ${item.outboundDate.slice(5)} ~ ${item.returnDate.slice(5)}`
-    : `📅 單程 ${item.outboundDate.slice(5)}`;
-
-  // Header：路線 + 日期（大字一目了然，無 hero 重複問題）
-  const header = {
-    type: 'box',
-    layout: 'vertical',
-    backgroundColor: '#1c1c1e',
-    paddingAll: '14px',
-    contents: [
-      { type: 'text', text: routeText, weight: 'bold', size: 'md', color: '#ffffff', wrap: true },
-      { type: 'text', text: dateText, size: 'xs', color: '#94a3b8', margin: 'xs' }
-    ]
-  };
-
-  const bodyContents: Record<string, unknown>[] = [];
-  if (item.label) {
-    bodyContents.push({ type: 'text', text: `📝 ${item.label}`, size: 'xs', color: '#94a3b8' });
-  }
-
-  if (item.cheapestPrice == null) {
-    if (item.errorReason === 'quota-exhausted') {
-      // 系統問題：橘黃色，讓人看出跟「真的沒航班」不同
-      bodyContents.push(
-        { type: 'text', text: '⏸ 今日查詢額度暫滿', size: 'sm', color: '#f59e0b', weight: 'bold', margin: 'sm' },
-        { type: 'text', text: '明日會自動恢復查詢', size: 'xxs', color: '#94a3b8', margin: 'xs' }
-      );
-    } else {
-      // 真的沒匹配的航班
-      bodyContents.push(
-        { type: 'text', text: '❌ 此條件無符合航班', size: 'sm', color: '#cbd5e1', margin: 'sm' },
-        { type: 'text', text: '可試其他日期或機場', size: 'xxs', color: '#94a3b8', margin: 'xs' }
-      );
-    }
-  } else {
-    // 廉航：用主目標價 maxPrice
-    bodyContents.push(...buildCategoryRowsForBubble('✈️', '廉航', item.lcc, item.maxPrice, item.origin, item.outboundDate, item.returnDate));
-    // 兩段中間細分隔，視覺上分開
-    bodyContents.push({ type: 'separator', margin: 'md', color: '#e5e7eb' });
-    // 傳統：用 maxPriceTraditional 或 fallback 到 maxPrice
-    const tradTarget = item.maxPriceTraditional ?? item.maxPrice;
-    bodyContents.push(...buildCategoryRowsForBubble('✈️', '傳統', item.traditional, tradTarget, item.origin, item.outboundDate, item.returnDate));
-  }
-
-  const body = {
-    type: 'box',
-    layout: 'vertical',
-    spacing: 'xs',
-    contents: bodyContents
-  };
-
-  const footerContents: Record<string, unknown>[] = [];
-  if (item.cheapestPrice != null && item.cheapestCategory && item.cheapestAirport) {
-    // 看歷史走勢 postback — 單程訂閱 ret 給空字串（postback handler 需 decode 後再判斷）
-    const histData = new URLSearchParams({
-      a: 'h',
-      o: item.origin,
-      d: item.destination,
-      out: item.outboundDate,
-      ret: item.returnDate ?? '',
-      max: String(item.maxPrice),
-      cat: item.cheapestCategory,
-      win: item.cheapestAirport
-    }).toString();
-    footerContents.push({
-      type: 'button',
-      style: 'primary',
-      color: '#60a5fa',
-      height: 'sm',
-      action: {
-        type: 'postback',
-        label: '📊 看歷史走勢',
-        data: histData,
-        displayText: `查 ${item.origin}→${item.destination} 歷史走勢`
-      }
-    });
-    // Skyscanner 按鈕已移到 body 內每個分類底下
-    // 分享按鈕暫移除：liff.shareTargetPicker 在 LINE in-app browser 內仍判 isInClient false
-    // 原因疑似 LIFF channel scope 未配置 + LIFF auth flow 在 deep link 場景不穩。
-    // /liff/share 頁面保留，等之後重做時可用。
-  } else {
-    footerContents.push({
-      type: 'button',
-      style: 'secondary',
-      height: 'sm',
-      action: {
-        type: 'uri',
-        label: '📋 管理訂閱',
-        uri: subscriptionsUrlFor(sourceId)
-      }
-    });
-  }
-
-  return {
-    type: 'bubble',
-    size: 'kilo',
-    header,
-    body,
-    footer: {
-      type: 'box',
-      layout: 'vertical',
-      spacing: 'sm',
-      contents: footerContents
-    }
-  };
-}
 
 /**
  * 歷史走勢卡片（postback 觸發）— 一張 LINE 內顯示的價格走勢，不開瀏覽器。
