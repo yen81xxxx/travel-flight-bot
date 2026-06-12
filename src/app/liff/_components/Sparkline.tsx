@@ -51,13 +51,21 @@ export function Sparkline({ history, color, width = 76, height = 30 }: Props): R
   const area = `${line} L${width} ${height} L0 ${height} Z`;
   const gid = 'spark' + reactId.replace(/:/g, '');
 
+  // PR #21 a11y（手冊 §4.6a）：金融圖表不能 visual-only — role="img" + 資料摘要，
+  // screen reader 聽得到趨勢方向跟關鍵數字，不是只有一個形狀。
+  const first = prices[0];
+  const last = prices[prices.length - 1];
+  const dir = last < first ? '下降' : last > first ? '上升' : '持平';
+  const ariaLabel = `近期價格走勢${dir}，最低 NT$${min.toLocaleString()}，目前 NT$${last.toLocaleString()}`;
+
   return (
     <svg
       width={width}
       height={height}
       viewBox={`0 0 ${width} ${height}`}
       style={{ display: 'block', overflow: 'visible' }}
-      aria-hidden="true"
+      role="img"
+      aria-label={ariaLabel}
       data-testid="sparkline"
     >
       <defs>

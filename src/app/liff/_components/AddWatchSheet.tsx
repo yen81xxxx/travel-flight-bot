@@ -83,6 +83,8 @@ export function AddWatchSheet({
   // === submit state ===
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // PR #21 (§4.9): 成功後不默默關 sheet — 顯示 calm state（勾選描邊 + 接下來會發生什麼）
+  const [done, setDone] = useState(false);
 
   // 每次 open 重置（避免上次殘留）+ 開啟時帶當下 defaultNotifyTarget
   // PR #19: prefillRoute 有值時套用（EmptyOnboarding 熱門航線 quick-start）
@@ -90,6 +92,7 @@ export function AddWatchSheet({
     if (open) {
       setError(null);
       setPreview(null);
+      setDone(false);
       setNotifyTarget(defaultNotifyTarget);
       if (prefillRoute) {
         setOrigin(prefillRoute.o);
@@ -177,7 +180,8 @@ export function AddWatchSheet({
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || '建立失敗');
       onCreated?.();
-      onClose();
+      // PR #21 (§4.9): 不默默關 — 切到 calm 成功畫面，user 自己按「完成」關
+      setDone(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -187,7 +191,42 @@ export function AddWatchSheet({
 
   return (
     <BottomSheet open={open} onClose={onClose} title="新增追蹤" subtitle="設定一條路線開始監控降價">
-      {!sourceId ? (
+      {done ? (
+        /* PR #21 (§4.9): add-success calm state — 勾選描邊動畫 + 接下來會發生什麼 + 完成鈕。
+           動畫全 gate prefers-reduced-motion（reduce → 瞬間顯示，CSS 處理）。 */
+        <div className="add-success" data-testid="add-success">
+          <div className="succ-check" aria-hidden="true">
+            <svg viewBox="0 0 52 52" width="72" height="72" style={{ overflow: 'visible' }}>
+              <circle className="succ-ring" cx="26" cy="26" r="24" />
+              <path className="succ-tick" d="M15 27 L23 35 L38 18" />
+            </svg>
+          </div>
+          <div className="succ-title">開始追蹤了</div>
+          <div className="succ-route">
+            {origin}
+            <Icon name="airplane" size={15} style={{ transform: 'rotate(90deg)', color: 'var(--ios-green)' }} />
+            {destination}
+          </div>
+          <div className="succ-next">
+            <div className="succ-next-row">
+              <div className="succ-ni"><Icon name="chartLine" size={16} stroke={1.9} /></div>
+              <span>我們會每天記錄這條航線的價格</span>
+            </div>
+            <div className="succ-next-row">
+              <div className="succ-ni"><Icon name="target" size={16} stroke={1.9} /></div>
+              <span>目標價 <strong className="tnum">NT${parseInt(maxPriceStr || '0', 10).toLocaleString()}</strong>，跌破就通知</span>
+            </div>
+            <div className="succ-next-row">
+              <div className="succ-ni"><Icon name="bellRing" size={16} stroke={1.9} /></div>
+              <span>達標時 LINE 立刻通知你</span>
+            </div>
+          </div>
+          <button type="button" className="succ-done pressable" onClick={onClose} data-testid="add-success-done">
+            <Icon name="check" size={18} stroke={2.3} />
+            完成
+          </button>
+        </div>
+      ) : !sourceId ? (
         <div className="hint">需要先登入 LINE 才能建立追蹤。</div>
       ) : (
         <>
@@ -350,6 +389,105 @@ export function AddWatchSheet({
 
       <style jsx>{`
         .hint { padding: 32px 8px; text-align: center; color: var(--ios-label-2); }
+        /* ---- PR #21 add-success calm state (§4.9) ---- */
+        .add-success {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          gap: 14px;
+          padding: 28px 18px 12px;
+        }
+        .succ-check { width: 72px; height: 72px; }
+        .add-success :global(.succ-ring) {
+          fill: rgba(48, 209, 88, 0.12);
+          stroke: var(--ios-green);
+          stroke-width: 2.5;
+          stroke-dasharray: 151;
+          stroke-dashoffset: 151;
+          animation: succ-ring-draw 0.5s cubic-bezier(0.25, 0.9, 0.35, 1) forwards;
+        }
+        .add-success :global(.succ-tick) {
+          fill: none;
+          stroke: var(--ios-green);
+          stroke-width: 4;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+          stroke-dasharray: 44;
+          stroke-dashoffset: 44;
+          animation: succ-tick-draw 0.32s cubic-bezier(0.5, 0, 0.5, 1) 0.42s forwards;
+        }
+        @keyframes succ-ring-draw { to { stroke-dashoffset: 0; } }
+        @keyframes succ-tick-draw { to { stroke-dashoffset: 0; } }
+        .succ-title {
+          font-size: 21px;
+          font-weight: 800;
+          color: var(--ios-label);
+          letter-spacing: -0.4px;
+        }
+        .succ-route {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          font-size: 15px;
+          font-weight: 600;
+          color: var(--ios-label);
+          font-family: var(--mono);
+        }
+        .succ-next {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          width: 100%;
+          background: var(--ios-fill-3);
+          border-radius: 14px;
+          padding: 14px;
+          text-align: left;
+        }
+        .succ-next-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-size: 13px;
+          color: var(--ios-label-2);
+        }
+        .succ-next-row strong { color: var(--ios-label); }
+        .succ-ni {
+          width: 30px;
+          height: 30px;
+          border-radius: 9px;
+          background: rgba(48, 209, 88, 0.14);
+          color: var(--ios-green);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .succ-done {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+          width: 100%;
+          min-height: 44px;
+          background: var(--ios-green);
+          color: #06351a;
+          border: none;
+          border-radius: 12px;
+          padding: 13px;
+          font-family: inherit;
+          font-size: 15px;
+          font-weight: 700;
+          cursor: pointer;
+          margin-top: 4px;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .add-success :global(.succ-ring),
+          .add-success :global(.succ-tick) {
+            animation: none;
+            stroke-dashoffset: 0;
+          }
+        }
         .route-pass {
           display: flex;
           align-items: center;

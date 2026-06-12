@@ -144,6 +144,7 @@ export function BottomSheet({ open, onClose, title, subtitle, headerRight, child
           background: var(--ios-fill-2);
           border: none;
           color: var(--ios-label);
+          /* PR #21 §4.6a: tap target ≥44px（視覺圓仍 30px，點擊範圍用 padding 撐大） */
           width: 30px;
           height: 30px;
           border-radius: 50%;
@@ -151,6 +152,9 @@ export function BottomSheet({ open, onClose, title, subtitle, headerRight, child
           align-items: center;
           justify-content: center;
           cursor: pointer;
+          box-sizing: content-box;
+          padding: 7px;
+          background-clip: content-box;
         }
         .sheet-body {
           padding: 14px 16px 28px;

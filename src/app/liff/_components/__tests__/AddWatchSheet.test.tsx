@@ -91,7 +91,7 @@ describe('AddWatchSheet', () => {
     });
     const onCreated = jest.fn();
     const onClose = jest.fn();
-    const { getByLabelText, getByText } = render(
+    const { getByLabelText, getByText, findByTestId } = render(
       <AddWatchSheet open={true} onClose={onClose} userId="Uabc" groupCtxId={null} onCreated={onCreated} />
     );
     fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
@@ -109,7 +109,31 @@ describe('AddWatchSheet', () => {
       expect(body.returnDate).toBe('2026-09-05');
     });
     expect(onCreated).toHaveBeenCalled();
+    // PR #21 (§4.9): 成功後不再默默關 — 顯示 calm state，user 按「完成」才關
+    expect(onClose).not.toHaveBeenCalled();
+    const success = await findByTestId('add-success');
+    expect(success).toBeInTheDocument();
+    fireEvent.click(await findByTestId('add-success-done'));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('add-success calm state → 顯示路線 + 目標價 + 接下來 3 行（PR #21 §4.9）', async () => {
+    (global.fetch as unknown as jest.Mock).mockResolvedValueOnce({
+      json: () => Promise.resolve({ ok: true, action: 'created' })
+    });
+    const { getByLabelText, getByText, findByTestId, container } = render(
+      <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
+    );
+    fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
+    fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
+    const amount = document.querySelector('input[placeholder="例：12800"]') as HTMLInputElement;
+    fireEvent.change(amount, { target: { value: '13000' } });
+    fireEvent.click(getByText('開始追蹤'));
+    await findByTestId('add-success');
+    expect(container.textContent).toContain('開始追蹤了');
+    expect(container.textContent).toContain('13,000');           // 目標價
+    expect(container.textContent).toContain('每天記錄');          // 接下來 3 行
+    expect(container.textContent).toContain('LINE 立刻通知');
   });
 
   it('單程模式 → 隱藏回程 + POST body 不含 returnDate', async () => {
