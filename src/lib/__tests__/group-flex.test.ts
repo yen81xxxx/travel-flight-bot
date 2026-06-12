@@ -107,6 +107,18 @@ describe('buildGroupAlertFlex', () => {
     expect(footerJson).toContain('ctx=Cabc');
   });
 
+  // R4-C: 量測 — 我也要追的 URL 帶 src=group-alert（LIFF 端據此記點擊）；
+  // 主按鈕不帶（只量 viral CTA，不混入一般開卡）
+  it('「我也要追」URL 帶 src=group-alert；主按鈕不帶', () => {
+    const f = buildGroupAlertFlex(base);
+    const btns = (f.contents.footer as { contents: { action: { label: string; uri: string } }[] }).contents;
+    const joinBtn = btns.find(b => b.action.label === '我也要追')!;
+    const primaryBtn = btns.find(b => b.action.label !== '我也要追')!;
+    expect(joinBtn.action.uri).toContain('src=group-alert');
+    expect(joinBtn.action.uri).toContain('ctx=');
+    expect(primaryBtn.action.uri).not.toContain('src=');
+  });
+
   it('單程 (returnDate=null) → body 顯示「單程 YYYY-MM-DD」', () => {
     const f = buildGroupAlertFlex({ ...base, returnDate: null });
     const bodyJson = JSON.stringify(f.contents.body);

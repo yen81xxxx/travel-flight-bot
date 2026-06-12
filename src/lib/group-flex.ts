@@ -52,12 +52,13 @@ export interface GroupAlertFlexProps {
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://travel-flight-bot.vercel.app';
 const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID ?? '';
 
-/** group 內看的詳細頁 deep link — 帶 ?ctx= 讓 watchlist 知道是哪個群組情境 */
-function buildLiffUrl(groupId: string): string {
-  const ctxQS = `?ctx=${encodeURIComponent(groupId)}`;
+/** group 內看的詳細頁 deep link — 帶 ?ctx= 讓 watchlist 知道是哪個群組情境
+ *  R4-C: 可加 src 標記（量測用 — LIFF 端讀到後 POST /api/track 記一筆） */
+function buildLiffUrl(groupId: string, src?: string): string {
+  const qs = `?ctx=${encodeURIComponent(groupId)}${src ? `&src=${encodeURIComponent(src)}` : ''}`;
   return LIFF_ID
-    ? `https://liff.line.me/${LIFF_ID}${ctxQS}`
-    : `${APP_URL}/liff${ctxQS}`;
+    ? `https://liff.line.me/${LIFF_ID}${qs}`
+    : `${APP_URL}/liff${qs}`;
 }
 
 /**
@@ -237,13 +238,14 @@ export function buildGroupAlertFlex(props: GroupAlertFlexProps) {
           {
             // 病毒擴散按鈕：群組其他成員看到後一鍵也加入
             // L1: secondary（淺灰底）在深色卡上太突兀 → link style（ghost）
+            // R4-C: 帶 src=group-alert — 量測這顆按鈕到底有沒有人按（病毒假設指南針）
             type: 'button',
             style: 'link',
             height: 'sm',
             action: {
               type: 'uri',
               label: '我也要追',
-              uri: liffUrl
+              uri: buildLiffUrl(props.groupId, 'group-alert')
             }
           }
         ]
