@@ -5,7 +5,7 @@ import { searchFlights } from './serpapi';
 import { analyzeFlights, formatAnalysisForLine } from './flights';
 import { getSupabase } from './supabase';
 import { buildHistoryFlex } from './flex-message';
-import { getAirlineCodesByCategory, getAirlineCategory, type AirlineCategory } from '@/config/airlines';
+import { getAirlineCategory, type AirlineCategory } from '@/config/airlines';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://travel-flight-bot.vercel.app';
 
@@ -133,9 +133,7 @@ async function handlePostback(event: WebhookEvent): Promise<void> {
       Array.from(m.entries()).map(([date, minPrice]) => ({ date, minPrice }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
-    // Skyscanner URL（用勝出機場 + 勝出分類）
-    const skyscannerUrl = buildSkyscannerUrlForCategory(cat, origin, winAirport, outboundDate, returnDate);
-
+    // R4-A: 新歷史卡單一 CTA（打開 Travl）— Skyscanner 留在達標卡（spec A4/C）
     const flex = buildHistoryFlex({
       origin,
       destination,
@@ -143,8 +141,7 @@ async function handlePostback(event: WebhookEvent): Promise<void> {
       returnDate,
       lccPoints: sortByDate(lccByDay),
       tradPoints: sortByDate(tradByDay),
-      threshold: Number(max),
-      skyscannerUrl
+      threshold: Number(max)
     });
     await replyFlex(replyToken, flex);
   } catch (err) {
@@ -208,34 +205,6 @@ async function fetchHistoryByCategory(
       .sort((a, b) => a.date.localeCompare(b.date));
 
   return { lcc: toPoints(lccByDay), traditional: toPoints(tradByDay) };
-}
-
-/**
- * 跟 flex-message.ts 的 skyscannerUrlForCategory 同邏輯，但 bot-handler 需要獨立呼叫。
- * 抽出來避免 flex-message export 太多內部 helper。
- */
-function buildSkyscannerUrlForCategory(
-  category: AirlineCategory,
-  origin: string,
-  destination: string,
-  outboundDate: string,
-  returnDate: string
-): string {
-  const codes = getAirlineCodesByCategory(category).join(',');
-  const params = new URLSearchParams({
-    origin,
-    destination,
-    outboundDate,
-    inboundDate: returnDate,
-    adultsv2: '1',
-    locale: 'zh-TW',
-    market: 'TW',
-    currency: 'TWD',
-    preferDirects: 'true',
-    cabinclass: 'economy'
-  });
-  if (codes) params.set('airlines', codes);
-  return `https://skyscanner.net/g/referrals/v1/flights/day-view/?${params.toString()}`;
 }
 
 export async function handleEvent(event: WebhookEvent): Promise<void> {

@@ -2,13 +2,13 @@ import { getSupabase } from './supabase';
 import { searchFlights, AllKeysExhaustedError } from './serpapi';
 import { analyzeFlights } from './flights';
 import { pushText } from './line';
-import { buildAlertFlex, deriveCarrierDisplay } from './flex-message';
+import { buildAlertFlex, deriveCarrierDisplay, VERDICT_FLEX_META } from './flex-message';
 import { buildGroupAlertFlex } from './group-flex';
 import { fetchPushIntel } from './push-intel';
 import type { Verdict } from '@/app/liff/_lib/priceIntel';
 import { isCoveredByGroupAlert, buildMembershipMap } from './dedupe-alerts';
 import { getLineClient } from './line';
-import { formatAirport, getCityAirports } from '@/config/airports';
+import { getCity, getCityAirports } from '@/config/airports';
 import type { Subscription } from '@/types';
 
 interface CheckResult {
@@ -316,13 +316,19 @@ async function sendAlert(
   // G4: source_type='group' → 改 push group flex（紫色 + N 人在追 + 投票領先 + LIFF deep link）
   const isGroupAlert = sub.source_type === 'group' && sub.id != null;
 
-  try {
-    // L1: 推播當下用同一顆 priceIntel 算 verdict（LINE_SURFACE_SPEC §E parity）。
-    // fetchPushIntel 內部已 try/catch — 失敗回 {intel:null,...}，推播照發只少 badge。
-    const pushIntel = await fetchPushIntel(getSupabase(), sub, cheapest);
-    const verdict: Verdict | null =
-      pushIntel.intel?.status === 'ready' ? pushIntel.intel.verdict : null;
+  // L1: 推播當下用同一顆 priceIntel 算 verdict（LINE_SURFACE_SPEC §E parity）。
+  // fetchPushIntel 內部已 try/catch — 失敗回 {intel:null,...}，推播照發只少 badge。
+  // R4-A: 移到 try 外 — 文字 fallback（A5）也要用 verdict/delta/carrier。
+  const pushIntel = await fetchPushIntel(getSupabase(), sub, cheapest);
+  const verdict: Verdict | null =
+    pushIntel.intel?.status === 'ready' ? pushIntel.intel.verdict : null;
+  const carrier = deriveCarrierDisplay(
+    analysis.lccCombo,
+    analysis.traditionalRoundTrip,
+    analysis.cheapestAirline
+  );
 
+  try {
     let flex: object;
     if (isGroupAlert) {
       flex = await buildGroupFlexForSub(sub, cheapest, airline, outboundDate, returnDate, verdict);
@@ -339,11 +345,7 @@ async function sendAlert(
         verdict,
         deltaPct: pushIntel.deltaPct,
         dailyMins: pushIntel.dailyMins,
-        carrier: deriveCarrierDisplay(
-          analysis.lccCombo,
-          analysis.traditionalRoundTrip,
-          analysis.cheapestAirline
-        )
+        carrier
       });
     }
     const client = getLineClient();
@@ -362,7 +364,13 @@ async function sendAlert(
     } else {
       console.warn('[sub-checker] flex push failed, falling back to text:', e);
     }
-    await pushText(sub.source_id, formatAlertText(sub, cheapest, outboundDate, returnDate, airline));
+    await pushText(sub.source_id, formatAlertText(sub, cheapest, outboundDate, returnDate, {
+      verdict,
+      deltaPct: pushIntel.deltaPct,
+      carrier,
+      isRecentLow: pushIntel.dailyMins.length > 0 && cheapest <= Math.min(...pushIntel.dailyMins),
+      fallbackAirline: airline
+    }));
   }
 }
 
@@ -430,24 +438,66 @@ async function buildGroupFlexForSub(
   });
 }
 
-function formatAlertText(
+/** R4-A: 文字 fallback 的 LIFF 連結 — 同 group-flex buildLiffUrl 模式 */
+function alertLiffUrl(): string {
+  const liffId = process.env.NEXT_PUBLIC_LIFF_ID?.trim();
+  if (liffId) return `https://liff.line.me/${liffId}`;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://travel-flight-bot.vercel.app';
+  return `${appUrl}/liff`;
+}
+
+interface AlertTextExtras {
+  verdict: Verdict | null;
+  deltaPct: number | null;
+  carrier: { tag: 'lcc' | 'trad' | null; line: string } | null;
+  isRecentLow: boolean;
+  fallbackAirline: string;
+}
+
+/**
+ * R4-A: 純文字備援訊息（配額爆掉 / flex 失敗時）— LINE_SURFACE_SPEC §A5。
+ * 零 emoji、【】+ ▶/↓ glyph 結構、verdict 用詞跟 Flex/LIFF 一字不差。
+ * 日期維持 ISO 8601（專案慣例；A5 範本的 2/04 簡式不採 — 全產品同格式）。
+ *
+ * exported for tests。
+ */
+export function formatAlertText(
   sub: Subscription,
   cheapest: number,
   outboundDate: string,
   returnDate: string | undefined,  // 單程訂閱無 returnDate
-  airline: string
+  extras: AlertTextExtras
 ): string {
+  const threshold = Number(sub.max_price);
+  const verdictLabel = extras.verdict ? VERDICT_FLEX_META[extras.verdict].label : null;
+  const header = verdictLabel ? `【價格達標・${verdictLabel}】` : '【價格達標】';
+
+  const dates = returnDate ? `${outboundDate} ~ ${returnDate}` : `單程 ${outboundDate}`;
+  const routeLine = `${getCity(sub.origin)} → ${getCity(sub.destination)}  ${sub.origin}→${sub.destination}  ${dates}`;
+
+  const carrierStr = extras.carrier
+    ? `（${extras.carrier.tag === 'lcc' ? '廉航 ' : extras.carrier.tag === 'trad' ? '傳統 ' : ''}${extras.carrier.line}）`
+    : `（${extras.fallbackAirline}）`;
+  const priceLine = `目前最低 NT$${cheapest.toLocaleString()}${carrierStr}`;
+
+  // 目標價句：<1% 邊界沿用「達到」語氣（同 flex 卡）；delta 標明基準（較上週）
+  const drop = threshold - cheapest;
+  const dropPct = Math.round((drop / threshold) * 100);
+  const targetClause = dropPct < 1
+    ? `達到你的目標價 NT$${threshold.toLocaleString()}`
+    : `已跌破你的目標價 NT$${threshold.toLocaleString()}`;
+  const clauses = [targetClause];
+  if (extras.deltaPct != null && Math.abs(extras.deltaPct) >= 0.05) {
+    clauses.push(`較上週 ${extras.deltaPct < 0 ? '↓' : '↑'}${Math.abs(extras.deltaPct)}%`);
+  }
+  if (extras.isRecentLow) clauses.push('近 30 天最低');
+
   return [
-    '🔔 降價通知！',
-    '',
-    `✈️ ${formatAirport(sub.origin)} → ${formatAirport(sub.destination)}`,
-    returnDate ? `📅 ${outboundDate} ~ ${returnDate}` : `📅 單程 ${outboundDate}`,
-    '',
-    `💰 目前最低：NT$ ${cheapest.toLocaleString()}`,
-    `🎯 你的門檻：NT$ ${Number(sub.max_price).toLocaleString()}`,
-    `🏢 主推航空：${airline}`,
-    '',
-    '輸入「我的訂閱」可管理'
+    header,
+    routeLine,
+    priceLine,
+    `${clauses.join('，')}。`,
+    `看走勢與航班 ▶ ${alertLiffUrl()}`
   ].join('\n');
 }
 
