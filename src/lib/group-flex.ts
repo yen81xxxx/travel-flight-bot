@@ -15,6 +15,8 @@
  * 純函數 0 副作用 — 把它跟「實際 push」分開測（測 JSON 結構即可）。
  */
 import { formatAirport } from '@/config/airports';
+import { FLEX_DARK, VERDICT_FLEX_META } from './flex-message';
+import type { Verdict } from '@/app/liff/_lib/priceIntel';
 
 export interface GroupAlertFlexProps {
   origin: string;
@@ -43,6 +45,8 @@ export interface GroupAlertFlexProps {
     ret_date: string | null;
     voteCount: number;
   } | null;
+  /** L1: priceIntel verdict（與 LIFF / 個人推播同引擎）；null = 不顯示 badge */
+  verdict?: Verdict | null;
 }
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://travel-flight-bot.vercel.app';
@@ -81,22 +85,24 @@ export function buildGroupAlertFlex(props: GroupAlertFlexProps) {
   const memberPreview = formatMemberPreview(props.topMemberNames);
   const liffUrl = buildLiffUrl(props.groupId);
 
-  // body 的 row 動態組（有投票領先才加那行 row）
+  // L1: body 轉深色（LINE_SURFACE_SPEC §A — 三種推播卡同語言：深底 #1b1b1f）
+  // 紫 accent 保留（群組語意），灰階換成 dark 版 soft/faint
   const bodyRows: object[] = [
     {
       type: 'text',
       text: `${formatAirport(props.origin)} → ${formatAirport(props.destination)}`,
       weight: 'bold',
       size: 'md',
+      color: FLEX_DARK.text,
       wrap: true
     },
     {
       type: 'text',
       text: dateRange,
       size: 'sm',
-      color: '#999999'
+      color: FLEX_DARK.faint
     },
-    { type: 'separator', margin: 'md' },
+    { type: 'separator', margin: 'md', color: '#3a3a3e' },
     {
       type: 'box',
       layout: 'horizontal',
@@ -106,7 +112,7 @@ export function buildGroupAlertFlex(props: GroupAlertFlexProps) {
           type: 'text',
           text: '目前最低',
           size: 'sm',
-          color: '#666666',
+          color: FLEX_DARK.soft,
           flex: 0
         },
         {
@@ -115,7 +121,7 @@ export function buildGroupAlertFlex(props: GroupAlertFlexProps) {
           weight: 'bold',
           size: 'lg',
           align: 'end',
-          color: '#bf5af2'  // purple
+          color: FLEX_DARK.text
         }
       ]
     },
@@ -130,9 +136,9 @@ export function buildGroupAlertFlex(props: GroupAlertFlexProps) {
       type: 'text',
       text: `航司：${props.airline}`,
       size: 'xs',
-      color: '#999999'
+      color: FLEX_DARK.soft
     },
-    { type: 'separator', margin: 'md' },
+    { type: 'separator', margin: 'md', color: '#3a3a3e' },
     {
       type: 'text',
       text: `${props.memberCount} 人在追${memberPreview ? `（${memberPreview}）` : ''}`,
@@ -152,10 +158,13 @@ export function buildGroupAlertFlex(props: GroupAlertFlexProps) {
       type: 'text',
       text: `投票領先：${voteDateRange}（${props.topVote.voteCount} 票）`,
       size: 'xs',
-      color: '#999999',
+      color: FLEX_DARK.soft,
       wrap: true
     });
   }
+
+  // L1: verdict badge（同 priceIntel 引擎 — 推播與 LIFF 永不打架）
+  const verdictMeta = props.verdict ? VERDICT_FLEX_META[props.verdict] : null;
 
   return {
     type: 'flex',
@@ -165,15 +174,38 @@ export function buildGroupAlertFlex(props: GroupAlertFlexProps) {
       size: 'kilo',
       header: {
         type: 'box',
-        layout: 'vertical',
+        layout: 'horizontal',
+        alignItems: 'center',
         contents: [
           {
             type: 'text',
             text: title,
             weight: 'bold',
-            size: 'lg',
-            color: '#ffffff'
-          }
+            size: 'md',
+            color: '#ffffff',
+            flex: 1
+          },
+          ...(verdictMeta
+            ? [{
+                type: 'box',
+                layout: 'vertical',
+                flex: 0,
+                backgroundColor: verdictMeta.bg,
+                cornerRadius: '999px',
+                paddingAll: '4px',
+                paddingStart: '10px',
+                paddingEnd: '10px',
+                contents: [
+                  {
+                    type: 'text',
+                    text: verdictMeta.label,
+                    size: 'xxs',
+                    weight: 'bold',
+                    color: verdictMeta.fg
+                  }
+                ]
+              }]
+            : [])
         ],
         backgroundColor: '#bf5af2',
         paddingAll: '16px'
@@ -182,12 +214,14 @@ export function buildGroupAlertFlex(props: GroupAlertFlexProps) {
         type: 'box',
         layout: 'vertical',
         spacing: 'sm',
+        backgroundColor: FLEX_DARK.cardBg,
         contents: bodyRows
       },
       footer: {
         type: 'box',
         layout: 'vertical',
         spacing: 'sm',
+        backgroundColor: FLEX_DARK.cardBg,
         contents: [
           {
             type: 'button',
@@ -202,8 +236,9 @@ export function buildGroupAlertFlex(props: GroupAlertFlexProps) {
           },
           {
             // 病毒擴散按鈕：群組其他成員看到後一鍵也加入
+            // L1: secondary（淺灰底）在深色卡上太突兀 → link style（ghost）
             type: 'button',
-            style: 'secondary',
+            style: 'link',
             height: 'sm',
             action: {
               type: 'uri',

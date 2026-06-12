@@ -2,8 +2,10 @@ import { getSupabase } from './supabase';
 import { searchFlights, AllKeysExhaustedError } from './serpapi';
 import { analyzeFlights } from './flights';
 import { pushText } from './line';
-import { buildAlertFlex } from './flex-message';
+import { buildAlertFlex, deriveCarrierDisplay } from './flex-message';
 import { buildGroupAlertFlex } from './group-flex';
+import { fetchPushIntel } from './push-intel';
+import type { Verdict } from '@/app/liff/_lib/priceIntel';
 import { isCoveredByGroupAlert, buildMembershipMap } from './dedupe-alerts';
 import { getLineClient } from './line';
 import { formatAirport, getCityAirports } from '@/config/airports';
@@ -315,9 +317,15 @@ async function sendAlert(
   const isGroupAlert = sub.source_type === 'group' && sub.id != null;
 
   try {
+    // L1: 推播當下用同一顆 priceIntel 算 verdict（LINE_SURFACE_SPEC §E parity）。
+    // fetchPushIntel 內部已 try/catch — 失敗回 {intel:null,...}，推播照發只少 badge。
+    const pushIntel = await fetchPushIntel(getSupabase(), sub, cheapest);
+    const verdict: Verdict | null =
+      pushIntel.intel?.status === 'ready' ? pushIntel.intel.verdict : null;
+
     let flex: object;
     if (isGroupAlert) {
-      flex = await buildGroupFlexForSub(sub, cheapest, airline, outboundDate, returnDate);
+      flex = await buildGroupFlexForSub(sub, cheapest, airline, outboundDate, returnDate, verdict);
     } else {
       flex = buildAlertFlex({
         origin: sub.origin,
@@ -327,7 +335,15 @@ async function sendAlert(
         cheapestPrice: cheapest,
         threshold: Number(sub.max_price),
         airline,
-        sourceId: sub.source_id
+        sourceId: sub.source_id,
+        verdict,
+        deltaPct: pushIntel.deltaPct,
+        dailyMins: pushIntel.dailyMins,
+        carrier: deriveCarrierDisplay(
+          analysis.lccCombo,
+          analysis.traditionalRoundTrip,
+          analysis.cheapestAirline
+        )
       });
     }
     const client = getLineClient();
@@ -359,7 +375,8 @@ async function buildGroupFlexForSub(
   cheapest: number,
   airline: string,
   outboundDate: string,
-  returnDate: string | undefined
+  returnDate: string | undefined,
+  verdict: Verdict | null = null  // L1: priceIntel verdict（sendAlert 算好傳入）
 ): Promise<object> {
   const { getSupabase } = await import('./supabase');
   const supabase = getSupabase();
@@ -408,7 +425,8 @@ async function buildGroupFlexForSub(
     subscriptionId: sub.id!,
     memberCount: memberRows.length,
     topMemberNames,
-    topVote
+    topVote,
+    verdict
   });
 }
 
