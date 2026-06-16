@@ -19,7 +19,15 @@ export function getSupabase(): SupabaseClient {
   }
 
   cachedClient = createClient(url, serviceKey, {
-    auth: { persistSession: false }
+    auth: { persistSession: false },
+    global: {
+      // ⚠️ 關鍵：Next.js App Router 預設會把 GET fetch 存進 Data Cache。
+      // supabase-js 的 select() 底層就是 GET → 同一個 query URL 在寫入後仍回傳
+      // 快取的舊資料（刪除/編輯後 with-quotes 還看得到舊訂閱、卡片跑回來）。
+      // route 的 dynamic='force-dynamic' 擋不到 supabase 內部這層 fetch。
+      // 強制 no-store → 每次查詢都打到 DB 拿最新，杜絕 stale read。
+      fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' })
+    }
   });
   return cachedClient;
 }
