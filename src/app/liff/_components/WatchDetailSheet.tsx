@@ -61,6 +61,8 @@ interface Props {
   userId?: string | null;
   /** 編輯 / 刪除成功後 caller 重新撈 list */
   onMutated?: () => void;
+  /** 刪除成功 → caller 立刻把這筆從畫面移除（樂觀更新，不等 refetch） */
+  onDeleted?: (id: number) => void;
 }
 
 interface GroupMember {
@@ -80,7 +82,7 @@ interface DateOption {
 
 const ntFmt = (n: number | null | undefined): string => n != null ? n.toLocaleString() : '—';
 
-export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutated }: Props): React.ReactElement {
+export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutated, onDeleted }: Props): React.ReactElement {
   // === edit state（每次 open / watch 改變時從 watch 帶進來）===
   const [maxPriceStr, setMaxPriceStr] = useState('');
   const [tradEnabled, setTradEnabled] = useState(false);
@@ -471,6 +473,9 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
       );
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || '刪除失敗');
+      // 樂觀移除：先把卡片從畫面拿掉（不等 refetch），再 refetch 對齊 server，最後關 sheet。
+      // 解決「刪了卡片還在」— 之前只靠 refetch，遇到快取/時序就感覺沒作用。
+      if (watch.id != null) onDeleted?.(watch.id);
       onMutated?.();
       onClose();
     } catch (e) {
