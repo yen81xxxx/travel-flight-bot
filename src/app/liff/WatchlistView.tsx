@@ -92,7 +92,7 @@ export default function WatchlistView({ liffId }: Props) {
 
   // 群組 ctx 處理 — 跟既有 SubscriptionsViewV2 同模式（URL ?ctx= → sessionStorage + localStorage）
   const [groupCtxId, setGroupCtxId] = useSessionStorage<string | null>('liff_ctx', null);
-  const { ctxs: knownGroupCtxs, add: addKnownGroupCtx } = useKnownGroupCtxs();
+  const { ctxs: knownGroupCtxs, add: addKnownGroupCtx, prune: pruneKnownGroupCtx } = useKnownGroupCtxs();
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -104,7 +104,7 @@ export default function WatchlistView({ liffId }: Props) {
     }
   }, [setGroupCtxId, addKnownGroupCtx]);
 
-  const { watches, loading, error, refetch, removeWatch } = useWatchlist(sourceId, knownGroupCtxs);
+  const { watches, loading, error, refetch, removeWatch } = useWatchlist(sourceId, knownGroupCtxs, pruneKnownGroupCtx);
 
   // T1 主題：resolved 掛到根元素 data-theme（dark 時也掛 — 顯式比隱式好查）
   const { mode: themeMode, resolved: themeResolved, setMode: setThemeMode } = useTheme();

@@ -4,9 +4,14 @@
  * G3 範圍：
  *   - GET   → 列出該 group watch 的所有 date options + 每個 option 的 voters + caller 的 myVote
  *   - POST  → body.action 分流：
- *              'add-option'    建立者新增日期選項（如已存在同日期，靜默成功）
+ *              'add-option'    member 新增日期選項（如已存在同日期，靜默成功）
  *              'vote'          投票 / 換票（UNIQUE 走 upsert）
- *              'remove-option' 創建者收回某個選項（任何 member 都能加但只能 remove 自己加的）
+ *              'remove-option' member 移除某個選項（任何成員都能移除任何選項 — 共享投票
+ *                              的 KISS 設計；移除會連同該選項的票一起 CASCADE 刪掉）
+ *
+ * ⚠️ 注意：date_option 沒有 creator 欄位，所以「只能刪自己加的」無法強制（也非
+ *    本意）。三個 action 都要求 caller 是 group_member（見下方 membership gate），
+ *    外人無法亂動。若日後要改成「只有創建者能刪」需先加 created_by_user_id 欄位。
  *
  * Schema (G0 migration 已建):
  *   date_option(id, subscription_id, out_date, ret_date)  UNIQUE(sub_id, out_date, ret_date)
