@@ -243,7 +243,7 @@ async function safePush(sourceId: string, text: string): Promise<void> {
  */
 // schema + payload builder 抽到 ./schema.ts 方便單測（避免把 Next.js server runtime
 // 拉進 jest 環境造成 Request is not defined 錯誤）
-import { PatchBody, buildPatchUpdatePayload } from './schema';
+import { PatchBody, buildPatchUpdatePayload, mutationResult } from './schema';
 export async function PATCH(req: NextRequest): Promise<NextResponse> {
   let body: z.infer<typeof PatchBody>;
   try {
@@ -259,15 +259,17 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: false, error: 'no fields to update' }, { status: 400 });
   }
 
-  const { error } = await supabase
+  // `.select()` 讓我們拿回實際被改的列 — Supabase 對「0 列符合 filter」不會 error，
+  // 沒有這個檢查就會在 id/sourceId 對不上時假裝成功（使用者看到「已儲存」但什麼都沒存）。
+  const { data, error } = await supabase
     .from('subscriptions')
     .update(update)
     .eq('id', body.id)
-    .eq('source_id', body.sourceId);
+    .eq('source_id', body.sourceId)
+    .select('id');
 
-  if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  }
+  const r = mutationResult(data, error);
+  if (!r.ok) return NextResponse.json({ ok: false, error: r.error }, { status: r.status });
   return NextResponse.json({ ok: true });
 }
 
@@ -287,15 +289,19 @@ export async function DELETE(req: NextRequest): Promise<NextResponse> {
   }
 
   const supabase = getSupabase();
-  const { error } = await supabase
+  // `.select()` 確認真的軟刪到列 — Supabase 對「0 列符合」回 error:null，
+  // 沒這個檢查就會在 id/sourceId 對不上時回假成功（使用者看到「已取消」但訂閱還在）。
+  // 這就是回報的 bug：刪除顯示成功但沒作用。
+  const { data, error } = await supabase
     .from('subscriptions')
     .update({ active: false })
     .eq('id', id)
-    .eq('source_id', sourceId);
+    .eq('source_id', sourceId)
+    .eq('active', true)   // 已經 inactive 的不再算「刪除成功」（重複刪也誠實回 404）
+    .select('id');
 
-  if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  }
+  const r = mutationResult(data, error);
+  if (!r.ok) return NextResponse.json({ ok: false, error: r.error }, { status: r.status });
   return NextResponse.json({ ok: true });
 }
 
