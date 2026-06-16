@@ -19,8 +19,10 @@
  *
  * 投票切換：因為 UNIQUE(sub_id, user_id)，換選項 = upsert 同一筆 row → 自動覆蓋。
  *
- * 安全：caller userId 自己宣稱（沿用 G1/G2 pattern）；G4 之後可加 id-token 強化。
- * 限制：只 group_member 可以投票或新增選項 — 防外人亂寫。
+ * ⚠️ SECURITY — 同 group-watch/[id]/route.ts 的已知限制（產品決策 2026-06-16：
+ *   先不修，記錄就好）：caller userId 自己宣稱、沒驗 LIFF id-token。本檔三個 action
+ *   都已要求 caller 是 group_member（防外人亂寫），但 member 身分本身建立在自宣稱的
+ *   userId 上。完整修法見 group-watch/[id]/route.ts 檔頭 SECURITY 區塊。
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';

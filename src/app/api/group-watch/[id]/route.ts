@@ -11,10 +11,20 @@
  *
  * Idempotent 是重點：用戶可能重複點按鈕 / network retry，不該因為「已經加入」就 500。
  *
- * 安全考量：
- *   - userId 是 caller 自己宣稱的（沒驗 id-token），跟既有 /api/subscriptions 相同
- *     pattern；G4 之後可加 id-token 驗證一次性強化。
- *   - subscription_id 必須 source_type='group'，個人訂閱拒絕（避免亂寫 group_member）。
+ * ⚠️ SECURITY — 已知限制（產品決策 2026-06-16：先不修，記錄就好）
+ *   userId 是 caller 自己宣稱的，**沒有驗證 LIFF id-token**。理論上有人猜到群組
+ *   訂閱的數字 subId 就能：join 任意群組、進而 set-target 改該群門檻、投票/刪選項。
+ *   （set-target/vote/remove 已要求先是 member；但 join 無前置條件 = 缺口。）
+ *
+ *   為何先不修：這是給朋友用的小工具，攻擊者要先進到本 LIFF、猜 subId、還要知道
+ *   受害者 userId 才能冒名，威脅模型風險低。對外開放或出問題前不值得加 id-token
+ *   驗證的延遲與複雜度。
+ *
+ *   日後要修：前端送 liff.getIDToken() → 後端打 LINE verify endpoint 取真實 userId
+ *   （sub claim）取代自宣稱值；或輕量版用 Messaging API getGroupMemberProfile 確認
+ *   userId 真的在該 LINE 群組才准 join。需設 LINE Login channel ID。
+ *
+ *   防呆（現有）：subscription_id 必須 source_type='group'，個人訂閱拒絕。
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
