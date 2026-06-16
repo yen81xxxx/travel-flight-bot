@@ -72,6 +72,21 @@ const check = (cond, msg) => {
   else { fail++; failures.push(msg); console.log('  ✗ FAIL: ' + msg); }
 };
 
+// ---- 斷言引擎自我檢驗（守門員的守門員）----
+// 用「真正的 check()」跑一真一假，確認 pass/fail 計數器真的會分別 +1。
+// 若有人把 check() 改壞（例：fail 不計數 → 整套永遠綠燈給假安心），這裡會抓到並中止。
+// 跑完歸零，不污染真正的測試計數。
+(function selfTest() {
+  check(true, '__selftest_should_pass');
+  check(false, '__selftest_should_fail');
+  if (pass !== 1 || fail !== 1) {
+    console.error(`✗ 斷言引擎自我檢驗失敗（pass=${pass} fail=${fail}，預期 1/1）— check() 被改壞了，整套測試不可信，中止。`);
+    process.exit(3);
+  }
+  pass = 0; fail = 0; failures.length = 0;
+  console.log('✓ 斷言引擎自我檢驗通過（check() 會正確區分真/假）');
+})();
+
 // ---- API helpers ----
 const J = async (r) => { const t = await r.text(); let body; try { body = JSON.parse(t); } catch { body = t; } return { status: r.status, body, headers: r.headers }; };
 const api = {
