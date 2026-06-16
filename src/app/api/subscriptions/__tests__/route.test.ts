@@ -13,7 +13,7 @@
  *   - 空 body（只給 id+sourceId）→ payload 為空（API 會回 400 no fields）
  */
 
-import { PatchBody, buildPatchUpdatePayload } from '../schema';
+import { PatchBody, buildPatchUpdatePayload, mutationResult } from '../schema';
 
 describe('PatchBody schema — 必填欄位', () => {
   it('id + sourceId 必填', () => {
@@ -207,5 +207,30 @@ describe('防回歸：欄位數量檢查', () => {
   it('returnDate 非法格式 → schema 拒絕', () => {
     expect(PatchBody.safeParse({ id: 1, sourceId: 'U', returnDate: '2027/04/04' }).success).toBe(false);
     expect(PatchBody.safeParse({ id: 1, sourceId: 'U', returnDate: 'tomorrow' }).success).toBe(false);
+  });
+});
+
+describe('mutationResult — PATCH/DELETE 影響筆數判斷（回報 bug 的修正）', () => {
+  it('有改到列（data 非空）→ ok', () => {
+    expect(mutationResult([{ id: 9 }], null)).toEqual({ ok: true });
+  });
+
+  it('0 列符合（data=[]，Supabase 對沒 match 不報錯）→ 404，不再假成功', () => {
+    // 這是 bug 的核心：取消顯示成功但 id/source_id 沒對上，實際沒刪到任何列
+    const r = mutationResult([], null);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.status).toBe(404);
+      expect(r.error).toContain('找不到這筆訂閱');
+    }
+  });
+
+  it('data=null（沒 select 回任何東西）→ 也算 404', () => {
+    expect(mutationResult(null, null)).toMatchObject({ ok: false, status: 404 });
+  });
+
+  it('真的 DB error → 500 + 帶原訊息', () => {
+    expect(mutationResult(null, { message: 'connection lost' }))
+      .toEqual({ ok: false, status: 500, error: 'connection lost' });
   });
 });

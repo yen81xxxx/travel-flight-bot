@@ -45,6 +45,27 @@ export type PatchBodyInput = z.infer<typeof PatchBody>;
  * null → 該欄位寫 null（清掉設定）；
  * 有值 → 寫值。
  */
+/**
+ * 把 Supabase update/delete 的 `.select('id')` 結果轉成 HTTP 回應語意。
+ *
+ * 為什麼需要：Supabase 對「filter 沒 match 到任何列」回 `error: null` +
+ * `data: []` — 不是 error。沒有這個檢查，PATCH/DELETE 會在 id/source_id 對
+ * 不上時回假成功（使用者看到「已取消 / 已儲存」但資料庫沒動）。這正是
+ * 回報的 bug：取消訂閱顯示成功但實際沒作用。
+ *
+ * 純函數方便單測（route.ts 用 next/server 跑 jest 會炸）。
+ */
+export function mutationResult(
+  data: { id: number }[] | null,
+  error: { message: string } | null
+): { ok: true } | { ok: false; status: number; error: string } {
+  if (error) return { ok: false, status: 500, error: error.message };
+  if (!data || data.length === 0) {
+    return { ok: false, status: 404, error: '找不到這筆訂閱（可能已被移除或無權限）' };
+  }
+  return { ok: true };
+}
+
 export function buildPatchUpdatePayload(body: PatchBodyInput): Record<string, unknown> {
   const update: Record<string, unknown> = {};
   if (body.paused !== undefined) update.paused = body.paused;
