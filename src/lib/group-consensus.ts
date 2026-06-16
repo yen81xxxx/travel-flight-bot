@@ -47,3 +47,18 @@ export function computeDerivedTarget(
   const sum = targets.reduce((a, b) => a + b, 0);
   return Math.round(sum / targets.length);
 }
+
+/**
+ * #5: 決定要寫回 subscriptions.max_price 的有效目標。
+ *   - derived 有值（有人設目標）→ 用 derived
+ *   - derived=null（全員離開 / 沒人設目標 / rule=manual）→ 還原 base（建立者原始門檻）
+ *   - 兩者都 null（舊資料未回填 base）→ null，caller 不寫回（保險、不亂改）
+ * 修掉「最後一人離開後 max_price 卡在舊共識值」的 bug。純函數方便單測。
+ */
+export function resolveEffectiveTarget(
+  derived: number | null,
+  base: number | null
+): number | null {
+  if (derived != null) return derived;
+  return base ?? null;
+}
