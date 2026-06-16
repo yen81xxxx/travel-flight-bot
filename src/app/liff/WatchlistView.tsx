@@ -104,7 +104,7 @@ export default function WatchlistView({ liffId }: Props) {
     }
   }, [setGroupCtxId, addKnownGroupCtx]);
 
-  const { watches, loading, error, refetch } = useWatchlist(sourceId, knownGroupCtxs);
+  const { watches, loading, error, refetch, removeWatch } = useWatchlist(sourceId, knownGroupCtxs);
 
   // T1 主題：resolved 掛到根元素 data-theme（dark 時也掛 — 顯式比隱式好查）
   const { mode: themeMode, resolved: themeResolved, setMode: setThemeMode } = useTheme();
@@ -289,6 +289,7 @@ export default function WatchlistView({ liffId }: Props) {
         watch={sheet.kind === 'detail' ? sheet.watch : null}
         userId={sourceId}
         onMutated={refetch}
+        onDeleted={removeWatch}
       />
       <AddWatchSheet
         open={sheet.kind === 'add'}

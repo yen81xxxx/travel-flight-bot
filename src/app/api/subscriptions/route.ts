@@ -289,15 +289,17 @@ export async function DELETE(req: NextRequest): Promise<NextResponse> {
   }
 
   const supabase = getSupabase();
-  // `.select()` 確認真的軟刪到列 — Supabase 對「0 列符合」回 error:null，
-  // 沒這個檢查就會在 id/sourceId 對不上時回假成功（使用者看到「已取消」但訂閱還在）。
-  // 這就是回報的 bug：刪除顯示成功但沒作用。
+  // `.select()` 確認 (id, source_id) 真的對到某一列 — Supabase 對「0 列符合」回
+  // error:null，沒這個檢查就會在 id/sourceId 對不上時回假成功。
+  //
+  // 冪等（刻意不加 .eq('active', true)）：重複刪一筆「已經 inactive」的訂閱仍回
+  // ok（end-state 就是 inactive）。否則使用者重按一次刪除會看到嚇人的「找不到這
+  // 筆訂閱」，但其實早就刪掉了。只有「(id, source_id) 根本不存在」才回 404。
   const { data, error } = await supabase
     .from('subscriptions')
     .update({ active: false })
     .eq('id', id)
     .eq('source_id', sourceId)
-    .eq('active', true)   // 已經 inactive 的不再算「刪除成功」（重複刪也誠實回 404）
     .select('id');
 
   const r = mutationResult(data, error);

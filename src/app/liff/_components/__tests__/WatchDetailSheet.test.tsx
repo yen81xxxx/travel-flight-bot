@@ -112,11 +112,12 @@ describe('WatchDetailSheet', () => {
     expect(onMutated).toHaveBeenCalled();
   });
 
-  it('刪除：第一次點 → 顯示確認 UI，再點確認才真刪', async () => {
+  it('刪除：第一次點 → 顯示確認 UI，再點確認才真刪 + 樂觀移除（onDeleted 帶 id）', async () => {
     const onMutated = jest.fn();
     const onClose = jest.fn();
+    const onDeleted = jest.fn();
     const { getByText, container } = render(
-      <WatchDetailSheet open={true} onClose={onClose} watch={baseWatch} onMutated={onMutated} />
+      <WatchDetailSheet open={true} onClose={onClose} watch={baseWatch} onMutated={onMutated} onDeleted={onDeleted} />
     );
     fireEvent.click(getByText('刪除此追蹤'));
     // 進入 confirm 狀態
@@ -130,8 +131,29 @@ describe('WatchDetailSheet', () => {
       expect(delCall![0]).toContain('id=7');
       expect(delCall![0]).toContain('sourceId=Uabc');
     });
+    // 樂觀移除：成功後立刻通知父層把卡片從畫面拿掉（不等 refetch）→ 解決「刪了卡片還在」
+    expect(onDeleted).toHaveBeenCalledWith(7);
     expect(onMutated).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('刪除失敗（API 回 ok:false）→ 不樂觀移除、不關 sheet、顯示錯誤', async () => {
+    (global.fetch as unknown as jest.Mock).mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: false, error: '找不到這筆訂閱（可能已被移除或無權限）' }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, flights: [] }) });
+    });
+    const onClose = jest.fn();
+    const onDeleted = jest.fn();
+    const { getByText, findByText } = render(
+      <WatchDetailSheet open={true} onClose={onClose} watch={baseWatch} onDeleted={onDeleted} />
+    );
+    fireEvent.click(getByText('刪除此追蹤'));
+    fireEvent.click(getByText('確認刪除'));
+    await findByText('找不到這筆訂閱（可能已被移除或無權限）');
+    expect(onDeleted).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('傳統航空 toggle → 開啟後顯示傳統目標價輸入', () => {

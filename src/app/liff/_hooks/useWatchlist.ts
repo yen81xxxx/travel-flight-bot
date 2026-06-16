@@ -47,6 +47,8 @@ interface UseWatchlistResult {
   loading: boolean;
   error: string | null;
   refetch: () => void;
+  /** 樂觀移除一筆（刪除成功後立刻從畫面拿掉，不等 refetch — 解決「刪了卡片還在」） */
+  removeWatch: (id: number) => void;
 }
 
 export function useWatchlist(
@@ -59,6 +61,9 @@ export function useWatchlist(
   const [reloadKey, setReloadKey] = useState(0);
 
   const refetch = useCallback(() => setReloadKey(k => k + 1), []);
+  const removeWatch = useCallback((id: number) => {
+    setWatches(ws => ws.filter(w => w.id !== id));
+  }, []);
 
   useEffect(() => {
     const targets: { sourceId: string; type: 'personal' | 'group' }[] = [];
@@ -76,7 +81,9 @@ export function useWatchlist(
 
     Promise.all(
       targets.map(t =>
-        fetch(`/api/subscriptions/with-quotes?sourceId=${encodeURIComponent(t.sourceId)}`)
+        // no-store：刪除/編輯後 refetch 必須拿到新資料，不能吃瀏覽器 GET 快取
+        // （否則剛刪掉的訂閱還會被舊快取帶回來、卡片重新出現）
+        fetch(`/api/subscriptions/with-quotes?sourceId=${encodeURIComponent(t.sourceId)}`, { cache: 'no-store' })
           .then(r => r.json())
           .then((data: { ok: boolean; watches?: WatchWithQuote[] }) => ({
             type: t.type,
@@ -91,5 +98,5 @@ export function useWatchlist(
       .finally(() => setLoading(false));
   }, [personalSourceId, knownGroupCtxs, reloadKey]);
 
-  return { watches, loading, error, refetch };
+  return { watches, loading, error, refetch, removeWatch };
 }
