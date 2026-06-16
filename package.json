@@ -11,6 +11,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "e2e": "node scripts/e2e/smoke.mjs",
     "prepare": "husky"
   },
   "dependencies": {
