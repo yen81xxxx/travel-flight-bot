@@ -53,5 +53,16 @@ export function useKnownGroupCtxs() {
     });
   }, []);
 
-  return { ctxs, add };
+  // 移除一個已知 group ctx（該群組已無任何 active 訂閱時清掉，避免幽靈群組
+  // 一直被 fetch + 卡片殘留）。之後使用者從該群組再開 LIFF（URL 帶 ?ctx=）會自動 re-add。
+  const prune = useCallback((ctx: string) => {
+    setCtxs(prev => {
+      if (!prev.includes(ctx)) return prev;
+      const next = prev.filter(c => c !== ctx);
+      writeToStorage(next);
+      return next;
+    });
+  }, []);
+
+  return { ctxs, add, prune };
 }

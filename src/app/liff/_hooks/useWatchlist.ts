@@ -53,7 +53,10 @@ interface UseWatchlistResult {
 
 export function useWatchlist(
   personalSourceId: string | null,
-  knownGroupCtxs: string[]
+  knownGroupCtxs: string[],
+  // #7: 某個群組 ctx 成功回應但 0 筆 active 訂閱 → 回報給 caller 清掉幽靈 ctx。
+  // 只在「ok:true 且空」時觸發，網路失敗不觸發（避免暫時抓不到就誤刪）。
+  onGroupEmpty?: (ctx: string) => void
 ): UseWatchlistResult {
   const [watches, setWatches] = useState<WatchItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -87,15 +90,28 @@ export function useWatchlist(
           .then(r => r.json())
           .then((data: { ok: boolean; watches?: WatchWithQuote[] }) => ({
             type: t.type,
+            sourceId: t.sourceId,
+            ok: data.ok === true,
             watches: data.ok && Array.isArray(data.watches) ? data.watches : []
           }))
-          // 單一 source fetch 失敗 → 該 source 算空，不污染其他 source
-          .catch(() => ({ type: t.type, watches: [] as WatchWithQuote[] }))
+          // 單一 source fetch 失敗 → 該 source 算空但 ok:false（不觸發 prune）
+          .catch(() => ({ type: t.type, sourceId: t.sourceId, ok: false, watches: [] as WatchWithQuote[] }))
       )
     )
-      .then(groups => setWatches(mergeWatches(groups)))
+      .then(groups => {
+        setWatches(mergeWatches(groups));
+        // #7: 群組 ctx「成功回應但 0 訂閱」→ 幽靈群組，清掉 ctx
+        if (onGroupEmpty) {
+          for (const g of groups) {
+            if (g.type === 'group' && g.ok && g.watches.length === 0) onGroupEmpty(g.sourceId);
+          }
+        }
+      })
       .catch(err => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
+    // onGroupEmpty 故意不入 deps：它是 stable callback（useCallback），且只想在
+    // fetch 完成時呼叫一次，避免 identity 變動造成多餘 re-fetch。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [personalSourceId, knownGroupCtxs, reloadKey]);
 
   return { watches, loading, error, refetch, removeWatch };

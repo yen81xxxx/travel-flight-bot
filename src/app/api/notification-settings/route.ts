@@ -1,23 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import { getSupabase } from '@/lib/supabase';
+import { PostBody, buildSettingsUpsert } from './schema';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
-
-const PostBody = z.object({
-  sourceId: z.string().min(1),
-  quietStart: z.string().regex(TIME_RE).nullable(),
-  quietEnd: z.string().regex(TIME_RE).nullable(),
-  timezone: z.string().default('Asia/Taipei'),
-  dailySummary: z.boolean().optional(),
-  priceAlerts: z.boolean().optional(),
-  // PR #4b 新增：群組情境下，新追蹤的預設通知對象 ('me' = 個人 / 'group' = 群組)
-  // 對應 migration 0008。'me' 預設不會誤打擾群組。
-  defaultNotifyTarget: z.enum(['me', 'group']).optional()
-});
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const sourceId = req.nextUrl.searchParams.get('sourceId');
@@ -37,24 +23,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  let body: z.infer<typeof PostBody>;
+  let upsertRow: Record<string, unknown>;
   try {
-    body = PostBody.parse(await req.json());
+    upsertRow = buildSettingsUpsert(PostBody.parse(await req.json()));
   } catch {
     return NextResponse.json({ ok: false, error: 'Invalid body' }, { status: 400 });
   }
 
   const supabase = getSupabase();
-  const upsertRow: Record<string, unknown> = {
-    source_id: body.sourceId,
-    quiet_start: body.quietStart,
-    quiet_end: body.quietEnd,
-    timezone: body.timezone,
-    updated_at: new Date().toISOString()
-  };
-  if (body.dailySummary !== undefined) upsertRow.daily_summary = body.dailySummary;
-  if (body.priceAlerts !== undefined) upsertRow.price_alerts = body.priceAlerts;
-  if (body.defaultNotifyTarget !== undefined) upsertRow.default_notify_target = body.defaultNotifyTarget;
 
   const { error } = await supabase
     .from('notification_settings')
