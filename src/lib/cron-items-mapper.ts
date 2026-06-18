@@ -84,7 +84,7 @@ export function buildMultiSubsItem(
   let bestLcc: { price: number; outboundAirline: string; returnAirline: string; airport: string; isEstimate: boolean } | null = null;
   let bestTrad: { price: number; airline: string; airport: string } | null = null;
   for (const f of route.fanout) {
-    const a = analyzeFlights(f.outbound, f.return, timeFilter);
+    const a = analyzeFlights(f.outbound, f.return, timeFilter, sub.airline_filter);
     if (a.lccCombo && (!bestLcc || a.lccCombo.price < bestLcc.price)) {
       bestLcc = { ...a.lccCombo, airport: f.airport };
     }

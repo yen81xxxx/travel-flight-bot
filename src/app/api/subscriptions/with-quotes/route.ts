@@ -125,7 +125,8 @@ function subToApi(sub: Subscription): Omit<WatchWithQuote, 'quote'> {
     outbound_max_departure_time: sub.outbound_max_departure_time ?? null,
     return_min_departure_time: sub.return_min_departure_time ?? null,
     return_max_departure_time: sub.return_max_departure_time ?? null,
-    created_at: sub.created_at
+    created_at: sub.created_at,
+    airline_filter: sub.airline_filter ?? null
   };
 }
 

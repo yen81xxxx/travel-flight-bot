@@ -112,6 +112,53 @@ describe('WatchDetailSheet', () => {
     expect(onMutated).toHaveBeenCalled();
   });
 
+  // 航司過濾編輯 — 讓 route-airlines 回 3 家
+  function mockWithAirlines() {
+    global.fetch = jest.fn((url: string | URL | Request) => {
+      const u = typeof url === 'string' ? url : url.toString();
+      if (u.includes('/api/route-airlines')) {
+        return Promise.resolve({ json: () => Promise.resolve({ ok: true, airlines: ['捷星', '星宇航空', '酷航'] }) } as Response);
+      }
+      if (u.includes('/api/subscriptions/flights')) {
+        return Promise.resolve({ json: () => Promise.resolve({ ok: true, outbound: [], return: [] }) } as Response);
+      }
+      return Promise.resolve({ json: () => Promise.resolve({ ok: true }) } as Response);
+    }) as unknown as typeof fetch;
+  }
+
+  it('航司編輯：watch.airline_filter=[捷星] → 捷星亮、其他暗；存檔 PATCH 帶 airlineFilter', async () => {
+    mockWithAirlines();
+    const { findByTestId, getByText } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={{ ...baseWatch, airline_filter: ['捷星'] }} />
+    );
+    const jetstar = await findByTestId('airline-捷星');
+    const starlux = await findByTestId('airline-星宇航空');
+    expect(jetstar.getAttribute('aria-pressed')).toBe('true');
+    expect(starlux.getAttribute('aria-pressed')).toBe('false');   // 初始化反映 saved filter
+    // 加勾星宇 → 存檔
+    fireEvent.click(starlux);
+    fireEvent.click(getByText('儲存變更'));
+    await waitFor(() => {
+      const patchCall = (global.fetch as unknown as jest.Mock).mock.calls.find(c => (c[1] as RequestInit)?.method === 'PATCH');
+      const body = JSON.parse(patchCall![1].body);
+      expect(body.airlineFilter).toEqual(['捷星', '星宇航空']);
+    });
+  });
+
+  it('航司編輯：全勾（無 filter）→ 存檔 PATCH airlineFilter=null（清掉=追全部）', async () => {
+    mockWithAirlines();
+    const { findByTestId, getByText } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={{ ...baseWatch, airline_filter: null }} />
+    );
+    await findByTestId('airline-捷星');   // 全勾載入
+    fireEvent.click(getByText('儲存變更'));
+    await waitFor(() => {
+      const patchCall = (global.fetch as unknown as jest.Mock).mock.calls.find(c => (c[1] as RequestInit)?.method === 'PATCH');
+      const body = JSON.parse(patchCall![1].body);
+      expect(body.airlineFilter).toBeNull();
+    });
+  });
+
   it('刪除：第一次點 → 顯示確認 UI，再點確認才真刪 + 樂觀移除（onDeleted 帶 id）', async () => {
     const onMutated = jest.fn();
     const onClose = jest.fn();
