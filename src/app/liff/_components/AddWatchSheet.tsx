@@ -365,25 +365,42 @@ export function AddWatchSheet({
 
           {/* === Target price === */}
           <div className="target-box">
-            <div className="target-row-label">目標價</div>
-            {preview?.lowestPrice && (
-              <div className="suggest-pills">
-                <button type="button" onClick={setTargetToCurrent}>
-                  目前價 NT${preview.lowestPrice.toLocaleString()}
-                </button>
-                <button type="button" onClick={setTargetTo5pctLower}>
-                  再低 5%
-                </button>
-              </div>
-            )}
+            <div className="target-row-label"><Icon name="target" size={13} stroke={2} /> 目標價</div>
+            {preview?.lowestPrice && (() => {
+              const now = preview.lowestPrice;
+              const low = Math.round(now * 0.95);
+              return (
+                <div className="suggest-pills">
+                  <button
+                    type="button"
+                    data-testid="pill-current"
+                    className={`tgt-pill ${maxPriceStr === String(now) ? 'active' : ''}`}
+                    onClick={setTargetToCurrent}
+                  >
+                    <span className="tp-k">目前價</span>
+                    <span className="tp-v tnum">{now.toLocaleString()}</span>
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="pill-low"
+                    className={`tgt-pill ${maxPriceStr === String(low) ? 'active' : ''}`}
+                    onClick={setTargetTo5pctLower}
+                  >
+                    <span className="tp-k">再低 5%</span>
+                    <span className="tp-v tnum">{low.toLocaleString()}</span>
+                  </button>
+                </div>
+              );
+            })()}
             <div className="amount-input">
               <span className="amount-prefix">NT$</span>
               <input
                 type="number"
                 inputMode="numeric"
+                data-testid="target-amount"
                 value={maxPriceStr}
                 onChange={e => setMaxPriceStr(e.target.value)}
-                placeholder="例：12800"
+                placeholder="自訂金額，例：12800"
               />
             </div>
           </div>
@@ -531,20 +548,34 @@ export function AddWatchSheet({
           }
         }
         .route-pass {
+          position: relative;
           display: flex;
           align-items: center;
-          gap: 8px;
-          background: var(--ios-fill-3);
+          gap: 4px;
+          background: var(--ios-bg-secondary);
           border-radius: var(--r-field);
-          padding: 14px 12px;
+          padding: 12px 10px;
+        }
+        /* 登機證撕線 — 中間一條虛線，swap 圓鈕浮在上面 */
+        .route-pass::before {
+          content: '';
+          position: absolute;
+          left: 50%;
+          top: 14px;
+          bottom: 14px;
+          width: 0;
+          border-left: 2px dashed var(--ios-separator-2);
+          transform: translateX(-50%);
         }
         .swap-btn {
+          position: relative;
+          z-index: 1;
           appearance: none;
-          background: var(--ios-fill-2);
-          border: none;
+          background: var(--ios-bg-tertiary);
+          border: 1px solid var(--ios-separator-2);
           color: var(--ios-blue);
-          width: 32px;
-          height: 32px;
+          width: 40px;
+          height: 40px;
           border-radius: 50%;
           flex-shrink: 0;
           cursor: pointer;
@@ -578,9 +609,8 @@ export function AddWatchSheet({
           gap: 5px;
         }
         .seg-btn.active {
-          background: var(--ios-bg-secondary);
-          color: var(--ios-label);
-          box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+          background: var(--ios-blue);
+          color: #fff;
         }
 
         .date-row {
@@ -705,6 +735,9 @@ export function AddWatchSheet({
         }
         .target-box { margin-top: 18px; }
         .target-row-label {
+          display: flex;
+          align-items: center;
+          gap: 5px;
           font-size: 13px;
           color: var(--ios-label-2);
           margin-bottom: 8px;
@@ -713,19 +746,36 @@ export function AddWatchSheet({
           display: flex;
           gap: 8px;
           margin-bottom: 8px;
-          flex-wrap: wrap;
         }
-        .suggest-pills button {
+        .tgt-pill {
+          flex: 1;
           appearance: none;
-          background: var(--ios-fill-2);
-          border: none;
-          color: var(--ios-label);
-          padding: 7px 12px;
-          border-radius: 999px;
-          font-size: 12px;
-          font-weight: 600;
+          background: var(--ios-fill-3);
+          border: 1px solid var(--ios-separator-2);
+          border-radius: 11px;
+          padding: 8px 10px;
           cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 1px;
+          text-align: left;
         }
+        .tgt-pill .tp-k {
+          font-size: 11px;
+          color: var(--ios-label-2);
+        }
+        .tgt-pill .tp-v {
+          font-size: 16px;
+          font-weight: 700;
+          color: var(--ios-label);
+          font-family: var(--mono);
+        }
+        .tgt-pill.active {
+          background: rgba(10, 132, 255, 0.14);
+          border-color: var(--ios-blue);
+        }
+        .tgt-pill.active .tp-v { color: var(--ios-blue); }
         .amount-input {
           display: flex;
           align-items: center;
@@ -815,6 +865,8 @@ function RouteSlot({
       <div className="rs-label">{label}</div>
       <div className="rs-code">{value}</div>
       <div className="rs-city">{display ? `${display.city}` : value}</div>
+      {/* 可點提示 — 讓使用者看出整塊是下拉選單（之前像純文字、不知能改） */}
+      <div className="rs-hint"><Icon name="chevronDown" size={12} stroke={2.4} /> 換城市</div>
       <select
         className="rs-select"
         value={value}
@@ -834,9 +886,9 @@ function RouteSlot({
         .rs {
           position: relative;
           flex: 1;
-          background: var(--ios-bg-secondary);
+          background: transparent;
           border-radius: 10px;
-          padding: 10px 12px;
+          padding: 8px 12px;
           text-align: ${isTW ? 'left' : 'right'};
           min-width: 0;
         }
@@ -847,7 +899,7 @@ function RouteSlot({
           text-transform: uppercase;
         }
         .rs-code {
-          font-size: 28px;
+          font-size: 30px;
           font-weight: 800;
           letter-spacing: -1px;
           color: var(--ios-label);
@@ -855,8 +907,20 @@ function RouteSlot({
           line-height: 1.1;
         }
         .rs-city {
-          font-size: 12px;
+          font-size: 13px;
           color: var(--ios-label-2);
+        }
+        .rs-hint {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          margin-top: 6px;
+          font-size: 11px;
+          font-weight: 600;
+          color: var(--ios-blue);
+          background: rgba(10, 132, 255, 0.12);
+          padding: 2px 8px;
+          border-radius: 999px;
         }
         .rs-select {
           position: absolute;
