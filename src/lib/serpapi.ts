@@ -5,7 +5,7 @@ import type {
   TripLeg
 } from '@/types';
 import { getSupabase } from './supabase';
-import { isWhitelistedAirline, normalizeAirlineName, getAirlineCategory } from '@/config/airlines';
+import { normalizeAirlineName, getAirlineCategory } from '@/config/airlines';
 
 const SERPAPI_BASE = 'https://serpapi.com/search.json';
 const CACHE_TTL_HOURS = 6;
@@ -294,10 +294,9 @@ function extractQuotes(
     .filter(({ flight }) => {
       const legs = flight.flights ?? [];
       // 只保留「直飛」的航班（單一 leg），避免轉機票顯示成不存在的「同家來回」（例如「長榮 89,240」其實是長榮去沖繩 + ANA 接駁 HND）
-      if (legs.length !== 1) return false;
-      // 第一段（也是唯一段）必須是白名單航空公司
-      const firstAirline = legs[0]?.airline ?? '';
-      return isWhitelistedAirline(firstAirline);
+      // 2026-06-18：不再用航司白名單過濾 —— 有直飛就存（「有飛就追」）。
+      // 廉/傳分類與 currentBest 由 config/airlines 處理；未分類航空照樣被存 + 可勾選。
+      return legs.length === 1;
     })
     .map(({ flight, type }) => {
       const legs = flight.flights ?? [];
