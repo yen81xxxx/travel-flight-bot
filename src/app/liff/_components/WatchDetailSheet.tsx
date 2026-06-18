@@ -93,6 +93,9 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
   const [returnMin, setReturnMin] = useState('');
   const [returnMax, setReturnMax] = useState('');
   const [paused, setPaused] = useState(false);
+  // 航司過濾：availableAirlines = 這條線有飛的；selectedAirlines = 勾的（全勾=不過濾）
+  const [availableAirlines, setAvailableAirlines] = useState<string[]>([]);
+  const [selectedAirlines, setSelectedAirlines] = useState<Set<string>>(new Set());
 
   // === mutation state ===
   const [saving, setSaving] = useState(false);
@@ -150,6 +153,37 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
     setShowAllOutbound(false);
     setShowAllReturn(false);
   }, [watch, open]);
+
+  // 航司過濾：撈這條線有飛的航司，並依 watch.airline_filter 初始化勾選
+  // （null/空 = 追全部 → 全勾；有值 → 只勾那幾家，跟現有清單取交集）
+  useEffect(() => {
+    if (!watch || !open) return;
+    const savedFilter = watch.airline_filter ?? null;
+    let cancelled = false;
+    fetch(`/api/route-airlines?origin=${encodeURIComponent(watch.origin)}&destination=${encodeURIComponent(watch.destination)}`)
+      .then(r => r.json())
+      .then((d: { ok?: boolean; airlines?: string[] }) => {
+        if (cancelled || !d.ok || !Array.isArray(d.airlines)) return;
+        const list = d.airlines;
+        setAvailableAirlines(list);
+        if (savedFilter && savedFilter.length > 0) {
+          const sel = list.filter(a => savedFilter.includes(a));
+          setSelectedAirlines(new Set(sel.length > 0 ? sel : list));
+        } else {
+          setSelectedAirlines(new Set(list));  // 無過濾 → 全勾
+        }
+      })
+      .catch(() => { /* 撈不到不擋編輯 */ });
+    return () => { cancelled = true; };
+  }, [watch, open]);
+
+  const toggleAirline = (name: string) => {
+    setSelectedAirlines(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  };
 
   // G1: 撈 group members — 只在 open + 是群組訂閱時撈
   useEffect(() => {
@@ -432,6 +466,15 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
       setError('目標價需是正整數');
       return;
     }
+    // 有航司清單時至少要勾 1 家
+    if (availableAirlines.length > 0 && selectedAirlines.size === 0) {
+      setError('至少勾一家航空');
+      return;
+    }
+    // 縮小範圍 → 送陣列；全勾 / 無清單 → 送 null（清掉過濾、追全部）
+    const narrowed = availableAirlines.length > 0
+      && selectedAirlines.size > 0
+      && selectedAirlines.size < availableAirlines.length;
     setSaving(true);
     setError(null);
     try {
@@ -447,6 +490,7 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
           outboundMaxDepartureTime: timeFilterEnabled ? (outboundMax || null) : null,
           returnMinDepartureTime: timeFilterEnabled ? (returnMin || null) : null,
           returnMaxDepartureTime: timeFilterEnabled ? (returnMax || null) : null,
+          airlineFilter: narrowed ? [...selectedAirlines] : null,
           paused
         })
       });
@@ -824,6 +868,33 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
           </div>
         </div>
 
+        {availableAirlines.length > 0 && (
+          <div className="set-airline">
+            <div className="set-label-stack">
+              <span>航空公司</span>
+              <span className="set-sublabel">只追勾選的（全勾 = 追全部）</span>
+            </div>
+            <div className="airline-chips">
+              {availableAirlines.map(name => {
+                const on = selectedAirlines.has(name);
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    data-testid={`airline-${name}`}
+                    className={`airline-chip ${on ? 'on' : ''}`}
+                    aria-pressed={on}
+                    onClick={() => toggleAirline(name)}
+                  >
+                    <Icon name={on ? 'check' : 'plus'} size={13} stroke={2.4} />
+                    {name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="set-row">
           <div className="set-label-stack">
             <span>傳統航空另設</span>
@@ -1039,6 +1110,35 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
         .set-label, .set-label-stack { font-size: 14px; color: var(--ios-label); flex: 1; min-width: 0; }
         .set-label-stack { display: flex; flex-direction: column; gap: 1px; }
         .set-sublabel { font-size: 11.5px; color: var(--ios-label-3); }
+        .set-airline {
+          padding: 12px 0;
+          border-bottom: 0.5px solid var(--ios-hairline);
+        }
+        .set-airline .airline-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-top: 10px;
+        }
+        .set-airline .airline-chip {
+          appearance: none;
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          background: var(--ios-fill-3);
+          border: 1px solid var(--ios-separator-2);
+          color: var(--ios-label-2);
+          padding: 7px 11px;
+          border-radius: 999px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        .set-airline .airline-chip.on {
+          background: rgba(10, 132, 255, 0.14);
+          border-color: var(--ios-blue);
+          color: var(--ios-blue);
+        }
         .set-indent { padding-left: 10px; color: var(--ios-label-2); }
         .set-amount {
           display: inline-flex;
