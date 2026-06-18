@@ -80,20 +80,17 @@ describe('AddWatchSheet', () => {
         analysis: { cheapestRoundTripPrice: 12500, cheapestAirline: 'X' }
       })
     });
-    const { getByRole, getByLabelText, findAllByText } = render(
+    const { getByRole, getByLabelText, findByTestId } = render(
       <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
     );
     fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
     fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
     fireEvent.click(getByRole('button', { name: /查目前最低價/ }));
-    // 等 preview 結果出現，然後直接挑「目前價」button（不是 preview 顯示的那個）
-    const matches = await findAllByText(/目前價.*12,500/);
-    // 找到那個是 button（pill），不是 label
-    const pill = matches.find(el => el.tagName === 'BUTTON');
-    expect(pill).toBeDefined();
-    fireEvent.click(pill!);
-    // 看 amount input 值
-    const amountInput = document.querySelector('input[placeholder="例：12800"]') as HTMLInputElement;
+    // preview 後「目前價」pill 出現，點它帶入目標價（pill 用 data-testid，不綁文案）
+    const pill = await findByTestId('pill-current');
+    expect(pill.textContent).toContain('12,500');
+    fireEvent.click(pill);
+    const amountInput = (await findByTestId('target-amount')) as HTMLInputElement;
     expect(amountInput.value).toBe('12500');
   });
 
@@ -108,7 +105,7 @@ describe('AddWatchSheet', () => {
     );
     fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
     fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
-    const amount = document.querySelector('input[placeholder="例：12800"]') as HTMLInputElement;
+    const amount = document.querySelector(String.raw`[data-testid="target-amount"]`) as HTMLInputElement;
     fireEvent.change(amount, { target: { value: '13000' } });
     fireEvent.click(getByText('開始追蹤'));
     await waitFor(() => {
@@ -138,7 +135,7 @@ describe('AddWatchSheet', () => {
     );
     fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
     fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
-    const amount = document.querySelector('input[placeholder="例：12800"]') as HTMLInputElement;
+    const amount = document.querySelector(String.raw`[data-testid="target-amount"]`) as HTMLInputElement;
     fireEvent.change(amount, { target: { value: '13000' } });
     fireEvent.click(getByText('開始追蹤'));
     await findByTestId('add-success');
@@ -159,7 +156,7 @@ describe('AddWatchSheet', () => {
     // 回程 label 不存在
     expect(container.textContent).not.toMatch(/(?:^|\s)回程(?:\s|$)/);
     fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
-    const amount = document.querySelector('input[placeholder="例：12800"]') as HTMLInputElement;
+    const amount = document.querySelector(String.raw`[data-testid="target-amount"]`) as HTMLInputElement;
     fireEvent.change(amount, { target: { value: '13000' } });
     fireEvent.click(getByText('開始追蹤'));
     await waitFor(() => {
