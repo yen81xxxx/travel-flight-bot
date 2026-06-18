@@ -70,6 +70,10 @@ export interface Subscription {
   // 航司過濾（migration 0012）：只在這些航司裡找最便宜。存 displayName
   // （'星宇航空' / '捷星'…）。null / 空 = 不過濾，等同追全部白名單航司（舊行為）。
   airline_filter?: string[] | null;
+  // #5 (migration 0011): 群組訂閱建立者的「原始門檻」基準。
+  // 共識把 derived 寫進 max_price 會蓋掉原值；當全員離開 / 沒人設目標（derived=null）
+  // 時還原到這個基準，而不是卡在最後一次的共識值。個人訂閱忽略。
+  base_max_price?: number | null;
 }
 
 /** G0: 群組成員（subscriptions: id 1 → N）。個人訂閱永遠 0 筆。*/

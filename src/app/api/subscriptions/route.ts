@@ -155,7 +155,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       paused: false,
       airline_filter: airlineFilterValue,
       // G1: 紀錄建立者 — 不控制權限，純資料 (group watch 沒 owner)
-      created_by_user_id: body.creatorUserId ?? null
+      created_by_user_id: body.creatorUserId ?? null,
+      // #5: 群組訂閱存原始門檻基準 — 全員離開時還原用。個人訂閱留 null。
+      base_max_price: sourceType === 'group' ? body.maxPrice : null
     })
     .select()
     .single();

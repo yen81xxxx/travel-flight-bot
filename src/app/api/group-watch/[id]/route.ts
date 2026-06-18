@@ -29,7 +29,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSupabase } from '@/lib/supabase';
-import { computeDerivedTarget, type ConsensusRule } from '@/lib/group-consensus';
+import { computeDerivedTarget, resolveEffectiveTarget, type ConsensusRule } from '@/lib/group-consensus';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -193,12 +193,11 @@ export async function POST(
  * 重要設計選擇：把 derived 寫進現有 max_price 而不是新欄位。理由：
  *   1. cron / sub-checker 0 改動 (一直讀 max_price)
  *   2. 個人訂閱 max_price 行為不變
- *   3. 加新欄位反而要改 ALL caller，bug 面積擴大
  *
- * 退化情境：rule='manual' 或全員無 target → derived=null → **不**寫回，
- * 保留建立者原本的 max_price。
+ * #5 修正：退化情境（rule='manual' 或全員無 target → derived=null）改成
+ * **還原 base_max_price**（建立者原始門檻），而不是留著上一次的共識值卡住。
  *
- * @returns 新的 derived target (= subscriptions.max_price after update) 或 null
+ * @returns 寫回的有效 target，或 null（base 也沒有時）
  */
 async function recomputeAndPersistDerived(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -207,27 +206,30 @@ async function recomputeAndPersistDerived(
   rule: ConsensusRule | null
 ): Promise<number | null> {
   const ruleNonNull: ConsensusRule = rule ?? 'max';
-  const { data, error } = await supabase
-    .from('group_member')
-    .select('accepted_target')
-    .eq('subscription_id', subId);
-  if (error) {
-    console.warn('[group-watch recompute] members fetch failed:', error.message);
+  // 同時拿 members 的 target 跟該 sub 的 base_max_price（還原用）
+  const [memRes, subRes] = await Promise.all([
+    supabase.from('group_member').select('accepted_target').eq('subscription_id', subId),
+    supabase.from('subscriptions').select('base_max_price').eq('id', subId).maybeSingle()
+  ]);
+  if (memRes.error) {
+    console.warn('[group-watch recompute] members fetch failed:', memRes.error.message);
     return null;
   }
   const derived = computeDerivedTarget(
-    (data ?? []) as { accepted_target: number | null }[],
+    (memRes.data ?? []) as { accepted_target: number | null }[],
     ruleNonNull
   );
-  if (derived == null) return null;
+  const base = subRes.data?.base_max_price != null ? Number(subRes.data.base_max_price) : null;
+  const effective = resolveEffectiveTarget(derived, base);
+  if (effective == null) return null;  // 連 base 都沒有（舊資料未回填）→ 不動，保險
 
   const { error: writeErr } = await supabase
     .from('subscriptions')
-    .update({ max_price: derived })
+    .update({ max_price: effective })
     .eq('id', subId);
   if (writeErr) {
     console.warn('[group-watch recompute] max_price update failed:', writeErr.message);
-    return derived; // 仍回算出來的 derived 給 caller，DB 沒寫成沒辦法
+    return effective;
   }
-  return derived;
+  return effective;
 }

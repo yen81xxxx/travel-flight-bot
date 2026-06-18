@@ -9,7 +9,7 @@
  *   - 包含 null + 數字混合
  *   - accepted_target = 0（壞資料，應該被當沒設）
  */
-import { computeDerivedTarget, type MemberTargetInput } from '../group-consensus';
+import { computeDerivedTarget, resolveEffectiveTarget, type MemberTargetInput } from '../group-consensus';
 
 const m = (t: number | null): MemberTargetInput => ({ accepted_target: t });
 
@@ -85,3 +85,16 @@ describe('computeDerivedTarget — rule diff comparison', () => {
     expect(computeDerivedTarget(after, 'avg')!).toBeGreaterThan(computeDerivedTarget(before, 'avg')!);
   });
 });
+
+describe('resolveEffectiveTarget — #5 全員離開還原 base', () => {
+  it('derived 有值 → 用 derived（有人設目標）', () => {
+    expect(resolveEffectiveTarget(15000, 20000)).toBe(15000);
+  });
+  it('derived=null（全員離開/沒人設）→ 還原 base（建立者原始門檻）', () => {
+    // 這是 bug 的核心：之前 derived=null 就不寫回 → max_price 卡在舊共識值
+    expect(resolveEffectiveTarget(null, 20000)).toBe(20000);
+  });
+  it('derived=null + base=null（舊資料未回填）→ null（不亂改、保險）', () => {
+    expect(resolveEffectiveTarget(null, null)).toBeNull();
+  });
+})
