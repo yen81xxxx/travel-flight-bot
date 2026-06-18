@@ -238,7 +238,7 @@ export function formatAnalysisForLine(
   lines.push('');
 
   if (analysis.outboundCount === 0) {
-    lines.push('❌ 找不到符合條件的航班（星宇/長榮/捷星/酷航）');
+    lines.push('❌ 找不到符合條件的直飛航班');
     return lines.join('\n');
   }
 
