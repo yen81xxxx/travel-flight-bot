@@ -81,6 +81,12 @@ export function AddWatchSheet({
   const [returnDate, setReturnDate] = useState<string>('');
   const [maxPriceStr, setMaxPriceStr] = useState<string>('');
 
+  // === 航司過濾 ===
+  // availableAirlines = 這條線實際有飛的白名單航司（route-airlines endpoint）
+  // selectedAirlines  = 使用者勾的（預設全勾 = 不過濾）
+  const [availableAirlines, setAvailableAirlines] = useState<string[]>([]);
+  const [selectedAirlines, setSelectedAirlines] = useState<Set<string>>(new Set());
+
   // === preview state ===
   const [previewing, setPreviewing] = useState(false);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
@@ -105,6 +111,29 @@ export function AddWatchSheet({
       }
     }
   }, [open, defaultNotifyTarget, prefillRoute]);
+
+  // 路線變動 → 撈這條線有飛的航司，預設全勾（純 DB 讀、不燒配額）
+  useEffect(() => {
+    if (!open || !origin || !destination) return;
+    let cancelled = false;
+    fetch(`/api/route-airlines?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}`)
+      .then(r => r.json())
+      .then((d: { ok?: boolean; airlines?: string[] }) => {
+        if (cancelled || !d.ok || !Array.isArray(d.airlines)) return;
+        setAvailableAirlines(d.airlines);
+        setSelectedAirlines(new Set(d.airlines));  // 預設全勾 = 不過濾
+      })
+      .catch(() => { /* 撈不到航司清單不擋建立流程 */ });
+    return () => { cancelled = true; };
+  }, [open, origin, destination]);
+
+  const toggleAirline = (name: string) => {
+    setSelectedAirlines(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  };
 
   // swap 出發 / 抵達 — 確保仍維持「一台一日」
   const handleSwap = () => {
@@ -158,9 +187,17 @@ export function AddWatchSheet({
     }
   };
 
+  // 使用者是否「縮小」了航司範圍（勾的 < 全部）。沒縮小 = 不過濾。
+  const narrowedAirlines = availableAirlines.length > 0
+    && selectedAirlines.size > 0
+    && selectedAirlines.size < availableAirlines.length;
+
   // === 開始追蹤 ===
+  // 有航司清單時至少要勾 1 家（不能 0 家 = 沒東西可追）
+  const hasAirlineSelection = availableAirlines.length === 0 || selectedAirlines.size > 0;
   const canSubmit = sourceId && origin && destination && outboundDate
-    && (isOneWay || returnDate) && /^\d+$/.test(maxPriceStr) && parseInt(maxPriceStr, 10) > 0;
+    && (isOneWay || returnDate) && /^\d+$/.test(maxPriceStr) && parseInt(maxPriceStr, 10) > 0
+    && hasAirlineSelection;
 
   const handleSubmit = async () => {
     if (!canSubmit || !sourceId) return;
@@ -177,6 +214,8 @@ export function AddWatchSheet({
           maxPrice: parseInt(maxPriceStr, 10),
           outboundDate,
           ...(isOneWay ? {} : { returnDate }),
+          // 只在「縮小範圍」時送 airlineFilter；全勾 = 不送 = 追全部（舊行為）
+          ...(narrowedAirlines ? { airlineFilter: [...selectedAirlines] } : {}),
           // G1: 建群組訂閱時把建立者 user 自動加入 group_member
           // 個人訂閱（sourceId 是 user）時 backend 會忽略此欄
           ...(notifyTarget === 'group' && userId ? { creatorUserId: userId } : {})
@@ -310,6 +349,37 @@ export function AddWatchSheet({
               </label>
             )}
           </div>
+
+          {/* === 航司過濾（這條線有飛的才列；全勾 = 追全部） === */}
+          {availableAirlines.length > 0 && (
+            <div className="airline-box">
+              <div className="airline-label">
+                <Icon name="airplane" size={13} stroke={2} /> 航空公司
+                <span className="airline-hint">只追勾選的</span>
+              </div>
+              <div className="airline-chips">
+                {availableAirlines.map(name => {
+                  const on = selectedAirlines.has(name);
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      data-testid={`airline-${name}`}
+                      className={`airline-chip ${on ? 'on' : ''}`}
+                      aria-pressed={on}
+                      onClick={() => toggleAirline(name)}
+                    >
+                      <Icon name={on ? 'check' : 'plus'} size={13} stroke={2.4} />
+                      {name}
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedAirlines.size === 0 && (
+                <div className="airline-warn">至少勾一家航空</div>
+              )}
+            </div>
+          )}
 
           {/* === Preview button + result === */}
           <div className="preview-box">
@@ -637,6 +707,49 @@ export function AddWatchSheet({
           padding: 11px 12px;
         }
 
+        .airline-box { margin-top: 16px; }
+        .airline-label {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 13px;
+          color: var(--ios-label-2);
+          margin-bottom: 8px;
+        }
+        .airline-hint {
+          font-size: 11px;
+          color: var(--ios-label-3);
+          margin-left: 2px;
+        }
+        .airline-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        .airline-chip {
+          appearance: none;
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          background: var(--ios-fill-3);
+          border: 1px solid var(--ios-separator-2);
+          color: var(--ios-label-2);
+          padding: 8px 12px;
+          border-radius: 999px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        .airline-chip.on {
+          background: rgba(10, 132, 255, 0.14);
+          border-color: var(--ios-blue);
+          color: var(--ios-blue);
+        }
+        .airline-warn {
+          margin-top: 6px;
+          font-size: 12px;
+          color: var(--ios-orange);
+        }
         .preview-box { margin-top: 16px; }
         .preview-btn {
           appearance: none;
