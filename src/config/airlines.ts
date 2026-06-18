@@ -23,6 +23,23 @@ const AIRLINES: AirlineEntry[] = [
 
 export const AIRLINE_KEYWORDS: string[] = AIRLINES.flatMap(a => [...a.nameKeywords, ...a.codeKeywords]);
 
+/** 所有白名單航司的顯示名（UI 預設全選 + 這條線無資料時的 fallback）。 */
+export const ALL_AIRLINE_NAMES: string[] = AIRLINES.map(a => a.displayName);
+
+/**
+ * 航班是否通過「航司過濾」。
+ * filter 為空 / null / undefined → 不過濾（全部通過，等同舊行為）。
+ * 比對用 displayName（= normalizeAirlineName 輸出，也是存進 subscriptions.airline_filter 的值）。
+ */
+export function matchesAirlineFilter(
+  airline: string | null | undefined,
+  filter: string[] | null | undefined
+): boolean {
+  if (!filter || filter.length === 0) return true;
+  const name = matchByName(airline)?.displayName;
+  return name != null && filter.includes(name);
+}
+
 /**
  * 判斷某個航班的航空公司是否在 whitelist 內。
  * 不分大小寫、子字串比對；含 2-letter code 比對以最大化覆蓋率。

@@ -19,6 +19,8 @@ const PostBody = z.object({
   outboundDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   label: z.string().optional(),
+  // 航司過濾（migration 0012）：displayName 陣列；空/不給 = 不過濾（追全部白名單）
+  airlineFilter: z.array(z.string()).optional(),
   // G1: 建立群組訂閱時帶建立者的 LINE userId — 用來自動加入 group_member
   // 這樣群組訂閱一建立就有 1 個 member，避免「沒人是 member 但卡片有 N 人在追=0」奇怪狀態
   // 個人訂閱 (sourceId 是 Uxxx) 忽略此欄位
@@ -100,6 +102,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const { data: existingArr } = await dedupQuery.order('id', { ascending: true }).limit(1);
   const existing = existingArr?.[0] ?? null;
 
+  // 空陣列正規化成 null（空字串 vs null 紀律：null = 不過濾）
+  const airlineFilterValue = body.airlineFilter && body.airlineFilter.length > 0 ? body.airlineFilter : null;
+
   if (existing) {
     const { error } = await supabase
       .from('subscriptions')
@@ -108,7 +113,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         max_price_traditional: body.maxPriceTraditional ?? null,
         outbound_date: body.outboundDate ?? null,
         return_date: body.returnDate ?? null,
-        label: body.label ?? null
+        label: body.label ?? null,
+        airline_filter: airlineFilterValue
       })
       .eq('id', existing.id);
     if (error) {
@@ -147,6 +153,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       max_price_traditional: body.maxPriceTraditional ?? null,
       label: body.label ?? null,
       paused: false,
+      airline_filter: airlineFilterValue,
       // G1: 紀錄建立者 — 不控制權限，純資料 (group watch 沒 owner)
       created_by_user_id: body.creatorUserId ?? null
     })

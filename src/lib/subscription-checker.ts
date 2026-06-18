@@ -180,11 +180,11 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
             outboundMax: sub.outbound_max_departure_time ?? null,
             returnMax: sub.return_max_departure_time ?? null
           };
-          // 跨機場挑這筆 sub 的最便宜
-          let analysis = analyzeFlights(fanout[0].result.outbound, fanout[0].result.return, timeFilter);
+          // 跨機場挑這筆 sub 的最便宜（含航司過濾）
+          let analysis = analyzeFlights(fanout[0].result.outbound, fanout[0].result.return, timeFilter, sub.airline_filter);
           let cheapest = analysis.cheapestRoundTripPrice;
           for (const f of fanout.slice(1)) {
-            const a = analyzeFlights(f.result.outbound, f.result.return, timeFilter);
+            const a = analyzeFlights(f.result.outbound, f.result.return, timeFilter, sub.airline_filter);
             const p = a.cheapestRoundTripPrice;
             if (p != null && (cheapest == null || p < cheapest)) {
               analysis = a;

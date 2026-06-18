@@ -169,11 +169,11 @@ describe('buildPatchUpdatePayload — undefined vs null 語義', () => {
 });
 
 describe('防回歸：欄位數量檢查', () => {
-  it('PatchBody 欄位數量 = 12（id + sourceId + 10 可選）', () => {
+  it('PatchBody 欄位數量 = 13（id + sourceId + 11 可選）', () => {
     // 新增欄位時請順便加測試（避免靜默落地未測的欄位）。
     // 目前：id, sourceId, paused, label, maxPrice, maxPriceTraditional,
     //       outboundMin/MaxDepartureTime, returnMin/MaxDepartureTime,
-    //       outboundDate, returnDate（returnDate=null → 變單程訂閱）
+    //       outboundDate, returnDate（=null → 單程）, airlineFilter（0012 航司過濾）
     const allOptional = PatchBody.safeParse({ id: 1, sourceId: 'U' });
     expect(allOptional.success).toBe(true);
     const shape = (PatchBody as unknown as { _def: { shape: () => Record<string, unknown> } })._def.shape();
@@ -183,7 +183,7 @@ describe('防回歸：欄位數量檢查', () => {
       'maxPrice', 'maxPriceTraditional',
       'outboundMinDepartureTime', 'outboundMaxDepartureTime',
       'returnMinDepartureTime', 'returnMaxDepartureTime',
-      'outboundDate', 'returnDate'
+      'outboundDate', 'returnDate', 'airlineFilter'
     ].sort());
   });
 
@@ -207,6 +207,16 @@ describe('防回歸：欄位數量檢查', () => {
   it('returnDate 非法格式 → schema 拒絕', () => {
     expect(PatchBody.safeParse({ id: 1, sourceId: 'U', returnDate: '2027/04/04' }).success).toBe(false);
     expect(PatchBody.safeParse({ id: 1, sourceId: 'U', returnDate: 'tomorrow' }).success).toBe(false);
+  });
+
+  it('airlineFilter：有值 → 寫；空陣列/null → 寫 null（清掉過濾）；undefined → 不動', () => {
+    expect(buildPatchUpdatePayload({ id: 1, sourceId: 'U', airlineFilter: ['捷星', '酷航'] }))
+      .toEqual({ airline_filter: ['捷星', '酷航'] });
+    expect(buildPatchUpdatePayload({ id: 1, sourceId: 'U', airlineFilter: [] }))
+      .toEqual({ airline_filter: null });
+    expect(buildPatchUpdatePayload({ id: 1, sourceId: 'U', airlineFilter: null }))
+      .toEqual({ airline_filter: null });
+    expect(buildPatchUpdatePayload({ id: 1, sourceId: 'U' })).toEqual({});
   });
 });
 

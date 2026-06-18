@@ -1,5 +1,5 @@
 import type { FlightQuote, SerpApiFlight } from '@/types';
-import { getAirlineCategory } from '@/config/airlines';
+import { getAirlineCategory, matchesAirlineFilter } from '@/config/airlines';
 
 /**
  * 起飛時段窗口 — 'HH:MM' 字串，去程 / 回程可獨立設定。
@@ -97,11 +97,20 @@ export interface FlightAnalysis {
 export function analyzeFlights(
   outbound: FlightQuote[],
   ret: FlightQuote[],
-  timeFilter?: TimeFilter
+  timeFilter?: TimeFilter,
+  // 航司過濾：只在這些航司裡找最便宜。空 / null / undefined = 不過濾（舊行為）。
+  // 存 displayName（'星宇航空' / '捷星'…），跟 normalizeAirlineName 對齊。
+  airlineFilter?: string[] | null
 ): FlightAnalysis {
   // 起飛時段窗口過濾：套用後再排序找最便宜
-  const fOutbound = filterByDepartureTime(outbound, timeFilter?.outboundMin, timeFilter?.outboundMax);
-  const fReturn = filterByDepartureTime(ret, timeFilter?.returnMin, timeFilter?.returnMax);
+  let fOutbound = filterByDepartureTime(outbound, timeFilter?.outboundMin, timeFilter?.outboundMax);
+  let fReturn = filterByDepartureTime(ret, timeFilter?.returnMin, timeFilter?.returnMax);
+
+  // 航司過濾 — 在時段過濾之後、找最便宜之前。filter 空就整段跳過（matchesAirlineFilter 回 true）。
+  if (airlineFilter && airlineFilter.length > 0) {
+    fOutbound = fOutbound.filter(f => matchesAirlineFilter(f.airline, airlineFilter));
+    fReturn = fReturn.filter(f => matchesAirlineFilter(f.airline, airlineFilter));
+  }
 
   const sortedOut = [...fOutbound].sort(byPriceAsc);
   const sortedRet = [...fReturn].sort(byPriceAsc);

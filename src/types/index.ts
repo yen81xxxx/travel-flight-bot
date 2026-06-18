@@ -67,6 +67,9 @@ export interface Subscription {
   consensus_rule?: 'max' | 'avg' | 'manual' | null;
   // G0: 建立者 LINE userId — 紀錄用，**不**控制權限（group watch 沒 owner）
   created_by_user_id?: string | null;
+  // 航司過濾（migration 0012）：只在這些航司裡找最便宜。存 displayName
+  // （'星宇航空' / '捷星'…）。null / 空 = 不過濾，等同追全部白名單航司（舊行為）。
+  airline_filter?: string[] | null;
 }
 
 /** G0: 群組成員（subscriptions: id 1 → N）。個人訂閱永遠 0 筆。*/

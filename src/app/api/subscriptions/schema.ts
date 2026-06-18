@@ -34,7 +34,9 @@ export const PatchBody = z.object({
   returnMaxDepartureTime: z.string().regex(HHMM_RE).nullable().optional(),
   // 日期：YYYY-MM-DD；returnDate 給 null 表單程訂閱
   outboundDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional()
+  returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  // 航司過濾（0012）：displayName 陣列；給 [] 或 null 表清掉過濾（追全部）
+  airlineFilter: z.array(z.string()).nullable().optional()
 });
 
 export type PatchBodyInput = z.infer<typeof PatchBody>;
@@ -79,5 +81,9 @@ export function buildPatchUpdatePayload(body: PatchBodyInput): Record<string, un
   if (body.outboundDate !== undefined) update.outbound_date = body.outboundDate;
   // returnDate: null → 寫 null（變單程）；'YYYY-MM-DD' → 寫新日期；undefined → 不動
   if (body.returnDate !== undefined) update.return_date = body.returnDate;
+  // airlineFilter: 空陣列 / null → 寫 null（清掉過濾、追全部）；有值 → 寫；undefined → 不動
+  if (body.airlineFilter !== undefined) {
+    update.airline_filter = body.airlineFilter && body.airlineFilter.length > 0 ? body.airlineFilter : null;
+  }
   return update;
 }

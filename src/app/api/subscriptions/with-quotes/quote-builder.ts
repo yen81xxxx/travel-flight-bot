@@ -86,7 +86,7 @@ export function buildWatchQuote(
   let bestTrad: { price: number; airline: string } | null = null;
 
   for (const [, flights] of src.recentByAirport) {
-    const a = analyzeFlights(flights.outbound, flights.return, timeFilter);
+    const a = analyzeFlights(flights.outbound, flights.return, timeFilter, sub.airline_filter);
     if (a.lccCombo && (!bestLcc || a.lccCombo.price < bestLcc.price)) {
       bestLcc = {
         price: a.lccCombo.price,
