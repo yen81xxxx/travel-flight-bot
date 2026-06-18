@@ -11,11 +11,23 @@ describe('AddWatchSheet', () => {
     global.fetch = jest.fn() as unknown as typeof fetch;
   });
 
-  it('sourceId=null → 顯示「需要先登入 LINE」提示', () => {
-    const { container } = render(
+  it('未登入 + 有 onRequestLogin → 顯示「使用 LINE 登入」按鈕，點擊觸發登入', () => {
+    const onRequestLogin = jest.fn();
+    const { getByTestId } = render(
+      <AddWatchSheet open={true} onClose={() => {}} userId={null} groupCtxId={null} onRequestLogin={onRequestLogin} />
+    );
+    const btn = getByTestId('add-login');
+    expect(btn.textContent).toContain('使用 LINE 登入');
+    btn.click();
+    expect(onRequestLogin).toHaveBeenCalled();
+  });
+
+  it('未登入 + 無 onRequestLogin → 只提示在 LINE 內開啟、不顯示登入按鈕', () => {
+    const { container, queryByTestId } = render(
       <AddWatchSheet open={true} onClose={() => {}} userId={null} groupCtxId={null} />
     );
-    expect(container.textContent).toContain('需要先登入');
+    expect(container.textContent).toContain('登入後才能建立追蹤');
+    expect(queryByTestId('add-login')).toBeNull();
   });
 
   it('有 sourceId → 顯示路線 picker + 來回/單程 segmented', () => {

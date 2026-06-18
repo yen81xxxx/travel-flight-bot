@@ -87,7 +87,7 @@ export function applyFilter(watches: WatchItem[], filter: FilterKey): WatchItem[
 }
 
 export default function WatchlistView({ liffId }: Props) {
-  const { liffReady, user } = useLiff(liffId);
+  const { liffReady, user, login } = useLiff(liffId);
   const sourceId = user?.userId ?? null;
 
   // 群組 ctx 處理 — 跟既有 SubscriptionsViewV2 同模式（URL ?ctx= → sessionStorage + localStorage）
@@ -299,6 +299,7 @@ export default function WatchlistView({ liffId }: Props) {
         defaultNotifyTarget={defaultNotifyTarget}
         prefillRoute={sheet.kind === 'add' ? (sheet.prefill ?? null) : null}
         onCreated={refetch}
+        onRequestLogin={login}
       />
       <SettingsSheet
         open={sheet.kind === 'settings'}

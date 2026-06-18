@@ -52,12 +52,17 @@ interface Props {
   prefillRoute?: { o: string; d: string } | null;
   /** 訂閱成功後通知 caller refetch watchlist */
   onCreated?: () => void;
+  /**
+   * 未登入時觸發 LINE 登入（liff.login → 重導 LINE OAuth → 回來帶 userId）。
+   * 在外部瀏覽器開 LIFF 也能用。沒傳則未登入只顯示提示、無按鈕。
+   */
+  onRequestLogin?: () => void;
 }
 
 const todayISO = (): string => new Date().toISOString().slice(0, 10);
 
 export function AddWatchSheet({
-  open, onClose, userId, groupCtxId, defaultNotifyTarget = 'me', prefillRoute = null, onCreated
+  open, onClose, userId, groupCtxId, defaultNotifyTarget = 'me', prefillRoute = null, onCreated, onRequestLogin
 }: Props): React.ReactElement {
   // === 通知對象 ===
   // 只有 userId + groupCtxId 都有時，user 可選；其中一邊不存在就只能用另一邊。
@@ -227,7 +232,20 @@ export function AddWatchSheet({
           </button>
         </div>
       ) : !sourceId ? (
-        <div className="hint">需要先登入 LINE 才能建立追蹤。</div>
+        <div className="login-gate">
+          <Icon name="person" size={32} stroke={1.8} />
+          <p className="login-gate-title">登入後才能建立追蹤</p>
+          <p className="login-gate-sub">
+            {onRequestLogin
+              ? '用 LINE 登入就能新增航線、設定目標價、收到降價通知。'
+              : '請在 LINE App 內開啟本頁（從 bot 選單），才能以你的身份建立追蹤。'}
+          </p>
+          {onRequestLogin && (
+            <button type="button" className="cta login-cta" onClick={onRequestLogin} data-testid="add-login">
+              使用 LINE 登入
+            </button>
+          )}
+        </div>
       ) : (
         <>
           {/* === Route picker (boarding-pass style) === */}
@@ -389,6 +407,30 @@ export function AddWatchSheet({
 
       <style jsx>{`
         .hint { padding: 32px 8px; text-align: center; color: var(--ios-label-2); }
+        /* 未登入 gate：給明確的 LINE 登入入口（外部瀏覽器開也能用） */
+        .login-gate {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          gap: 10px;
+          padding: 32px 16px 16px;
+          color: var(--ios-label-3);
+        }
+        .login-gate-title {
+          font-size: 16px;
+          font-weight: 700;
+          color: var(--ios-label);
+          margin: 4px 0 0;
+        }
+        .login-gate-sub {
+          font-size: 13px;
+          line-height: 1.5;
+          color: var(--ios-label-2);
+          margin: 0 0 6px;
+          max-width: 280px;
+        }
+        .login-cta { width: 100%; max-width: 280px; }
         /* ---- PR #21 add-success calm state (§4.9) ---- */
         .add-success {
           display: flex;
