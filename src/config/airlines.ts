@@ -32,7 +32,10 @@ const AIRLINES: AirlineEntry[] = [
   { category: 'full-service', displayName: '日本航空', nameKeywords: ['日本航空', 'Japan Airlines'], codeKeywords: ['JL'] },
   { category: 'full-service', displayName: '全日空',   nameKeywords: ['全日空', 'All Nippon'],   codeKeywords: ['NH'] },
   { category: 'lcc',          displayName: '台灣虎航', nameKeywords: ['台灣虎航', '虎航', 'Tigerair'], codeKeywords: ['IT'] },
-  { category: 'lcc',          displayName: '樂桃',     nameKeywords: ['樂桃', 'Peach'],          codeKeywords: ['MM'] }
+  { category: 'lcc',          displayName: '樂桃',     nameKeywords: ['樂桃', 'Peach'],          codeKeywords: ['MM'] },
+  // 2026-06-19 補：第五航權直飛 NRT-TPE（實際資料驗證過 SL395 / CX451 皆單段直飛 ~250min）
+  { category: 'lcc',          displayName: '泰國獅航', nameKeywords: ['泰國獅航', 'Thai Lion'],  codeKeywords: ['SL'] },
+  { category: 'full-service', displayName: '國泰航空', nameKeywords: ['國泰', 'Cathay'],         codeKeywords: ['CX'] }
 ];
 
 /** 已分類航司的顯示名（UI 預設全選 + 這條線無資料時的 fallback）。 */

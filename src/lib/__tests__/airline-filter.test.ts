@@ -43,9 +43,9 @@ describe('matchesAirlineFilter', () => {
     expect(matchesAirlineFilter('Air China', ['中華航空'])).toBe(false);
   });
   it('未分類冷門航空 → 用原始名（normalize 後＝原值）就能比對（有飛就追）', () => {
-    // 沒列在 config 的航空：normalizeAirlineName 回原值，filter 存原值就能勾到
-    expect(matchesAirlineFilter('Cathay Pacific', ['Cathay Pacific'])).toBe(true);
-    expect(matchesAirlineFilter('Cathay Pacific', ['捷星'])).toBe(false);
+    // 沒列在 config 的航空（用合成名確保永遠不被分類）：normalize 回原值，filter 存原值就能勾到
+    expect(matchesAirlineFilter('ZZ Test Air', ['ZZ Test Air'])).toBe(true);
+    expect(matchesAirlineFilter('ZZ Test Air', ['捷星'])).toBe(false);
   });
 });
 
@@ -57,9 +57,15 @@ describe('航司分類（廉航 / 傳統）', () => {
     expect(getAirlineCategory('Japan Airlines')).toBe('full-service');
     expect(getAirlineCategory('All Nippon Airways')).toBe('full-service');
   });
+  it('第五航權直飛航司：泰國獅航=廉航，國泰=傳統', () => {
+    expect(getAirlineCategory('Thai Lion Air')).toBe('lcc');
+    expect(getAirlineCategory('Cathay Pacific')).toBe('full-service');
+    expect(matchesAirlineFilter('Thai Lion Air', ['泰國獅航'])).toBe(true);
+    expect(matchesAirlineFilter('Cathay Pacific', ['國泰航空'])).toBe(true);
+  });
   it('未分類航空 → category null、normalize 保留原值', () => {
-    expect(getAirlineCategory('Cathay Pacific')).toBeNull();
-    expect(normalizeAirlineName('Cathay Pacific')).toBe('Cathay Pacific');
+    expect(getAirlineCategory('ZZ Test Air')).toBeNull();
+    expect(normalizeAirlineName('ZZ Test Air')).toBe('ZZ Test Air');
   });
 });
 
