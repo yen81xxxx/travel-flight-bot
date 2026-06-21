@@ -48,6 +48,11 @@ function fmtDuration(min: number | null): string {
   return m ? `${h}h${m}m` : `${h}h`;
 }
 
+// 起飛時段過濾的「整天邊界」預設值 — 使用者只動在意的那一邊，另一邊維持全天。
+// 00:00 當下限 = 不限早；23:59 當上限 = 不限晚（沒有航班早於 00:00 或晚於 23:59，等同 null）。
+const DAY_START = '00:00';
+const DAY_END = '23:59';
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -142,11 +147,13 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
     const outMax = watch.outbound_max_departure_time;
     const retMin = watch.return_min_departure_time;
     const retMax = watch.return_max_departure_time;
-    setTimeFilterEnabled(!!(outMin || outMax || retMin || retMax));
-    setOutboundMin(outMin ?? '');
-    setOutboundMax(outMax ?? '');
-    setReturnMin(retMin ?? '');
-    setReturnMax(retMax ?? '');
+    const tfEnabled = !!(outMin || outMax || retMin || retMax);
+    setTimeFilterEnabled(tfEnabled);
+    // 過濾開著時，沒設的那一邊用整天邊界填滿（最早=00:00 / 最晚=23:59）→ 使用者只看到 / 只改在意的那一邊
+    setOutboundMin(outMin ?? (tfEnabled ? DAY_START : ''));
+    setOutboundMax(outMax ?? (tfEnabled ? DAY_END : ''));
+    setReturnMin(retMin ?? (tfEnabled && watch.return_date ? DAY_START : ''));
+    setReturnMax(retMax ?? (tfEnabled && watch.return_date ? DAY_END : ''));
     setPaused(!!watch.paused);
     setError(null);
     setConfirmDelete(false);
@@ -922,13 +929,28 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
             <span>起飛時段過濾</span>
             <span className="set-sublabel">只看符合的航班</span>
           </div>
-          <IOSToggle on={timeFilterEnabled} onChange={setTimeFilterEnabled} ariaLabel="起飛時段過濾" />
+          <IOSToggle
+            on={timeFilterEnabled}
+            onChange={(on) => {
+              setTimeFilterEnabled(on);
+              // 打開時把空的那一邊補成整天邊界 → 只改在意的那一邊就好
+              if (on) {
+                setOutboundMin(v => v || DAY_START);
+                setOutboundMax(v => v || DAY_END);
+                if (watch.return_date) {
+                  setReturnMin(v => v || DAY_START);
+                  setReturnMax(v => v || DAY_END);
+                }
+              }
+            }}
+            ariaLabel="起飛時段過濾"
+          />
         </div>
         {timeFilterEnabled && (
           <div className="time-windows">
             <p className="tw-hint">
-              設定起飛時間範圍，只看落在區間內的航班。<br />
-              可只填一邊 —— 只填「最早」＝排除太早的班；只填「最晚」＝排除太晚的班。
+              預設整天（00:00 ~ 23:59），只要改你在意的那一邊就好。<br />
+              例：把「最早起飛」設 09:00 ＝ 排除清晨班；「最晚起飛」設 18:00 ＝ 排除太晚的班。
             </p>
             <div className="tw-leg">
               <span className="tw-leg-label">去程</span>
