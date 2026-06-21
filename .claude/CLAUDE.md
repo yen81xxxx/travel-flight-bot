@@ -11,6 +11,11 @@
 4. **GitHub Actions CI 必須綠燈才 merge** — main 設 branch protection
 5. **改任一 schema** (DB / type / API / zod) → 同步：DB migration + types/index.ts + API + LIFF UI + 測試
    - 一個漏 = 上線翻車（之前 max_price_traditional 一次踩過、time-filter 一次踩過）
+6. **改完一定「實際驗證過」才跟 user 說好了**（user 反覆強調的鐵則）
+   - **typecheck / jest 綠 ≠ 功能 OK**。merge + 部署後要**實際操作那個功能一遍**才回報
+   - 驗證擇一：對 prod 端到端腳本（建測試資料 → 操作 API → 讀回確認 → 清理）、`npm run e2e`、或真的在 LIFF / LINE 點一遍
+   - **誠實回報實測結果**：測了什麼、看到什麼數字。沒測就說沒測，**禁止**講「應該沒問題」
+   - 血淚教訓：時段過濾「存了畫面沒變」就是只看 CI 綠沒實測 → 被 user 抓到（後端其實是對的，前端清單沒套）
 
 ## 部署 / 版本
 
@@ -36,7 +41,7 @@
 
 ## flight_quotes 表
 
-- 只存「直飛」(stops=0) + whitelist 航司（星宇/長榮/捷星/酷航）
+- 只存「直飛」(stops=0)；**2026-06-18 起無航司白名單**（有直飛就存；`config/airlines` 只負責廉/傳分類與顯示名，未分類航空照樣被追蹤+可勾選）
 - `raw.flights[0].departure_airport.time` 是 `'YYYY-MM-DD HH:MM'` 格式
   （`inspect-time-format.mjs` 驗證過 50/50 樣本一致）
 - 30 天 retention 自動清舊資料
@@ -65,6 +70,7 @@
 - 跑單一：`npx jest <檔案路徑>`
 - 加新功能 = 加新測試（特別是 `analyzeFlights` 衍生邏輯、API schema、cron mapper）
 - 不要為了過 hook 而 `--no-verify`，問題該修
+- **實際驗證**（Workflow #6 要求）：`npm run e2e`（`scripts/e2e/smoke.mjs` 對 prod 端到端 + 自我清理），或自寫一次性腳本建測試資料 → 打 API → 讀回確認 → `delete` 清掉。單測綠不算驗證過。
 
 ## 重要的「曾經踩過 / 別再踩」清單
 
