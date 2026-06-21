@@ -17,7 +17,7 @@
  *   - DELETE /api/subscriptions (刪除)
  */
 import * as React from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BottomSheet } from './BottomSheet';
 import { Icon } from './Icon';
 import { IOSToggle } from './IOSToggle';
@@ -64,6 +64,18 @@ const TIME_OPTIONS: string[] = (() => {
   out.push('23:59');
   return out;
 })();
+
+/**
+ * 航班起飛時間是否落在 [min, max] 窗口內。
+ * time 取不到 → 保留（fail-open，跟後端 flights.ts filterByDepartureTime 一致）。
+ * 'HH:MM' 字典序比較 == 數值比較（zero-pad 24h 特性）。
+ */
+export function inTimeWindow(time: string | null, min: string, max: string): boolean {
+  if (!time) return true;
+  if (min && time < min) return false;
+  if (max && time > max) return false;
+  return true;
+}
 
 /** 起飛時間下拉 — 點開直接選，免打字、免看 AM/PM。 */
 function TimeSelect({ value, onChange, ariaLabel }: {
@@ -476,6 +488,22 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
       .finally(() => setFlightsLoading(false));
   }, [watch, open]);
 
+  // 航班清單即時套用時段窗口（用「目前編輯中」的值，改下拉就馬上反映，不用等存）
+  const shownOutbound = useMemo(
+    () => timeFilterEnabled
+      ? outboundFlights.filter(f => inTimeWindow(f.departure_time, outboundMin, outboundMax))
+      : outboundFlights,
+    [timeFilterEnabled, outboundFlights, outboundMin, outboundMax]
+  );
+  const shownReturn = useMemo(
+    () => timeFilterEnabled
+      ? returnFlights.filter(f => inTimeWindow(f.departure_time, returnMin, returnMax))
+      : returnFlights,
+    [timeFilterEnabled, returnFlights, returnMin, returnMax]
+  );
+  const hiddenOutbound = outboundFlights.length - shownOutbound.length;
+  const hiddenReturn = returnFlights.length - shownReturn.length;
+
   if (!watch) {
     return <BottomSheet open={open} onClose={onClose} title=""><div /></BottomSheet>;
   }
@@ -862,22 +890,36 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
         </div>
       )}
 
-      {/* === Flights (PR #4b) === */}
+      {/* === Flights (PR #4b) — 即時套用起飛時段過濾 === */}
       {(outboundFlights.length > 0 || returnFlights.length > 0) && (
         <>
           <FlightList
             label={watch.return_date ? '去程選項' : '航班選項'}
-            flights={outboundFlights}
+            flights={shownOutbound}
             showAll={showAllOutbound}
             onToggleAll={() => setShowAllOutbound(v => !v)}
           />
+          {timeFilterEnabled && shownOutbound.length === 0 && outboundFlights.length > 0 && (
+            <p className="tw-hidden-note">這個時段內沒有{watch.return_date ? '去程' : ''}航班 — 放寬「最早 / 最晚」看看</p>
+          )}
+          {timeFilterEnabled && hiddenOutbound > 0 && shownOutbound.length > 0 && (
+            <p className="tw-hidden-note">已隱藏 {hiddenOutbound} 班不在時段內的{watch.return_date ? '去程' : ''}航班</p>
+          )}
           {watch.return_date && returnFlights.length > 0 && (
-            <FlightList
-              label="回程選項"
-              flights={returnFlights}
-              showAll={showAllReturn}
-              onToggleAll={() => setShowAllReturn(v => !v)}
-            />
+            <>
+              <FlightList
+                label="回程選項"
+                flights={shownReturn}
+                showAll={showAllReturn}
+                onToggleAll={() => setShowAllReturn(v => !v)}
+              />
+              {timeFilterEnabled && shownReturn.length === 0 && (
+                <p className="tw-hidden-note">這個時段內沒有回程航班 — 放寬「最早 / 最晚」看看</p>
+              )}
+              {timeFilterEnabled && hiddenReturn > 0 && shownReturn.length > 0 && (
+                <p className="tw-hidden-note">已隱藏 {hiddenReturn} 班不在時段內的回程航班</p>
+              )}
+            </>
           )}
         </>
       )}
@@ -1239,6 +1281,12 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
           font-size: 11.5px;
           line-height: 1.6;
           color: var(--ios-label-3);
+        }
+        .tw-hidden-note {
+          margin: -4px 0 4px;
+          font-size: 11.5px;
+          color: var(--ios-label-3);
+          padding-left: 2px;
         }
         .tw-leg {
           display: flex;

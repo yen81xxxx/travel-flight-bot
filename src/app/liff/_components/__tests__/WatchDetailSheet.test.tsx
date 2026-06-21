@@ -4,8 +4,23 @@
 import '@testing-library/jest-dom';
 import * as React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react';
-import { WatchDetailSheet } from '../WatchDetailSheet';
+import { WatchDetailSheet, inTimeWindow } from '../WatchDetailSheet';
 import type { WatchItem } from '../../_hooks/useWatchlist';
+
+describe('inTimeWindow（航班清單時段過濾的純邏輯）', () => {
+  it('窗口內 → true；早於 min / 晚於 max → false', () => {
+    expect(inTimeWindow('09:00', '08:00', '18:00')).toBe(true);
+    expect(inTimeWindow('07:00', '08:00', '18:00')).toBe(false);
+    expect(inTimeWindow('19:00', '08:00', '18:00')).toBe(false);
+  });
+  it('邊界含端點（>= min、<= max）', () => {
+    expect(inTimeWindow('08:00', '08:00', '18:00')).toBe(true);
+    expect(inTimeWindow('18:00', '08:00', '18:00')).toBe(true);
+  });
+  it('取不到起飛時間 → 保留（fail-open）', () => {
+    expect(inTimeWindow(null, '08:00', '18:00')).toBe(true);
+  });
+});
 
 const baseWatch: WatchItem = {
   id: 7,
@@ -279,6 +294,39 @@ describe('WatchDetailSheet', () => {
     );
     expect((getByLabelText('去程最早起飛') as HTMLInputElement).value).toBe('08:00');
     expect((getByLabelText('去程最晚起飛') as HTMLInputElement).value).toBe('23:59');
+  });
+
+  it('航班清單即時套用時段 — 時段外班次被隱藏 + 顯示已隱藏數', async () => {
+    global.fetch = jest.fn((url: string | URL | Request, init?: RequestInit) => {
+      const u = typeof url === 'string' ? url : url.toString();
+      if (u.includes('/api/subscriptions/flights')) {
+        return Promise.resolve({ json: () => Promise.resolve({
+          ok: true,
+          outbound: [
+            { airline: '酷航', airline_code: 'TR', price: 5000, duration_minutes: 200, stops: 0, departure_time: '07:00', flight_number: 'TR 1' },
+            { airline: '星宇航空', airline_code: 'JX', price: 6000, duration_minutes: 200, stops: 0, departure_time: '14:00', flight_number: 'JX 1' }
+          ],
+          return: []
+        }) } as Response);
+      }
+      if (init?.method === 'PATCH' || init?.method === 'DELETE') {
+        return Promise.resolve({ json: () => Promise.resolve({ ok: true }) } as Response);
+      }
+      return Promise.resolve({ json: () => Promise.resolve({ ok: true }) } as Response);
+    }) as unknown as typeof fetch;
+
+    const oneWay = { ...baseWatch, return_date: null };
+    const { getByLabelText, findByText, queryByText, getByText } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={oneWay} />
+    );
+    await findByText('TR 1');  // 航班載入（07:00 酷航 + 14:00 星宇，用 flight_no 唯一定位）
+    expect(getByText('JX 1')).toBeInTheDocument();
+    expect(queryByText(/已隱藏/)).toBeNull();  // 還沒過濾 → 沒有隱藏提示
+    fireEvent.click(getByLabelText('起飛時段過濾'));
+    fireEvent.change(getByLabelText('去程最早起飛'), { target: { value: '09:00' } });
+    await waitFor(() => expect(queryByText('TR 1')).toBeNull());  // 07:00 班被濾掉
+    expect(getByText('JX 1')).toBeInTheDocument();                // 14:00 班留著
+    expect(getByText(/已隱藏 1 班/)).toBeInTheDocument();
   });
 });
 
