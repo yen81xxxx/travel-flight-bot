@@ -227,6 +227,46 @@ describe('WatchDetailSheet', () => {
       expect(body.paused).toBe(true);
     });
   });
+
+  it('起飛時段過濾打開 → 兩邊預設整天 00:00~23:59（使用者只改在意的那邊）', () => {
+    const { getByLabelText, queryByLabelText } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={baseWatch} />
+    );
+    expect(queryByLabelText('去程最早起飛')).toBeNull();  // 打開前沒輸入
+    fireEvent.click(getByLabelText('起飛時段過濾'));
+    expect((getByLabelText('去程最早起飛') as HTMLInputElement).value).toBe('00:00');
+    expect((getByLabelText('去程最晚起飛') as HTMLInputElement).value).toBe('23:59');
+    expect((getByLabelText('回程最早起飛') as HTMLInputElement).value).toBe('00:00');
+    expect((getByLabelText('回程最晚起飛') as HTMLInputElement).value).toBe('23:59');
+  });
+
+  it('只改去程最早 → 其餘維持整天邊界，PATCH 帶完整四值', async () => {
+    const { getByLabelText, getByText } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={baseWatch} />
+    );
+    fireEvent.click(getByLabelText('起飛時段過濾'));
+    fireEvent.change(getByLabelText('去程最早起飛'), { target: { value: '09:00' } });
+    fireEvent.click(getByText('儲存變更'));
+    await waitFor(() => {
+      const patchCall = (global.fetch as unknown as jest.Mock).mock.calls.find(
+        c => (c[1] as RequestInit)?.method === 'PATCH'
+      );
+      const body = JSON.parse(patchCall![1].body);
+      expect(body.outboundMinDepartureTime).toBe('09:00');
+      expect(body.outboundMaxDepartureTime).toBe('23:59');  // 沒動 → 整天上界
+      expect(body.returnMinDepartureTime).toBe('00:00');
+      expect(body.returnMaxDepartureTime).toBe('23:59');
+    });
+  });
+
+  it('已存部分設定（只有去程最早）→ 載入時最晚自動補 23:59', () => {
+    const w = { ...baseWatch, outbound_min_departure_time: '08:00' };
+    const { getByLabelText } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={w} />
+    );
+    expect((getByLabelText('去程最早起飛') as HTMLInputElement).value).toBe('08:00');
+    expect((getByLabelText('去程最晚起飛') as HTMLInputElement).value).toBe('23:59');
+  });
 });
 
 describe('WatchDetailSheet — G1 group join/leave', () => {
