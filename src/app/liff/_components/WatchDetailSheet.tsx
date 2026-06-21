@@ -926,18 +926,34 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
         </div>
         {timeFilterEnabled && (
           <div className="time-windows">
+            <p className="tw-hint">
+              設定起飛時間範圍，只看落在區間內的航班。<br />
+              可只填一邊 —— 只填「最早」＝排除太早的班；只填「最晚」＝排除太晚的班。
+            </p>
             <div className="tw-leg">
               <span className="tw-leg-label">去程</span>
-              <input type="time" value={outboundMin} onChange={e => setOutboundMin(e.target.value)} aria-label="去程最早" />
+              <label className="tw-field">
+                <input type="time" value={outboundMin} onChange={e => setOutboundMin(e.target.value)} aria-label="去程最早起飛" />
+                <span className="tw-cap">最早起飛</span>
+              </label>
               <span className="tw-dash">~</span>
-              <input type="time" value={outboundMax} onChange={e => setOutboundMax(e.target.value)} aria-label="去程最晚" />
+              <label className="tw-field">
+                <input type="time" value={outboundMax} onChange={e => setOutboundMax(e.target.value)} aria-label="去程最晚起飛" />
+                <span className="tw-cap">最晚起飛</span>
+              </label>
             </div>
             {watch.return_date && (
               <div className="tw-leg">
                 <span className="tw-leg-label">回程</span>
-                <input type="time" value={returnMin} onChange={e => setReturnMin(e.target.value)} aria-label="回程最早" />
+                <label className="tw-field">
+                  <input type="time" value={returnMin} onChange={e => setReturnMin(e.target.value)} aria-label="回程最早起飛" />
+                  <span className="tw-cap">最早起飛</span>
+                </label>
                 <span className="tw-dash">~</span>
-                <input type="time" value={returnMax} onChange={e => setReturnMax(e.target.value)} aria-label="回程最晚" />
+                <label className="tw-field">
+                  <input type="time" value={returnMax} onChange={e => setReturnMax(e.target.value)} aria-label="回程最晚起飛" />
+                  <span className="tw-cap">最晚起飛</span>
+                </label>
               </div>
             )}
           </div>
@@ -1169,18 +1185,33 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
           padding: 4px 0 12px;
           border-bottom: 0.5px solid var(--ios-hairline);
         }
+        .tw-hint {
+          margin: 0;
+          font-size: 11.5px;
+          line-height: 1.6;
+          color: var(--ios-label-3);
+        }
         .tw-leg {
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           gap: 8px;
         }
         .tw-leg-label {
           font-size: 12px;
           color: var(--ios-label-2);
           width: 38px;
+          padding-top: 9px;
+        }
+        .tw-field {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
         }
         .tw-leg input {
-          flex: 1;
+          width: 100%;
+          box-sizing: border-box;
           appearance: none;
           background: var(--ios-bg-secondary);
           border: none;
@@ -1190,7 +1221,13 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
           font-family: var(--mono);
           font-size: 13px;
         }
-        .tw-dash { color: var(--ios-label-3); }
+        .tw-cap {
+          font-size: 10px;
+          color: var(--ios-label-3);
+          padding-left: 2px;
+          letter-spacing: 0.2px;
+        }
+        .tw-dash { color: var(--ios-label-3); padding-top: 9px; }
 
         .alert {
           display: flex;
