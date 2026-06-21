@@ -98,6 +98,22 @@ describe('DigestHero — render（PR #20 §4.7 新版排法）', () => {
     expect(container.textContent).toContain('低於目標 NT$1,800');
   });
 
+  it('顯示出發日期區間（之前漏了，逼使用者點進去才看得到）', () => {
+    const w = mkHit(1, 11000); // 預設來回 8/14–8/18
+    const { getByTestId, container } = render(<DigestHero watch={w} onOpen={() => {}} />);
+    expect(getByTestId('digest-dates')).toBeInTheDocument();
+    expect(container.textContent).toContain('8/14–8/18');
+  });
+
+  it('單程訂閱 → 日期顯示「M/D 單程」', () => {
+    const w = mk({
+      id: 1, max_price: 12800, outbound_date: '2026-08-14', return_date: null,
+      quote: { currentBest: 11000, currentType: 'lcc', lcc: null, trad: null, deltaPct: -5, history: [] }
+    });
+    const { container } = render(<DigestHero watch={w} onOpen={() => {}} />);
+    expect(container.textContent).toContain('8/14 單程');
+  });
+
   it('quote=null → return null（caller 沒過濾的 fallback）', () => {
     const w = mk({ id: 1, quote: null });
     const { container } = render(<DigestHero watch={w} onOpen={() => {}} />);
