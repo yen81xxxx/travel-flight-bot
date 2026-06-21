@@ -21,6 +21,7 @@ import { VERDICT_META } from '../_lib/priceIntel';
 import { getCity } from '@/config/airports';
 import { Icon, type IconName, ICON_NAMES } from './Icon';
 import { Sparkline } from './Sparkline';
+import { daysUntil } from './WatchCard';
 
 interface Props {
   watch: WatchItem;
@@ -47,6 +48,14 @@ export function pickDigestWatch(watches: WatchItem[]): WatchItem | null {
 
 const ntFmt = (n: number | null | undefined): string => n != null ? n.toLocaleString() : '—';
 
+/** ISO 'YYYY-MM-DD' → 'M/D'（純字串切，避免時區）。跟 WatchCard.mdFmt 同邏輯。 */
+function mdFmt(s: string | null | undefined): string {
+  if (!s) return '';
+  const parts = s.split('-');
+  if (parts.length !== 3) return s;
+  return `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}`;
+}
+
 function safeIconName(name: string): IconName {
   return (ICON_NAMES as readonly string[]).includes(name) ? (name as IconName) : 'info';
 }
@@ -60,6 +69,12 @@ export function DigestHero({ watch: w, onOpen }: Props): React.ReactElement | nu
   const originCity = getCity(w.origin);
   const destCity = getCity(w.destination);
   const dist = Number(w.max_price) - w.quote.currentBest;
+
+  // 日期 meta（跟一般卡片 WatchCard 同格式）— hero 之前漏了最關鍵的出發日
+  const days = daysUntil(w.outbound_date);
+  const dateRange = w.outbound_date
+    ? (w.return_date ? `${mdFmt(w.outbound_date)}–${mdFmt(w.return_date)}` : `${mdFmt(w.outbound_date)} 單程`)
+    : '不限定日期';
 
   // PR #20: intel-grounded 元素
   const intel = w.quote.intel?.status === 'ready' ? w.quote.intel : null;
@@ -94,6 +109,17 @@ export function DigestHero({ watch: w, onOpen }: Props): React.ReactElement | nu
         <Icon name="airplane" size={15} style={{ transform: 'rotate(90deg)', color: 'var(--ios-green)' }} />
         {destCity}
         <span className="digest-codes tnum">{w.origin}→{w.destination}</span>
+      </div>
+
+      {/* date meta — 出發日 + 距出發天數（一般卡有、hero 之前漏了） */}
+      <div className="digest-dates tnum" data-testid="digest-dates">
+        <span>{dateRange}</span>
+        {days != null && days >= 0 && (
+          <>
+            <span className="digest-dot" />
+            <span>{days} 天後出發</span>
+          </>
+        )}
       </div>
 
       {/* main: price block + sparkline */}
@@ -213,6 +239,15 @@ export function DigestHero({ watch: w, onOpen }: Props): React.ReactElement | nu
           font-size: 11px;
           color: var(--ios-label-3);
           letter-spacing: 0.5px;
+        }
+        .digest-dates {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-top: -4px;
+          font-size: 12.5px;
+          font-weight: 500;
+          color: var(--ios-label-2);
         }
         .digest-main {
           display: flex;
