@@ -240,6 +240,19 @@ describe('WatchDetailSheet', () => {
     expect((getByLabelText('回程最晚起飛') as HTMLInputElement).value).toBe('23:59');
   });
 
+  it('時間欄是下拉選單（可選，不是難打字的 native time input）', () => {
+    const { getByLabelText } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={baseWatch} />
+    );
+    fireEvent.click(getByLabelText('起飛時段過濾'));
+    const sel = getByLabelText('去程最早起飛') as HTMLSelectElement;
+    expect(sel.tagName).toBe('SELECT');
+    expect(sel.options.length).toBeGreaterThan(20);  // 半小時一格 ~49 個選項
+    const vals = Array.from(sel.options).map(o => o.value);
+    expect(vals).toContain('09:00');
+    expect(vals).toContain('23:59');  // 整天上界選項
+  });
+
   it('只改去程最早 → 其餘維持整天邊界，PATCH 帶完整四值', async () => {
     const { getByLabelText, getByText } = render(
       <WatchDetailSheet open={true} onClose={() => {}} watch={baseWatch} />
