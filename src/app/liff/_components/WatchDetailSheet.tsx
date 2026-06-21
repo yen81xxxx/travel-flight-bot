@@ -53,6 +53,33 @@ function fmtDuration(min: number | null): string {
 const DAY_START = '00:00';
 const DAY_END = '23:59';
 
+// 起飛時段下拉選項：半小時一格 00:00..23:30，最後補 23:59（整天上界）。
+// 用 24h 制下拉取代 native <input type="time">（桌面那種難打字的轉盤 + 12h AM/PM 制）。
+const TIME_OPTIONS: string[] = (() => {
+  const out: string[] = [];
+  for (let h = 0; h < 24; h++) {
+    const hh = String(h).padStart(2, '0');
+    out.push(`${hh}:00`, `${hh}:30`);
+  }
+  out.push('23:59');
+  return out;
+})();
+
+/** 起飛時間下拉 — 點開直接選，免打字、免看 AM/PM。 */
+function TimeSelect({ value, onChange, ariaLabel }: {
+  value: string;
+  onChange: (v: string) => void;
+  ariaLabel: string;
+}): React.ReactElement {
+  // 舊資料若是非半點值（例 09:25），補進選項頭，確保選得到、顯示得出
+  const options = value && !TIME_OPTIONS.includes(value) ? [value, ...TIME_OPTIONS] : TIME_OPTIONS;
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)} aria-label={ariaLabel}>
+      {options.map(t => <option key={t} value={t}>{t}</option>)}
+    </select>
+  );
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -955,12 +982,12 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
             <div className="tw-leg">
               <span className="tw-leg-label">去程</span>
               <label className="tw-field">
-                <input type="time" value={outboundMin} onChange={e => setOutboundMin(e.target.value)} aria-label="去程最早起飛" />
+                <TimeSelect value={outboundMin} onChange={setOutboundMin} ariaLabel="去程最早起飛" />
                 <span className="tw-cap">最早起飛</span>
               </label>
               <span className="tw-dash">~</span>
               <label className="tw-field">
-                <input type="time" value={outboundMax} onChange={e => setOutboundMax(e.target.value)} aria-label="去程最晚起飛" />
+                <TimeSelect value={outboundMax} onChange={setOutboundMax} ariaLabel="去程最晚起飛" />
                 <span className="tw-cap">最晚起飛</span>
               </label>
             </div>
@@ -968,12 +995,12 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
               <div className="tw-leg">
                 <span className="tw-leg-label">回程</span>
                 <label className="tw-field">
-                  <input type="time" value={returnMin} onChange={e => setReturnMin(e.target.value)} aria-label="回程最早起飛" />
+                  <TimeSelect value={returnMin} onChange={setReturnMin} ariaLabel="回程最早起飛" />
                   <span className="tw-cap">最早起飛</span>
                 </label>
                 <span className="tw-dash">~</span>
                 <label className="tw-field">
-                  <input type="time" value={returnMax} onChange={e => setReturnMax(e.target.value)} aria-label="回程最晚起飛" />
+                  <TimeSelect value={returnMax} onChange={setReturnMax} ariaLabel="回程最晚起飛" />
                   <span className="tw-cap">最晚起飛</span>
                 </label>
               </div>
@@ -1231,18 +1258,24 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
           flex-direction: column;
           gap: 3px;
         }
-        .tw-leg input {
+        .tw-leg select {
           width: 100%;
           box-sizing: border-box;
           appearance: none;
-          background: var(--ios-bg-secondary);
+          -webkit-appearance: none;
+          background-color: var(--ios-bg-secondary);
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 9px center;
           border: none;
           border-radius: 8px;
           color: var(--ios-label);
-          padding: 8px 10px;
+          padding: 9px 28px 9px 10px;
           font-family: var(--mono);
-          font-size: 13px;
+          font-size: 14px;
+          cursor: pointer;
         }
+        .tw-leg select:focus { outline: none; box-shadow: 0 0 0 2px var(--ios-blue); }
         .tw-cap {
           font-size: 10px;
           color: var(--ios-label-3);
