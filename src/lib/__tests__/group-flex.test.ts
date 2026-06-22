@@ -76,6 +76,29 @@ describe('buildGroupAlertFlex', () => {
     expect(bodyText).toContain('Alice');
   });
 
+  it('topAirlines → body 顯示前 3 家（取代單一「航司：X」）', () => {
+    const f = buildGroupAlertFlex({
+      ...base,
+      topAirlines: [
+        { airline: '捷星', price: 6077 },
+        { airline: '酷航', price: 6540 },
+        { airline: '星宇航空', price: 7880 }
+      ]
+    });
+    const bodyText = JSON.stringify(f.contents.body);
+    expect(bodyText).toContain('便宜航空');
+    expect(bodyText).toContain('NT$6,077');
+    expect(bodyText).toContain('星宇航空');
+    expect(bodyText).not.toContain('航司：');  // 單一航司行被取代
+  });
+
+  it('topAirlines 不給 → 退回單一「航司：X」（舊行為）', () => {
+    const f = buildGroupAlertFlex(base);
+    const bodyText = JSON.stringify(f.contents.body);
+    expect(bodyText).toContain('航司：酷航');
+    expect(bodyText).not.toContain('便宜航空');
+  });
+
   it('沒投票 → footer button = 「查看詳情」', () => {
     const f = buildGroupAlertFlex({ ...base, topVote: null });
     const footerJson = JSON.stringify(f.contents.footer);

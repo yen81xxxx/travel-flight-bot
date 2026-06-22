@@ -110,6 +110,23 @@ describe('formatAlertText（A5 文字 fallback）', () => {
     expect(text).toMatch(/看走勢與航班 ▶ https:\/\//);
   });
 
+  it('topAirlines → 文字列前 3 家（廉/傳 + 各自價），取代單一 carrier 行', () => {
+    const text = formatAlertText(SUB, 6077, '2026-08-04', '2026-08-08', {
+      ...EXTRAS,
+      topAirlines: [
+        { airline: '捷星', price: 6077 },
+        { airline: '酷航', price: 6540 },
+        { airline: '星宇航空', price: 7880 }
+      ]
+    });
+    expect(text).not.toMatch(EMOJI_RE);
+    expect(text).toContain('便宜航空：');
+    expect(text).toContain('廉航 捷星 NT$6,077');
+    expect(text).toContain('廉航 酷航 NT$6,540');
+    expect(text).toContain('傳統 星宇航空 NT$7,880');
+    expect(text).not.toContain('（廉航 酷航 → 捷星）');  // 單一 carrier 行被取代
+  });
+
   it('降級版：無 verdict → 無「・」；無 delta / 非最低 → 子句省略；單程日期', () => {
     const text = formatAlertText(SUB, 11480, '2026-08-04', undefined, {
       verdict: null, deltaPct: null, carrier: null, isRecentLow: false, fallbackAirline: '酷航'
