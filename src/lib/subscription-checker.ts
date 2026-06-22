@@ -347,8 +347,6 @@ async function sendAlert(
         airline,
         sourceId: sub.source_id,
         verdict,
-        deltaPct: pushIntel.deltaPct,
-        dailyMins: pushIntel.dailyMins,
         carrier,
         topAirlines: analysis.topAirlines
       });

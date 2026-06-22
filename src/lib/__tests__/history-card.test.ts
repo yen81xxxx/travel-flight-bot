@@ -11,7 +11,7 @@
  *   5. delta 基準標示：達標卡=較上週、摘要卡=較昨日 — 兩個不同指標
  *      沒標基準會被當同一個數字（spec honesty fix）
  */
-import { buildHistoryFlex, mergeDailySeries, buildAlertFlex, buildMultiSubsDailyFlex, type MultiSubsItem } from '../flex-message';
+import { buildHistoryFlex, mergeDailySeries, buildMultiSubsDailyFlex, type MultiSubsItem } from '../flex-message';
 import { formatAlertText } from '../subscription-checker';
 import { MIN_POINTS } from '@/app/liff/_lib/priceIntel';
 import type { Subscription } from '@/types';
@@ -148,15 +148,6 @@ describe('formatAlertText（A5 文字 fallback）', () => {
 });
 
 describe('delta 基準標示（spec honesty fix）', () => {
-  it('達標卡 delta 標「較上週」', () => {
-    const json = JSON.stringify(buildAlertFlex({
-      origin: 'TPE', destination: 'NRT', outboundDate: '2026-08-04', returnDate: '2026-08-08',
-      cheapestPrice: 11480, threshold: 12800, airline: '酷航', deltaPct: -6.2
-    }));
-    expect(json).toContain('▼ 6.2%');
-    expect(json).toContain('較上週');
-  });
-
   it('摘要 route bubble delta 標「較昨日」', () => {
     const item: MultiSubsItem = {
       origin: 'TPE', destination: 'NRT', outboundDate: '2026-08-04', returnDate: '2026-08-08',
