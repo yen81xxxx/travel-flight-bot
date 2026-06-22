@@ -8,7 +8,7 @@
  *   3. intel 不足（building / 撈不到）不出 badge — 不能在薄資料上假裝有判斷
  *   4. CTA 排序是產品決議：看走勢與航班（留在 Travl）永遠在 Skyscanner 上面
  */
-import { buildAlertFlex, buildMiniBars, buildTopAirlinesBox, deriveCarrierDisplay, VERDICT_FLEX_META } from '../flex-message';
+import { buildAlertFlex, buildTopAirlinesBox, deriveCarrierDisplay, VERDICT_FLEX_META } from '../flex-message';
 import { buildGroupAlertFlex } from '../group-flex';
 import { buildPushIntel } from '../push-intel';
 import { VERDICT_META, MIN_POINTS, type Verdict } from '@/app/liff/_lib/priceIntel';
@@ -30,8 +30,6 @@ const BASE_PROPS = {
 const FULL_PROPS = {
   ...BASE_PROPS,
   verdict: 'buy' as Verdict,
-  deltaPct: -6.2,
-  dailyMins: [12800, 12500, 12200, 11900, 11480],
   carrier: { tag: 'lcc' as const, line: '酷航 → 捷星' }
 };
 
@@ -96,18 +94,11 @@ describe('buildAlertFlex（L1 深色版）', () => {
     expect(btns[1].style).toBe('link');
   });
 
-  it('週 delta：跌 → ▼ 綠；漲 → ▲ 紅；null → 不顯示', () => {
-    const down = JSON.stringify(buildAlertFlex({ ...FULL_PROPS, deltaPct: -6.2 }));
-    expect(down).toContain('▼ 6.2%');
-    expect(down).toContain('#30d158');
-
-    const up = JSON.stringify(buildAlertFlex({ ...FULL_PROPS, deltaPct: 3.1 }));
-    expect(up).toContain('▲ 3.1%');
-    expect(up).toContain('#ff453a');
-
-    const none = JSON.stringify(buildAlertFlex({ ...FULL_PROPS, deltaPct: null }));
-    expect(none).not.toContain('▼');
-    expect(none).not.toContain('▲');
+  it('卡片已拿掉漲跌幅 + 走勢條圖（簡化）', () => {
+    const json = JSON.stringify(buildAlertFlex(FULL_PROPS));
+    expect(json).not.toContain('較上週');
+    expect(json).not.toContain('▼');
+    expect(json).not.toContain('▲');
   });
 
   it('降幅 <1% 邊界 → 「達到你的目標價」語氣（不顯示像 bug 的「低 NT$8」斷言絕對額照算）', () => {
@@ -128,32 +119,6 @@ describe('VERDICT_FLEX_META ↔ LIFF VERDICT_META parity', () => {
     (Object.keys(VERDICT_META) as Verdict[]).forEach(v => {
       expect(VERDICT_FLEX_META[v].label).toBe(VERDICT_META[v].label);
     });
-  });
-});
-
-describe('buildMiniBars', () => {
-  it('< 2 點 → null（畫不出走勢就不畫）', () => {
-    expect(buildMiniBars([])).toBeNull();
-    expect(buildMiniBars([100])).toBeNull();
-  });
-
-  it('最後一根 bar 是綠色（今天）、其餘灰；高度跟價格同向', () => {
-    const bars = buildMiniBars([100, 200, 150]) as {
-      contents: { height: string; backgroundColor: string }[];
-    };
-    expect(bars.contents).toHaveLength(3);
-    expect(bars.contents[2].backgroundColor).toBe('#30d158');
-    expect(bars.contents[0].backgroundColor).toBe('#3a3a3e');
-    // 100（最低）最矮 8px、200（最高）最高 28px
-    expect(bars.contents[0].height).toBe('8px');
-    expect(bars.contents[1].height).toBe('28px');
-  });
-
-  it('超過 14 點只取最後 14（Flex bubble 寬度有限）', () => {
-    const bars = buildMiniBars(Array.from({ length: 30 }, (_, i) => 100 + i)) as {
-      contents: unknown[];
-    };
-    expect(bars.contents).toHaveLength(14);
   });
 });
 

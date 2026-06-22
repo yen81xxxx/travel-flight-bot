@@ -75,10 +75,6 @@ interface AlertFlexProps {
   // === L1 新增（全部 optional — 拿不到就降級、推播照發） ===
   /** priceIntel verdict（與 LIFF 同引擎算出）；null/undefined = 不顯示 badge */
   verdict?: Verdict | null;
-  /** 週變化 %（負 = 跌）；null = 藏 delta */
-  deltaPct?: number | null;
-  /** 30 天每日最低（升冪）— mini 歷史 bars；空 = 藏 */
-  dailyMins?: number[];
   /** 航司顯示列（deriveCarrierDisplay 的輸出）；null = 退回 airline 字串 */
   carrier?: CarrierDisplay | null;
   /**
@@ -124,33 +120,6 @@ export function buildTopAirlinesBox(topAirlines: { airline: string; price: numbe
         };
       })
     ]
-  };
-}
-
-/** dailyMins → Flex mini bars（stacked box 模擬 sparkline — Flex 沒有 SVG） */
-export function buildMiniBars(dailyMins: number[]): object | null {
-  if (dailyMins.length < 2) return null;
-  const bars = dailyMins.slice(-14);
-  const lo = Math.min(...bars);
-  const hi = Math.max(...bars);
-  const span = hi - lo || 1;
-  return {
-    type: 'box',
-    layout: 'horizontal',
-    height: '28px',
-    spacing: '3px',
-    alignItems: 'flex-end',
-    margin: 'md',
-    contents: bars.map((p, i) => ({
-      type: 'box',
-      layout: 'vertical',
-      contents: [{ type: 'filler' }],
-      // 價格越低 bar 越矮（跟 LIFF sparkline 同向：高度 = 價格）
-      height: `${Math.round(8 + ((p - lo) / span) * 20)}px`,
-      backgroundColor: i === bars.length - 1 ? FLEX_DARK.green : FLEX_DARK.barDim,
-      cornerRadius: '2px',
-      flex: 1
-    }))
   };
 }
 
@@ -222,30 +191,6 @@ export function buildAlertFlex(props: AlertFlexProps) {
     : `已跌破你的目標價 NT$${props.threshold.toLocaleString()}（低 NT$${drop.toLocaleString()}）`;
 
   const verdictMeta = props.verdict ? VERDICT_FLEX_META[props.verdict] : null;
-
-  // delta：負 = 跌（綠 ▼）、正 = 漲（紅 ▲）。|Δ| < 0.05 視為持平不顯示。
-  // R4-A: 標明基準「較上週」— 摘要卡是較昨日；不標會被當成同一個數字（spec honesty fix）
-  const delta = props.deltaPct != null && Math.abs(props.deltaPct) >= 0.05
-    ? {
-        type: 'box',
-        layout: 'vertical',
-        flex: 0,
-        justifyContent: 'flex-end',
-        contents: [
-          {
-            type: 'text',
-            text: `${props.deltaPct < 0 ? '▼' : '▲'} ${Math.abs(props.deltaPct)}%`,
-            size: 'sm',
-            weight: 'bold',
-            color: props.deltaPct < 0 ? FLEX_DARK.green : FLEX_DARK.red,
-            align: 'end'
-          },
-          { type: 'text', text: '較上週', size: 'xxs', color: FLEX_DARK.faint, align: 'end' }
-        ]
-      }
-    : null;
-
-  const bars = props.dailyMins ? buildMiniBars(props.dailyMins) : null;
 
   // carrier 列：tag pill（廉航青 / 傳統黃）+ 航司字串
   const carrier = props.carrier ?? (props.airline ? { tag: null, line: props.airline } : null);
@@ -388,11 +333,9 @@ export function buildAlertFlex(props: AlertFlexProps) {
                     ]
                   }
                 ]
-              },
-              ...(delta ? [delta] : [])
+              }
             ]
           },
-          ...(bars ? [bars] : []),
           ...(topBox ? [topBox] : []),
           {
             type: 'box',
