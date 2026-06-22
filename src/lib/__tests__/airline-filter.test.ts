@@ -108,3 +108,29 @@ describe('analyzeFlights — 航司過濾', () => {
     expect(a.traditionalRoundTrip?.airline).toContain('全日空');
   });
 });
+
+describe('analyzeFlights — topAirlines（LINE 警報前 3 家）', () => {
+  it('前 3 便宜不同航空：去重保留每家最低、由低到高，第 4 家被擠出', () => {
+    const out = [
+      q('捷星', 6500), q('捷星', 6000),   // 同家 → 保留最低 6000
+      q('酷航', 7000), q('星宇航空', 8000), q('長榮航空', 9000)
+    ];
+    const a = analyzeFlights(out, [], undefined, null);
+    expect(a.topAirlines).toEqual([
+      { airline: '捷星', price: 6000 },
+      { airline: '酷航', price: 7000 },
+      { airline: '星宇航空', price: 8000 }
+    ]);  // 長榮 9000 排第 4 → 不在前 3
+  });
+
+  it('套用航司過濾 → 只在勾選的航司裡挑前 3', () => {
+    const out = [q('捷星', 6000), q('星宇航空', 8000), q('長榮航空', 9000)];
+    const a = analyzeFlights(out, [], undefined, ['星宇航空', '長榮航空']);
+    expect(a.topAirlines.map(t => t.airline)).toEqual(['星宇航空', '長榮航空']);  // 捷星被排除
+  });
+
+  it('不足 3 家 → 有幾家給幾家', () => {
+    const a = analyzeFlights([q('捷星', 6000)], [], undefined, null);
+    expect(a.topAirlines).toEqual([{ airline: '捷星', price: 6000 }]);
+  });
+});

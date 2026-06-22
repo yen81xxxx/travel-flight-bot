@@ -15,7 +15,7 @@
  * 純函數 0 副作用 — 把它跟「實際 push」分開測（測 JSON 結構即可）。
  */
 import { formatAirport } from '@/config/airports';
-import { FLEX_DARK, VERDICT_FLEX_META } from './flex-message';
+import { FLEX_DARK, VERDICT_FLEX_META, buildTopAirlinesBox } from './flex-message';
 import type { Verdict } from '@/app/liff/_lib/priceIntel';
 
 export interface GroupAlertFlexProps {
@@ -47,6 +47,8 @@ export interface GroupAlertFlexProps {
   } | null;
   /** L1: priceIntel verdict（與 LIFF / 個人推播同引擎）；null = 不顯示 badge */
   verdict?: Verdict | null;
+  /** 前 3 便宜航空（analyzeFlights.topAirlines）；有給就顯示「前 3 家」取代單一航司列 */
+  topAirlines?: { airline: string; price: number }[];
 }
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://travel-flight-bot.vercel.app';
@@ -133,7 +135,8 @@ export function buildGroupAlertFlex(props: GroupAlertFlexProps) {
       color: '#bf5af2',
       wrap: true
     },
-    {
+    // 前 3 便宜航空清單；沒有就退回單一「航司：X」（舊行為）
+    buildTopAirlinesBox(props.topAirlines) ?? {
       type: 'text',
       text: `航司：${props.airline}`,
       size: 'xs',

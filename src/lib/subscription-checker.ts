@@ -9,6 +9,7 @@ import type { Verdict } from '@/app/liff/_lib/priceIntel';
 import { isCoveredByGroupAlert, buildMembershipMap } from './dedupe-alerts';
 import { getLineClient } from './line';
 import { getCity, getCityAirports } from '@/config/airports';
+import { getAirlineCategory } from '@/config/airlines';
 import type { Subscription } from '@/types';
 
 interface CheckResult {
@@ -334,7 +335,7 @@ async function sendAlert(
   try {
     let flex: object;
     if (isGroupAlert) {
-      flex = await buildGroupFlexForSub(sub, cheapest, airline, outboundDate, returnDate, verdict);
+      flex = await buildGroupFlexForSub(sub, cheapest, airline, outboundDate, returnDate, verdict, analysis.topAirlines);
     } else {
       flex = buildAlertFlex({
         origin: sub.origin,
@@ -348,7 +349,8 @@ async function sendAlert(
         verdict,
         deltaPct: pushIntel.deltaPct,
         dailyMins: pushIntel.dailyMins,
-        carrier
+        carrier,
+        topAirlines: analysis.topAirlines
       });
     }
     const client = getLineClient();
@@ -372,7 +374,8 @@ async function sendAlert(
       deltaPct: pushIntel.deltaPct,
       carrier,
       isRecentLow: pushIntel.dailyMins.length > 0 && cheapest <= Math.min(...pushIntel.dailyMins),
-      fallbackAirline: airline
+      fallbackAirline: airline,
+      topAirlines: analysis.topAirlines
     }));
   }
 }
@@ -387,7 +390,8 @@ async function buildGroupFlexForSub(
   airline: string,
   outboundDate: string,
   returnDate: string | undefined,
-  verdict: Verdict | null = null  // L1: priceIntel verdict（sendAlert 算好傳入）
+  verdict: Verdict | null = null,  // L1: priceIntel verdict（sendAlert 算好傳入）
+  topAirlines: { airline: string; price: number }[] = []  // 前 3 便宜航空
 ): Promise<object> {
   const { getSupabase } = await import('./supabase');
   const supabase = getSupabase();
@@ -437,7 +441,8 @@ async function buildGroupFlexForSub(
     memberCount: memberRows.length,
     topMemberNames,
     topVote,
-    verdict
+    verdict,
+    topAirlines
   });
 }
 
@@ -455,6 +460,8 @@ interface AlertTextExtras {
   carrier: { tag: 'lcc' | 'trad' | null; line: string } | null;
   isRecentLow: boolean;
   fallbackAirline: string;
+  /** 前 3 便宜航空（有給就列前 3 家取代單一 carrier 行） */
+  topAirlines?: { airline: string; price: number }[];
 }
 
 /**
@@ -478,10 +485,21 @@ export function formatAlertText(
   const dates = returnDate ? `${outboundDate} ~ ${returnDate}` : `單程 ${outboundDate}`;
   const routeLine = `${getCity(sub.origin)} → ${getCity(sub.destination)}  ${sub.origin}→${sub.destination}  ${dates}`;
 
-  const carrierStr = extras.carrier
-    ? `（${extras.carrier.tag === 'lcc' ? '廉航 ' : extras.carrier.tag === 'trad' ? '傳統 ' : ''}${extras.carrier.line}）`
-    : `（${extras.fallbackAirline}）`;
-  const priceLine = `目前最低 NT$${cheapest.toLocaleString()}${carrierStr}`;
+  // 有前 3 便宜航空 → 列前 3 家（每行：廉/傳 航司 NT$價）；否則退回單一 carrier 行
+  let priceLine: string;
+  if (extras.topAirlines && extras.topAirlines.length > 0) {
+    const rows = extras.topAirlines.slice(0, 3).map(a => {
+      const cat = getAirlineCategory(a.airline);
+      const tag = cat === 'lcc' ? '廉航 ' : cat === 'full-service' ? '傳統 ' : '';
+      return `　${tag}${a.airline} NT$${a.price.toLocaleString()}`;
+    });
+    priceLine = [`目前最低 NT$${cheapest.toLocaleString()}`, '便宜航空：', ...rows].join('\n');
+  } else {
+    const carrierStr = extras.carrier
+      ? `（${extras.carrier.tag === 'lcc' ? '廉航 ' : extras.carrier.tag === 'trad' ? '傳統 ' : ''}${extras.carrier.line}）`
+      : `（${extras.fallbackAirline}）`;
+    priceLine = `目前最低 NT$${cheapest.toLocaleString()}${carrierStr}`;
+  }
 
   // 目標價句：<1% 邊界沿用「達到」語氣（同 flex 卡）；delta 標明基準（較上週）
   const drop = threshold - cheapest;

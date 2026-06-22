@@ -8,7 +8,7 @@
  *   3. intel 不足（building / 撈不到）不出 badge — 不能在薄資料上假裝有判斷
  *   4. CTA 排序是產品決議：看走勢與航班（留在 Travl）永遠在 Skyscanner 上面
  */
-import { buildAlertFlex, buildMiniBars, deriveCarrierDisplay, VERDICT_FLEX_META } from '../flex-message';
+import { buildAlertFlex, buildMiniBars, buildTopAirlinesBox, deriveCarrierDisplay, VERDICT_FLEX_META } from '../flex-message';
 import { buildGroupAlertFlex } from '../group-flex';
 import { buildPushIntel } from '../push-intel';
 import { VERDICT_META, MIN_POINTS, type Verdict } from '@/app/liff/_lib/priceIntel';
@@ -54,6 +54,35 @@ describe('buildAlertFlex（L1 深色版）', () => {
     const noVerdict = JSON.stringify(buildAlertFlex(BASE_PROPS));
     expect(noVerdict).not.toContain('建議入手');
     expect(noVerdict).not.toContain('觀察中');
+  });
+
+  it('topAirlines → 顯示前 3 家（廉/傳 tag + 各自價格），取代單一 carrier 行', () => {
+    const json = JSON.stringify(buildAlertFlex({
+      ...FULL_PROPS,
+      topAirlines: [
+        { airline: '捷星', price: 6077 },
+        { airline: '酷航', price: 6540 },
+        { airline: '星宇航空', price: 7880 }
+      ]
+    }));
+    expect(json).toContain('便宜航空');
+    expect(json).toContain('捷星');
+    expect(json).toContain('NT$6,077');
+    expect(json).toContain('星宇航空');
+    expect(json).toContain('NT$7,880');
+    expect(json).toContain('廉航');   // 捷星/酷航
+    expect(json).toContain('傳統');   // 星宇航空
+  });
+
+  it('topAirlines 空 → 退回單一 carrier 行（舊行為，不顯示「便宜航空」清單）', () => {
+    const json = JSON.stringify(buildAlertFlex({ ...FULL_PROPS, topAirlines: [] }));
+    expect(json).not.toContain('便宜航空');
+    expect(json).toContain('酷航 → 捷星');  // carrier.line 還在
+  });
+
+  it('buildTopAirlinesBox 空/undefined → null（caller fallback）', () => {
+    expect(buildTopAirlinesBox([])).toBeNull();
+    expect(buildTopAirlinesBox(undefined)).toBeNull();
   });
 
   it('CTA 排序：看走勢與航班（primary）在 Skyscanner（link ghost）前面', () => {

@@ -83,6 +83,12 @@ export interface FlightAnalysis {
    * - 沒有 return list 時：fallback 到「最便宜廉航 outbound」同家來回估算
    */
   lccCombo: MixedAirlineCombo | null;
+  /**
+   * 前 N 便宜的「不同航空」— 用 outbound 的同家來回估算，去重保留每家最低、由便宜到貴。
+   * 給 LINE 警報顯示「前 3 家便宜航空」用（只顯示一家意義不大）。
+   * 已套用時段 + 航司過濾（從 fOutbound 算），所以勾了航司就只在勾選的裡面挑。
+   */
+  topAirlines: { airline: string; price: number }[];
   outboundCount: number;
   returnCount: number;
 }
@@ -141,9 +147,27 @@ export function analyzeFlights(
     cheapestAirline,
     traditionalRoundTrip: pickTraditionalSameAirline(fOutbound),
     lccCombo: pickLccCombo(fOutbound, fReturn),
+    topAirlines: pickTopAirlines(fOutbound, 3),
     outboundCount: fOutbound.length,
     returnCount: fReturn.length
   };
+}
+
+/**
+ * 前 N 便宜的不同航空（用 outbound 同家來回估算）。
+ * 去重：同一家只留最低價那筆；最後依價格由低到高取前 N。
+ * outbound[i].price = Google Flights 對「該航司同家來回」的估算總價，所以天然是來回估價。
+ */
+function pickTopAirlines(outbound: FlightQuote[], n: number): { airline: string; price: number }[] {
+  const cheapestPerAirline = new Map<string, number>();
+  for (const q of [...outbound].sort(byPriceAsc)) {
+    if (q.price == null || !q.airline) continue;
+    if (!cheapestPerAirline.has(q.airline)) cheapestPerAirline.set(q.airline, q.price);
+  }
+  return [...cheapestPerAirline.entries()]
+    .sort((a, b) => a[1] - b[1])
+    .slice(0, n)
+    .map(([airline, price]) => ({ airline, price }));
 }
 
 /**

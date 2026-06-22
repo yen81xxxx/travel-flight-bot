@@ -1,5 +1,5 @@
 import { formatAirport, getCity, getCityAirports } from '@/config/airports';
-import { getAirlineCodesByCategory, type AirlineCategory } from '@/config/airlines';
+import { getAirlineCodesByCategory, getAirlineCategory, type AirlineCategory } from '@/config/airlines';
 // R4-A: 歷史卡 percentile 行用同一顆引擎（building → 不顯示 — 誠實 gate）
 import { computePriceIntel, type Verdict } from '@/app/liff/_lib/priceIntel';
 import type { PricePoint } from '@/app/liff/_types';
@@ -81,6 +81,50 @@ interface AlertFlexProps {
   dailyMins?: number[];
   /** 航司顯示列（deriveCarrierDisplay 的輸出）；null = 退回 airline 字串 */
   carrier?: CarrierDisplay | null;
+  /**
+   * 前 3 便宜航空（analyzeFlights.topAirlines）。有給就顯示「前 3 家」清單取代單一 carrier 列。
+   * 空 / 不給 → 退回 carrier / airline 單行（舊行為）。
+   */
+  topAirlines?: { airline: string; price: number }[];
+}
+
+/**
+ * 「前 3 便宜航空」清單列（取代只顯示一家的 carrier 列）。純函數，方便單測。
+ * 每列：[廉/傳 tag] 航司名 ……… NT$價格。空陣列回 null（caller fallback 回 carrier）。
+ */
+export function buildTopAirlinesBox(topAirlines: { airline: string; price: number }[] | undefined): object | null {
+  if (!topAirlines || topAirlines.length === 0) return null;
+  return {
+    type: 'box',
+    layout: 'vertical',
+    margin: 'md',
+    spacing: 'sm',
+    contents: [
+      { type: 'text', text: '便宜航空', size: 'xxs', color: FLEX_DARK.faint },
+      ...topAirlines.slice(0, 3).map(a => {
+        const cat = getAirlineCategory(a.airline);
+        return {
+          type: 'box',
+          layout: 'baseline',
+          spacing: 'sm',
+          contents: [
+            ...(cat
+              ? [{
+                  type: 'text',
+                  text: cat === 'lcc' ? '廉航' : '傳統',
+                  size: 'xxs',
+                  weight: 'bold',
+                  color: cat === 'lcc' ? FLEX_DARK.cyan : FLEX_DARK.yellow,
+                  flex: 0
+                }]
+              : []),
+            { type: 'text', text: a.airline, size: 'xs', color: FLEX_DARK.soft, flex: 1, wrap: false },
+            { type: 'text', text: `NT$${a.price.toLocaleString()}`, size: 'xs', weight: 'bold', color: FLEX_DARK.text, align: 'end', flex: 0 }
+          ]
+        };
+      })
+    ]
+  };
 }
 
 /** dailyMins → Flex mini bars（stacked box 模擬 sparkline — Flex 沒有 SVG） */
@@ -233,6 +277,9 @@ export function buildAlertFlex(props: AlertFlexProps) {
       }
     : null;
 
+  // 前 3 便宜航空清單；沒有就退回單一 carrier 列（舊行為）
+  const topBox = buildTopAirlinesBox(props.topAirlines) ?? carrierRow;
+
   const verdictSuffix = verdictMeta ? `（${verdictMeta.label}）` : '';
   return {
     type: 'flex',
@@ -346,7 +393,7 @@ export function buildAlertFlex(props: AlertFlexProps) {
             ]
           },
           ...(bars ? [bars] : []),
-          ...(carrierRow ? [carrierRow] : []),
+          ...(topBox ? [topBox] : []),
           {
             type: 'box',
             layout: 'vertical',
