@@ -86,8 +86,8 @@ describe('buildGroupAlertFlex', () => {
       ]
     });
     const bodyText = JSON.stringify(f.contents.body);
-    expect(bodyText).toContain('便宜航空');
     expect(bodyText).toContain('NT$6,077');
+    expect(bodyText).toContain('捷星');
     expect(bodyText).toContain('星宇航空');
     expect(bodyText).not.toContain('航司：');  // 單一航司行被取代
   });

@@ -96,7 +96,6 @@ export function buildTopAirlinesBox(topAirlines: { airline: string; price: numbe
     margin: 'md',
     spacing: 'sm',
     contents: [
-      { type: 'text', text: '便宜航空', size: 'xxs', color: FLEX_DARK.faint },
       ...topAirlines.slice(0, 3).map(a => {
         const cat = getAirlineCategory(a.airline);
         return {
@@ -183,12 +182,12 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://travel-flight-bot.ve
 export function buildAlertFlex(props: AlertFlexProps) {
   const drop = props.threshold - props.cheapestPrice;
   const dropPct = Math.round((drop / props.threshold) * 100);
-  // 邊界情況：降幅 < 1%（例如只差 NT$ 8）寫「低 0%」看起來像 bug
-  // → 改寫成「達到目標價」語氣（沿用舊卡的處理，文案换新）
+  // 邊界情況：降幅 < 1%（例如只差 NT$ 8）寫「低 NT$8」看起來像 bug → 改「達到目標價」語氣。
+  // 併進價格列顯示（user 要求）：目前最低 NT$X（比目標低 NT$Y）。
   const isAtThreshold = dropPct < 1;
-  const targetLine = isAtThreshold
-    ? `達到你的目標價 NT$${props.threshold.toLocaleString()}（便宜 NT$${drop.toLocaleString()}）`
-    : `已跌破你的目標價 NT$${props.threshold.toLocaleString()}（低 NT$${drop.toLocaleString()}）`;
+  const targetInline = isAtThreshold
+    ? '達到目標價'
+    : `比目標低 NT$${drop.toLocaleString()}`;
 
   const verdictMeta = props.verdict ? VERDICT_FLEX_META[props.verdict] : null;
 
@@ -232,47 +231,42 @@ export function buildAlertFlex(props: AlertFlexProps) {
     contents: {
       type: 'bubble',
       size: 'kilo',
-      // hero strip：綠 tint 上「價格達標」+ verdict badge（spec §A2）
-      header: {
-        type: 'box',
-        layout: 'horizontal',
-        alignItems: 'center',
-        contents: [
-          {
-            type: 'text',
-            text: '價格達標',
-            weight: 'bold',
-            size: 'sm',
-            color: FLEX_DARK.green,
-            flex: 1
-          },
-          ...(verdictMeta
-            ? [{
-                type: 'box',
-                layout: 'vertical',
-                flex: 0,
-                backgroundColor: verdictMeta.bg,
-                cornerRadius: '999px',
-                paddingAll: '4px',
-                paddingStart: '10px',
-                paddingEnd: '10px',
-                contents: [
-                  {
-                    type: 'text',
-                    text: verdictMeta.label,
-                    size: 'xxs',
-                    weight: 'bold',
-                    color: verdictMeta.fg
-                  }
-                ]
-              }]
-            : [])
-        ],
-        backgroundColor: '#102818',
-        paddingAll: '12px',
-        paddingStart: '16px',
-        paddingEnd: '12px'
-      },
+      // hero strip：綠 tint + verdict badge。「價格達標」字 user 要求拿掉；
+      // 沒 verdict（薄資料）就整條 header 省略，不留空綠條。
+      ...(verdictMeta
+        ? {
+            header: {
+              type: 'box',
+              layout: 'horizontal',
+              alignItems: 'center',
+              contents: [
+                {
+                  type: 'box',
+                  layout: 'vertical',
+                  flex: 0,
+                  backgroundColor: verdictMeta.bg,
+                  cornerRadius: '999px',
+                  paddingAll: '4px',
+                  paddingStart: '10px',
+                  paddingEnd: '10px',
+                  contents: [
+                    {
+                      type: 'text',
+                      text: verdictMeta.label,
+                      size: 'xxs',
+                      weight: 'bold',
+                      color: verdictMeta.fg
+                    }
+                  ]
+                }
+              ],
+              backgroundColor: '#102818',
+              paddingAll: '12px',
+              paddingStart: '16px',
+              paddingEnd: '16px'
+            }
+          }
+        : {}),
       body: {
         type: 'box',
         layout: 'vertical',
@@ -329,6 +323,15 @@ export function buildAlertFlex(props: AlertFlexProps) {
                         color: FLEX_DARK.text,
                         margin: 'sm',
                         flex: 0
+                      },
+                      // 比目標低多少 — 併進價格列（user 要求，取代底下獨立的「跌破目標價」box）
+                      {
+                        type: 'text',
+                        text: `（${targetInline}）`,
+                        size: 'sm',
+                        color: FLEX_DARK.green,
+                        margin: 'sm',
+                        flex: 0
                       }
                     ]
                   }
@@ -336,24 +339,7 @@ export function buildAlertFlex(props: AlertFlexProps) {
               }
             ]
           },
-          ...(topBox ? [topBox] : []),
-          {
-            type: 'box',
-            layout: 'vertical',
-            margin: 'lg',
-            backgroundColor: FLEX_DARK.greenTint,
-            cornerRadius: '8px',
-            paddingAll: '10px',
-            contents: [
-              {
-                type: 'text',
-                text: targetLine,
-                size: 'xs',
-                color: FLEX_DARK.green,
-                wrap: true
-              }
-            ]
-          }
+          ...(topBox ? [topBox] : [])
         ]
       },
       footer: {
