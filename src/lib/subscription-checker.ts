@@ -181,11 +181,11 @@ export async function checkAllSubscriptions(): Promise<CheckResult> {
             outboundMax: sub.outbound_max_departure_time ?? null,
             returnMax: sub.return_max_departure_time ?? null
           };
-          // 跨機場挑這筆 sub 的最便宜（含航司過濾）
-          let analysis = analyzeFlights(fanout[0].result.outbound, fanout[0].result.return, timeFilter, sub.airline_filter);
+          // 跨機場挑這筆 sub 的最便宜（含航司過濾 / 釘選航班）
+          let analysis = analyzeFlights(fanout[0].result.outbound, fanout[0].result.return, timeFilter, sub.airline_filter, sub.pinned_flight_number);
           let cheapest = analysis.cheapestRoundTripPrice;
           for (const f of fanout.slice(1)) {
-            const a = analyzeFlights(f.result.outbound, f.result.return, timeFilter, sub.airline_filter);
+            const a = analyzeFlights(f.result.outbound, f.result.return, timeFilter, sub.airline_filter, sub.pinned_flight_number);
             const p = a.cheapestRoundTripPrice;
             if (p != null && (cheapest == null || p < cheapest)) {
               analysis = a;
@@ -317,6 +317,11 @@ async function sendAlert(
   const cheapest = analysis.cheapestRoundTripPrice ?? 0;
   const airline = analysis.cheapestAirline ?? '—';
 
+  // 釘選航班：清單那行顯示「捷星 · 08:30」之類的快照（pinned_flight_label），而不是只有航司名
+  const topAirlines = sub.pinned_flight_number && sub.pinned_flight_label
+    ? [{ airline: sub.pinned_flight_label, price: cheapest }]
+    : analysis.topAirlines;
+
   // G4: source_type='group' → 改 push group flex（紫色 + N 人在追 + 投票領先 + LIFF deep link）
   const isGroupAlert = sub.source_type === 'group' && sub.id != null;
 
@@ -335,7 +340,7 @@ async function sendAlert(
   try {
     let flex: object;
     if (isGroupAlert) {
-      flex = await buildGroupFlexForSub(sub, cheapest, airline, outboundDate, returnDate, verdict, analysis.topAirlines);
+      flex = await buildGroupFlexForSub(sub, cheapest, airline, outboundDate, returnDate, verdict, topAirlines);
     } else {
       flex = buildAlertFlex({
         origin: sub.origin,
@@ -348,7 +353,7 @@ async function sendAlert(
         sourceId: sub.source_id,
         verdict,
         carrier,
-        topAirlines: analysis.topAirlines
+        topAirlines
       });
     }
     const client = getLineClient();
@@ -373,7 +378,7 @@ async function sendAlert(
       carrier,
       isRecentLow: pushIntel.dailyMins.length > 0 && cheapest <= Math.min(...pushIntel.dailyMins),
       fallbackAirline: airline,
-      topAirlines: analysis.topAirlines
+      topAirlines
     }));
   }
 }

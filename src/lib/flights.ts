@@ -106,8 +106,14 @@ export function analyzeFlights(
   timeFilter?: TimeFilter,
   // 航司過濾：只在這些航司裡找最便宜。空 / null / undefined = 不過濾（舊行為）。
   // 存 displayName（'星宇航空' / '捷星'…），跟 normalizeAirlineName 對齊。
-  airlineFilter?: string[] | null
+  airlineFilter?: string[] | null,
+  // 釘選特定航班（班號，例 'GK 13'）。有值 → 只追那一班，忽略時段/航司過濾（釘一班已最精確）。
+  // 找不到那班 → 整個 analysis 回空（cheapestRoundTripPrice=null），caller 視為「暫無報價」不報價。
+  pinnedFlightNumber?: string | null
 ): FlightAnalysis {
+  if (pinnedFlightNumber) {
+    return analyzePinnedFlight(outbound, pinnedFlightNumber);
+  }
   // 起飛時段窗口過濾：套用後再排序找最便宜
   let fOutbound = filterByDepartureTime(outbound, timeFilter?.outboundMin, timeFilter?.outboundMax);
   let fReturn = filterByDepartureTime(ret, timeFilter?.returnMin, timeFilter?.returnMax);
@@ -150,6 +156,54 @@ export function analyzeFlights(
     topAirlines: pickTopAirlines(fOutbound, 3),
     outboundCount: fOutbound.length,
     returnCount: fReturn.length
+  };
+}
+
+/** 在 outbound 報價裡找指定班號（同班號多筆時取最低價）。找不到 → null。 */
+export function findPinnedFlightQuote(
+  outbound: FlightQuote[],
+  flightNumber: string
+): FlightQuote | null {
+  let best: FlightQuote | null = null;
+  for (const q of outbound) {
+    if (q.price == null) continue;
+    const fn = (q.raw as SerpApiFlight | undefined)?.flights?.[0]?.flight_number ?? null;
+    if (fn !== flightNumber) continue;
+    if (best == null || q.price < (best.price ?? Number.POSITIVE_INFINITY)) best = q;
+  }
+  return best;
+}
+
+/**
+ * 釘選航班的 analysis：只看那一班。
+ * 找到 → cheapestRoundTripPrice = 該班價格、topAirlines = [那一班]；
+ * 找不到 → 全空（cheapestRoundTripPrice=null），caller 當「暫無報價」不報價、不誤判。
+ */
+function analyzePinnedFlight(outbound: FlightQuote[], flightNumber: string): FlightAnalysis {
+  const pin = findPinnedFlightQuote(outbound, flightNumber);
+  if (!pin || pin.price == null) {
+    return {
+      cheapestOutbound: null,
+      cheapestReturn: null,
+      cheapestRoundTripPrice: null,
+      cheapestAirline: null,
+      traditionalRoundTrip: null,
+      lccCombo: null,
+      topAirlines: [],
+      outboundCount: 0,
+      returnCount: 0
+    };
+  }
+  return {
+    cheapestOutbound: pin,
+    cheapestReturn: null,
+    cheapestRoundTripPrice: pin.price,
+    cheapestAirline: pin.airline,
+    traditionalRoundTrip: null,
+    lccCombo: null,
+    topAirlines: [{ airline: pin.airline ?? '—', price: pin.price }],
+    outboundCount: 1,
+    returnCount: 0
   };
 }
 

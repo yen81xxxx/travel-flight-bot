@@ -88,6 +88,9 @@ export interface WatchWithQuote {
   created_at?: string;
   /** 航司過濾（0012）：只追這些航司；null = 全部 */
   airline_filter?: string[] | null;
+  /** 釘選航班（0013，方案 B）：班號 + 顯示快照；null = 沒釘選 */
+  pinned_flight_number?: string | null;
+  pinned_flight_label?: string | null;
 
   /** 新增：本次回傳的即時報價 — 沒有快取資料就 null */
   quote: WatchQuote | null;

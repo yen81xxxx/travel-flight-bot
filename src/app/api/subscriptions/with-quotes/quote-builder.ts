@@ -13,6 +13,7 @@
  *   history              ← 過去 30/90 天每日 minPrice，'YYYY-MM-DD' → 'M/D'
  */
 import { analyzeFlights, type TimeFilter } from '@/lib/flights';
+import { getAirlineCategory } from '@/config/airlines';
 import type { FlightQuote, Subscription } from '@/types';
 import type { WatchQuote, PricePoint } from '@/app/liff/_types';
 import { computePriceIntel } from '@/app/liff/_lib/priceIntel';
@@ -81,12 +82,40 @@ export function buildWatchQuote(
     returnMax: sub.return_max_departure_time ?? null
   };
 
+  // 釘選特定航班（方案 B）：只追那一班，currentBest = 那班價格。找不到 → null（監控中）。
+  if (sub.pinned_flight_number) {
+    let pinnedPrice: number | null = null;
+    let pinnedAirline: string | null = null;
+    for (const [, flights] of src.recentByAirport) {
+      const a = analyzeFlights(flights.outbound, flights.return, timeFilter, sub.airline_filter, sub.pinned_flight_number);
+      if (a.cheapestRoundTripPrice != null && (pinnedPrice == null || a.cheapestRoundTripPrice < pinnedPrice)) {
+        pinnedPrice = a.cheapestRoundTripPrice;
+        pinnedAirline = a.cheapestAirline;
+      }
+    }
+    if (pinnedPrice == null) return null;  // 那班暫無報價 → 前端降級「監控中」
+    const currentType: 'lcc' | 'trad' = getAirlineCategory(pinnedAirline) === 'lcc' ? 'lcc' : 'trad';
+    const label = sub.pinned_flight_label ?? pinnedAirline ?? '—';
+    const deltaPct = computeDeltaPct(pinnedPrice, src.weekAgoMin);
+    const history = dailyToHistory(src.daily);
+    const intel = computePriceIntel(history, pinnedPrice, Number(sub.max_price), computeDaysUntil(sub.outbound_date), deltaPct);
+    return {
+      currentBest: pinnedPrice,
+      currentType,
+      lcc: currentType === 'lcc' ? { price: pinnedPrice, out: label, ret: null, estimate: false } : null,
+      trad: currentType === 'trad' ? { price: pinnedPrice, airline: label } : null,
+      deltaPct,
+      history,
+      intel
+    };
+  }
+
   // 跨機場挑最便宜（cron-items-mapper 邏輯）
   let bestLcc: { price: number; out: string; ret: string | null; estimate: boolean } | null = null;
   let bestTrad: { price: number; airline: string } | null = null;
 
   for (const [, flights] of src.recentByAirport) {
-    const a = analyzeFlights(flights.outbound, flights.return, timeFilter, sub.airline_filter);
+    const a = analyzeFlights(flights.outbound, flights.return, timeFilter, sub.airline_filter, sub.pinned_flight_number);
     if (a.lccCombo && (!bestLcc || a.lccCombo.price < bestLcc.price)) {
       bestLcc = {
         price: a.lccCombo.price,

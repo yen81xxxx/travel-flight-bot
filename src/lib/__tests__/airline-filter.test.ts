@@ -7,7 +7,7 @@
  *      （拿錯 = 使用者勾了只要捷星卻被星宇便宜票觸發，違反設定）
  *   3. displayName 比對（星宇航空/捷星…），跟存進 DB 的值對齊
  */
-import { analyzeFlights } from '../flights';
+import { analyzeFlights, findPinnedFlightQuote } from '../flights';
 import { matchesAirlineFilter, getAirlineCategory, normalizeAirlineName } from '@/config/airlines';
 import type { FlightQuote } from '@/types';
 
@@ -132,5 +132,41 @@ describe('analyzeFlights — topAirlines（LINE 警報前 3 家）', () => {
   it('不足 3 家 → 有幾家給幾家', () => {
     const a = analyzeFlights([q('捷星', 6000)], [], undefined, null);
     expect(a.topAirlines).toEqual([{ airline: '捷星', price: 6000 }]);
+  });
+});
+
+describe('analyzeFlights — 釘選航班（方案 B）', () => {
+  // 帶 raw.flight_number 的 quote（findPinnedFlightQuote 從 raw 讀班號）
+  function qp(airline: string, price: number, flightNumber: string): FlightQuote {
+    return {
+      ...q(airline, price),
+      raw: { flights: [{ flight_number: flightNumber, departure_airport: { time: '2027-02-04 08:30' } }] }
+    };
+  }
+
+  it('釘選班號 → 只回那一班的價格 + topAirlines 只有它', () => {
+    const out = [qp('捷星', 6077, 'GK 13'), qp('酷航', 5500, 'TR 1'), qp('捷星', 9000, 'GK 99')];
+    const a = analyzeFlights(out, [], undefined, null, 'GK 13');
+    expect(a.cheapestRoundTripPrice).toBe(6077);   // 不是全集最低 5500
+    expect(a.cheapestAirline).toContain('捷星');
+    expect(a.topAirlines).toEqual([{ airline: '捷星', price: 6077 }]);
+  });
+
+  it('找不到那班 → cheapestRoundTripPrice = null（caller 當暫無報價）', () => {
+    const a = analyzeFlights([qp('酷航', 5500, 'TR 1')], [], undefined, null, 'GK 13');
+    expect(a.cheapestRoundTripPrice).toBeNull();
+    expect(a.topAirlines).toEqual([]);
+  });
+
+  it('釘選優先 — 忽略航司過濾（釘的班即使不在 filter 也回）', () => {
+    const out = [qp('捷星', 6077, 'GK 13')];
+    const a = analyzeFlights(out, [], undefined, ['星宇航空'], 'GK 13');  // filter 不含捷星
+    expect(a.cheapestRoundTripPrice).toBe(6077);
+  });
+
+  it('findPinnedFlightQuote：同班號多筆 → 取最低價那筆', () => {
+    const out = [qp('捷星', 6500, 'GK 13'), qp('捷星', 6000, 'GK 13')];
+    expect(findPinnedFlightQuote(out, 'GK 13')?.price).toBe(6000);
+    expect(findPinnedFlightQuote(out, 'XX 99')).toBeNull();
   });
 });
