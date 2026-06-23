@@ -82,28 +82,27 @@ export function buildWatchQuote(
     returnMax: sub.return_max_departure_time ?? null
   };
 
-  // 釘選特定航班（方案 B）：只追那一班，currentBest = 那班價格。找不到 → null（監控中）。
-  if (sub.pinned_flight_number) {
-    let pinnedPrice: number | null = null;
-    let pinnedAirline: string | null = null;
+  // 釘選航班（複選，方案 B）：只追勾選的那幾班，currentBest = 最低那班。全找不到 → null（監控中）。
+  if (sub.pinned_flight_numbers && sub.pinned_flight_numbers.length > 0) {
+    let best: { price: number; airline: string | null } | null = null;
     for (const [, flights] of src.recentByAirport) {
-      const a = analyzeFlights(flights.outbound, flights.return, timeFilter, sub.airline_filter, sub.pinned_flight_number);
-      if (a.cheapestRoundTripPrice != null && (pinnedPrice == null || a.cheapestRoundTripPrice < pinnedPrice)) {
-        pinnedPrice = a.cheapestRoundTripPrice;
-        pinnedAirline = a.cheapestAirline;
+      const a = analyzeFlights(flights.outbound, flights.return, timeFilter, sub.airline_filter, sub.pinned_flight_numbers);
+      if (a.cheapestRoundTripPrice != null && (best == null || a.cheapestRoundTripPrice < best.price)) {
+        best = { price: a.cheapestRoundTripPrice, airline: a.cheapestAirline };
       }
     }
-    if (pinnedPrice == null) return null;  // 那班暫無報價 → 前端降級「監控中」
-    const currentType: 'lcc' | 'trad' = getAirlineCategory(pinnedAirline) === 'lcc' ? 'lcc' : 'trad';
-    const label = sub.pinned_flight_label ?? pinnedAirline ?? '—';
-    const deltaPct = computeDeltaPct(pinnedPrice, src.weekAgoMin);
+    if (best == null) return null;  // 勾選的班都暫無報價 → 前端降級「監控中」
+    const currentType: 'lcc' | 'trad' = getAirlineCategory(best.airline) === 'lcc' ? 'lcc' : 'trad';
+    // 卡片用最低那班的顯示快照（複選時取陣列第一個 label 當代表，沒有就用航司）
+    const label = sub.pinned_flight_labels?.[0] ?? best.airline ?? '—';
+    const deltaPct = computeDeltaPct(best.price, src.weekAgoMin);
     const history = dailyToHistory(src.daily);
-    const intel = computePriceIntel(history, pinnedPrice, Number(sub.max_price), computeDaysUntil(sub.outbound_date), deltaPct);
+    const intel = computePriceIntel(history, best.price, Number(sub.max_price), computeDaysUntil(sub.outbound_date), deltaPct);
     return {
-      currentBest: pinnedPrice,
+      currentBest: best.price,
       currentType,
-      lcc: currentType === 'lcc' ? { price: pinnedPrice, out: label, ret: null, estimate: false } : null,
-      trad: currentType === 'trad' ? { price: pinnedPrice, airline: label } : null,
+      lcc: currentType === 'lcc' ? { price: best.price, out: label, ret: null, estimate: false } : null,
+      trad: currentType === 'trad' ? { price: best.price, airline: label } : null,
       deltaPct,
       history,
       intel
@@ -115,7 +114,7 @@ export function buildWatchQuote(
   let bestTrad: { price: number; airline: string } | null = null;
 
   for (const [, flights] of src.recentByAirport) {
-    const a = analyzeFlights(flights.outbound, flights.return, timeFilter, sub.airline_filter, sub.pinned_flight_number);
+    const a = analyzeFlights(flights.outbound, flights.return, timeFilter, sub.airline_filter, sub.pinned_flight_numbers);
     if (a.lccCombo && (!bestLcc || a.lccCombo.price < bestLcc.price)) {
       bestLcc = {
         price: a.lccCombo.price,

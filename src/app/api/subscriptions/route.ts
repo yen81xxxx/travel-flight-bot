@@ -21,9 +21,9 @@ const PostBody = z.object({
   label: z.string().optional(),
   // 航司過濾（migration 0012）：displayName 陣列；空/不給 = 不過濾（追全部白名單）
   airlineFilter: z.array(z.string()).optional(),
-  // 釘選航班（migration 0013，方案 B）：班號 + 顯示快照。給了就只追那一班。
-  pinnedFlightNumber: z.string().optional(),
-  pinnedFlightLabel: z.string().optional(),
+  // 釘選航班（migration 0014 複選，方案 B）：班號陣列 + 顯示快照陣列。給了就只追這幾班。
+  pinnedFlightNumbers: z.array(z.string()).optional(),
+  pinnedFlightLabels: z.array(z.string()).optional(),
   // G1: 建立群組訂閱時帶建立者的 LINE userId — 用來自動加入 group_member
   // 這樣群組訂閱一建立就有 1 個 member，避免「沒人是 member 但卡片有 N 人在追=0」奇怪狀態
   // 個人訂閱 (sourceId 是 Uxxx) 忽略此欄位
@@ -107,9 +107,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // 空陣列正規化成 null（空字串 vs null 紀律：null = 不過濾）
   const airlineFilterValue = body.airlineFilter && body.airlineFilter.length > 0 ? body.airlineFilter : null;
-  // 釘選航班：空字串正規化成 null（沒釘選 = 追整條線）
-  const pinnedNumberValue = body.pinnedFlightNumber || null;
-  const pinnedLabelValue = body.pinnedFlightLabel || null;
+  // 釘選航班（複選）：空陣列正規化成 null（沒釘選 = 追整條線）
+  const pinnedNumbersValue = body.pinnedFlightNumbers && body.pinnedFlightNumbers.length > 0 ? body.pinnedFlightNumbers : null;
+  const pinnedLabelsValue = body.pinnedFlightLabels && body.pinnedFlightLabels.length > 0 ? body.pinnedFlightLabels : null;
 
   if (existing) {
     const { error } = await supabase
@@ -121,8 +121,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         return_date: body.returnDate ?? null,
         label: body.label ?? null,
         airline_filter: airlineFilterValue,
-        pinned_flight_number: pinnedNumberValue,
-        pinned_flight_label: pinnedLabelValue
+        pinned_flight_numbers: pinnedNumbersValue,
+        pinned_flight_labels: pinnedLabelsValue
       })
       .eq('id', existing.id);
     if (error) {
@@ -162,8 +162,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       label: body.label ?? null,
       paused: false,
       airline_filter: airlineFilterValue,
-      pinned_flight_number: pinnedNumberValue,
-      pinned_flight_label: pinnedLabelValue,
+      pinned_flight_numbers: pinnedNumbersValue,
+      pinned_flight_labels: pinnedLabelsValue,
       // G1: 紀錄建立者 — 不控制權限，純資料 (group watch 沒 owner)
       created_by_user_id: body.creatorUserId ?? null,
       // #5: 群組訂閱存原始門檻基準 — 全員離開時還原用。個人訂閱留 null。

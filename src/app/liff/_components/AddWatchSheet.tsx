@@ -117,9 +117,10 @@ export function AddWatchSheet({
   // === preview state ===
   const [previewing, setPreviewing] = useState(false);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
-  // === 釘選特定航班（方案 B Phase 2）===
+  // === 釘選特定航班（方案 B Phase 3 複選）===
   const [flightRows, setFlightRows] = useState<PinRow[]>([]);
-  const [pinnedFlight, setPinnedFlight] = useState<{ number: string; label: string; price: number } | null>(null);
+  // key = 班號；value = 顯示 label + 價格
+  const [pinnedFlights, setPinnedFlights] = useState<Map<string, { label: string; price: number }>>(new Map());
 
   // === submit state ===
   const [submitting, setSubmitting] = useState(false);
@@ -134,7 +135,7 @@ export function AddWatchSheet({
       setError(null);
       setPreview(null);
       setFlightRows([]);
-      setPinnedFlight(null);
+      setPinnedFlights(new Map());
       setDone(false);
       setNotifyTarget(defaultNotifyTarget);
       if (prefillRoute) {
@@ -147,7 +148,7 @@ export function AddWatchSheet({
   // 路線 / 日期一變 → 清掉舊的航班清單 + 釘選（避免釘到別條線的班）
   useEffect(() => {
     setFlightRows([]);
-    setPinnedFlight(null);
+    setPinnedFlights(new Map());
   }, [origin, destination, outboundDate, returnDate, isOneWay]);
 
   // 路線變動 → 撈這條線有飛的航司，預設全勾（純 DB 讀、不燒配額）
@@ -254,9 +255,12 @@ export function AddWatchSheet({
           maxPrice: parseInt(maxPriceStr, 10),
           outboundDate,
           ...(isOneWay ? {} : { returnDate }),
-          // 釘選特定航班（方案 B）：送班號 + 顯示快照。釘選優先 → 不送航司過濾。
-          ...(pinnedFlight
-            ? { pinnedFlightNumber: pinnedFlight.number, pinnedFlightLabel: pinnedFlight.label }
+          // 釘選航班（複選，方案 B）：送班號陣列 + label 陣列。釘選優先 → 不送航司過濾。
+          ...(pinnedFlights.size > 0
+            ? {
+                pinnedFlightNumbers: [...pinnedFlights.keys()],
+                pinnedFlightLabels: [...pinnedFlights.values()].map(v => v.label)
+              }
             // 只在「縮小範圍」時送 airlineFilter；全勾 = 不送 = 追全部（舊行為）
             : (narrowedAirlines ? { airlineFilter: [...selectedAirlines] } : {})),
           // G1: 建群組訂閱時把建立者 user 自動加入 group_member
@@ -393,8 +397,8 @@ export function AddWatchSheet({
             )}
           </div>
 
-          {/* === 航司過濾（這條線有飛的才列；全勾 = 追全部）。釘選特定航班時隱藏（釘選優先） === */}
-          {!pinnedFlight && availableAirlines.length > 0 && (
+          {/* === 航司過濾（這條線有飛的才列；全勾 = 追全部）。釘選航班時隱藏（釘選優先） === */}
+          {pinnedFlights.size === 0 && availableAirlines.length > 0 && (
             <div className="airline-box">
               <div className="airline-label">
                 <Icon name="airplane" size={13} stroke={2} /> 航空公司
@@ -451,24 +455,16 @@ export function AddWatchSheet({
             )}
           </div>
 
-          {/* === 釘選特定航班（方案 B）：點一班 = 只追那班 === */}
+          {/* === 釘選航班（方案 B 複選）：勾幾班 = 只追這幾班 === */}
           {flightRows.length > 0 && (
             <div className="pin-box">
               <div className="pin-label">
-                <Icon name="airplane" size={13} stroke={2} /> 選特定航班
-                <span className="pin-hint">點一班＝只追那班；不選＝追整條線</span>
+                <Icon name="airplane" size={13} stroke={2} /> 選特定航班（可複選）
+                <span className="pin-hint">勾幾班＝只追這幾班；不勾＝追整條線</span>
               </div>
               <div className="pin-list">
-                <button
-                  type="button"
-                  className={`pin-row none ${!pinnedFlight ? 'on' : ''}`}
-                  onClick={() => setPinnedFlight(null)}
-                >
-                  <span className="pin-air">追整條線（不指定航班）</span>
-                  {!pinnedFlight && <Icon name="check" size={14} stroke={2.6} />}
-                </button>
                 {flightRows.map(f => {
-                  const on = pinnedFlight?.number === f.flightNumber;
+                  const on = pinnedFlights.has(f.flightNumber);
                   const label = f.time ? `${f.airline} · ${f.time}` : f.airline;
                   return (
                     <button
@@ -476,17 +472,32 @@ export function AddWatchSheet({
                       type="button"
                       data-testid={`pin-${f.flightNumber}`}
                       className={`pin-row ${on ? 'on' : ''}`}
-                      onClick={() => { setPinnedFlight({ number: f.flightNumber, label, price: f.price }); setMaxPriceStr(String(f.price)); }}
+                      onClick={() => {
+                        setPinnedFlights(prev => {
+                          const next = new Map(prev);
+                          if (next.has(f.flightNumber)) next.delete(f.flightNumber);
+                          else next.set(f.flightNumber, { label, price: f.price });
+                          // 目標價自動帶「勾選裡最低那班」的價
+                          const prices = [...next.values()].map(v => v.price);
+                          if (prices.length > 0) setMaxPriceStr(String(Math.min(...prices)));
+                          return next;
+                        });
+                      }}
                     >
+                      <Icon name={on ? 'check' : 'plus'} size={13} stroke={2.4} />
                       <span className="pin-air">{f.airline}</span>
                       <span className="pin-no tnum">{f.flightNumber}</span>
                       {f.time && <span className="pin-time tnum">{f.time}</span>}
                       <span className="pin-price tnum">NT${f.price.toLocaleString()}</span>
-                      {on && <Icon name="check" size={14} stroke={2.6} />}
                     </button>
                   );
                 })}
               </div>
+              {pinnedFlights.size > 0 && (
+                <button type="button" className="pin-clearall" onClick={() => setPinnedFlights(new Map())}>
+                  清除釘選（改追整條線）
+                </button>
+              )}
             </div>
           )}
 
@@ -790,6 +801,18 @@ export function AddWatchSheet({
         }
 
         .pin-box { margin-top: 16px; }
+        .pin-clearall {
+          appearance: none;
+          margin-top: 8px;
+          background: transparent;
+          border: none;
+          color: var(--ios-blue);
+          font-family: inherit;
+          font-size: 12.5px;
+          font-weight: 600;
+          cursor: pointer;
+          padding: 4px 2px;
+        }
         .pin-label {
           display: flex;
           align-items: center;

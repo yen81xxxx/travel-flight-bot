@@ -140,8 +140,8 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
   // 航司過濾：availableAirlines = 這條線有飛的；selectedAirlines = 勾的（全勾=不過濾）
   const [availableAirlines, setAvailableAirlines] = useState<string[]>([]);
   const [selectedAirlines, setSelectedAirlines] = useState<Set<string>>(new Set());
-  // 釘選航班（方案 B Phase 2b）：null = 沒釘選（追整條線）
-  const [pinnedFlight, setPinnedFlight] = useState<{ number: string; label: string } | null>(null);
+  // 釘選航班（方案 B 複選）：number → label；空 Map = 沒釘選（追整條線）
+  const [pinnedFlights, setPinnedFlights] = useState<Map<string, string>>(new Map());
 
   // === mutation state ===
   const [saving, setSaving] = useState(false);
@@ -195,11 +195,9 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
     setOutboundMax(outMax ?? (tfEnabled ? DAY_END : ''));
     setReturnMin(retMin ?? (tfEnabled && watch.return_date ? DAY_START : ''));
     setReturnMax(retMax ?? (tfEnabled && watch.return_date ? DAY_END : ''));
-    setPinnedFlight(
-      watch.pinned_flight_number
-        ? { number: watch.pinned_flight_number, label: watch.pinned_flight_label ?? watch.pinned_flight_number }
-        : null
-    );
+    const pinNums = watch.pinned_flight_numbers ?? [];
+    const pinLabels = watch.pinned_flight_labels ?? [];
+    setPinnedFlights(new Map(pinNums.map((n, i) => [n, pinLabels[i] ?? n])));
     setPaused(!!watch.paused);
     setError(null);
     setConfirmDelete(false);
@@ -560,9 +558,9 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
           returnMinDepartureTime: timeFilterEnabled ? (returnMin || null) : null,
           returnMaxDepartureTime: timeFilterEnabled ? (returnMax || null) : null,
           airlineFilter: narrowed ? [...selectedAirlines] : null,
-          // 釘選航班（方案 B Phase 2b）：null = 取消釘選（改回追整條線）
-          pinnedFlightNumber: pinnedFlight?.number ?? null,
-          pinnedFlightLabel: pinnedFlight?.label ?? null,
+          // 釘選航班（方案 B 複選）：空陣列 = 取消釘選（改回追整條線）
+          pinnedFlightNumbers: pinnedFlights.size > 0 ? [...pinnedFlights.keys()] : null,
+          pinnedFlightLabels: pinnedFlights.size > 0 ? [...pinnedFlights.values()] : null,
           paused
         })
       });
@@ -909,11 +907,17 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
             showAll={showAllOutbound}
             onToggleAll={() => setShowAllOutbound(v => !v)}
             pinnable
-            pinnedNumber={pinnedFlight?.number ?? null}
-            onPin={(f) => f.flight_number && setPinnedFlight({
-              number: f.flight_number,
-              label: f.airline && f.departure_time ? `${f.airline} · ${f.departure_time}` : (f.airline ?? f.flight_number)
-            })}
+            pinnedNumbers={pinnedFlights}
+            onPin={(f) => {
+              if (!f.flight_number) return;
+              const num = f.flight_number;
+              setPinnedFlights(prev => {
+                const next = new Map(prev);
+                if (next.has(num)) next.delete(num);
+                else next.set(num, f.airline && f.departure_time ? `${f.airline} · ${f.departure_time}` : (f.airline ?? num));
+                return next;
+              });
+            }}
           />
           {timeFilterEnabled && shownOutbound.length === 0 && outboundFlights.length > 0 && (
             <p className="tw-hidden-note">這個時段內沒有{watch.return_date ? '去程' : ''}航班 — 放寬「最早 / 最晚」看看</p>
@@ -947,17 +951,17 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
       <div className="settings-block">
         <div className="block-head">追蹤設定</div>
 
-        {/* 釘選航班（方案 B Phase 2b）— 點上面航班清單某一班＝只追那班；可取消 */}
+        {/* 釘選航班（方案 B 複選）— 點上面航班清單可勾多班＝只追這幾班；可全部取消 */}
         <div className="set-row">
           <div className="set-label-stack">
             <span>釘選航班</span>
             <span className="set-sublabel">
-              {pinnedFlight ? `只追：${pinnedFlight.label}` : '點上面航班清單某一班＝只追那班'}
+              {pinnedFlights.size > 0 ? `只追 ${pinnedFlights.size} 班：${[...pinnedFlights.values()].join('、')}` : '點上面航班清單可勾多班＝只追這幾班'}
             </span>
           </div>
-          {pinnedFlight && (
-            <button type="button" className="pin-clear-btn" onClick={() => setPinnedFlight(null)} data-testid="pin-clear">
-              取消釘選
+          {pinnedFlights.size > 0 && (
+            <button type="button" className="pin-clear-btn" onClick={() => setPinnedFlights(new Map())} data-testid="pin-clear">
+              全部取消
             </button>
           )}
         </div>
@@ -1801,16 +1805,16 @@ function FlightList({
   showAll,
   onToggleAll,
   pinnable = false,
-  pinnedNumber = null,
+  pinnedNumbers,
   onPin
 }: {
   label: string;
   flights: FlightRow[];
   showAll: boolean;
   onToggleAll: () => void;
-  // 釘選（方案 B Phase 2b）：pinnable → 每列可點選釘那一班；pinnedNumber → 高亮已釘的
+  // 釘選（方案 B 複選）：pinnable → 每列可點選切換；pinnedNumbers → 已釘的班號集合（Map key 或 Set）
   pinnable?: boolean;
-  pinnedNumber?: string | null;
+  pinnedNumbers?: { has(n: string): boolean } | null;
   onPin?: (f: FlightRow) => void;
 }): React.ReactElement {
   const visible = showAll ? flights : flights.slice(0, TOP_N_DEFAULT);
@@ -1822,7 +1826,7 @@ function FlightList({
       </div>
       {visible.map((f, i) => {
         const canPin = pinnable && !!f.flight_number;
-        const isPinned = canPin && f.flight_number === pinnedNumber;
+        const isPinned = canPin && !!f.flight_number && !!pinnedNumbers?.has(f.flight_number);
         return (
         <div
           key={i}

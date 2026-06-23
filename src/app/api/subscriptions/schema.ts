@@ -37,9 +37,9 @@ export const PatchBody = z.object({
   returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   // 航司過濾（0012）：displayName 陣列；給 [] 或 null 表清掉過濾（追全部）
   airlineFilter: z.array(z.string()).nullable().optional(),
-  // 釘選航班（0013，方案 B）：班號 + 顯示快照；null 表取消釘選（追整條線）
-  pinnedFlightNumber: z.string().nullable().optional(),
-  pinnedFlightLabel: z.string().nullable().optional()
+  // 釘選航班（0014 複選，方案 B）：班號陣列 + 顯示快照陣列；[] 或 null 表取消釘選（追整條線）
+  pinnedFlightNumbers: z.array(z.string()).nullable().optional(),
+  pinnedFlightLabels: z.array(z.string()).nullable().optional()
 });
 
 export type PatchBodyInput = z.infer<typeof PatchBody>;
@@ -88,8 +88,12 @@ export function buildPatchUpdatePayload(body: PatchBodyInput): Record<string, un
   if (body.airlineFilter !== undefined) {
     update.airline_filter = body.airlineFilter && body.airlineFilter.length > 0 ? body.airlineFilter : null;
   }
-  // 釘選航班：空字串 / null → 寫 null（取消釘選）；有值 → 寫；undefined → 不動
-  if (body.pinnedFlightNumber !== undefined) update.pinned_flight_number = body.pinnedFlightNumber || null;
-  if (body.pinnedFlightLabel !== undefined) update.pinned_flight_label = body.pinnedFlightLabel || null;
+  // 釘選航班（複選）：空陣列 / null → 寫 null（取消釘選）；有值 → 寫；undefined → 不動
+  if (body.pinnedFlightNumbers !== undefined) {
+    update.pinned_flight_numbers = body.pinnedFlightNumbers && body.pinnedFlightNumbers.length > 0 ? body.pinnedFlightNumbers : null;
+  }
+  if (body.pinnedFlightLabels !== undefined) {
+    update.pinned_flight_labels = body.pinnedFlightLabels && body.pinnedFlightLabels.length > 0 ? body.pinnedFlightLabels : null;
+  }
   return update;
 }

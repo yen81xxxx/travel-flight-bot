@@ -135,32 +135,50 @@ describe('analyzeFlights — topAirlines（LINE 警報前 3 家）', () => {
   });
 });
 
-describe('analyzeFlights — 釘選航班（方案 B）', () => {
-  // 帶 raw.flight_number 的 quote（findPinnedFlightQuote 從 raw 讀班號）
-  function qp(airline: string, price: number, flightNumber: string): FlightQuote {
+describe('analyzeFlights — 釘選航班（方案 B 複選）', () => {
+  // 帶 raw.flight_number + 起飛時間的 quote（topAirlines label = '航司 · HH:MM'）
+  function qp(airline: string, price: number, flightNumber: string, hhmm = '08:30'): FlightQuote {
     return {
       ...q(airline, price),
-      raw: { flights: [{ flight_number: flightNumber, departure_airport: { time: '2027-02-04 08:30' } }] }
+      raw: { flights: [{ flight_number: flightNumber, departure_airport: { time: `2027-02-04 ${hhmm}` } }] }
     };
   }
 
-  it('釘選班號 → 只回那一班的價格 + topAirlines 只有它', () => {
-    const out = [qp('捷星', 6077, 'GK 13'), qp('酷航', 5500, 'TR 1'), qp('捷星', 9000, 'GK 99')];
-    const a = analyzeFlights(out, [], undefined, null, 'GK 13');
+  it('釘選單一班號 → 只回那一班的價格 + topAirlines 只有它（label 帶時間）', () => {
+    const out = [qp('捷星', 6077, 'GK 13', '08:30'), qp('酷航', 5500, 'TR 1', '13:00'), qp('捷星', 9000, 'GK 99', '20:00')];
+    const a = analyzeFlights(out, [], undefined, null, ['GK 13']);
     expect(a.cheapestRoundTripPrice).toBe(6077);   // 不是全集最低 5500
     expect(a.cheapestAirline).toContain('捷星');
-    expect(a.topAirlines).toEqual([{ airline: '捷星', price: 6077 }]);
+    expect(a.topAirlines).toEqual([{ airline: '捷星 · 08:30', price: 6077 }]);
   });
 
-  it('找不到那班 → cheapestRoundTripPrice = null（caller 當暫無報價）', () => {
-    const a = analyzeFlights([qp('酷航', 5500, 'TR 1')], [], undefined, null, 'GK 13');
+  it('釘選多班（複選）→ topAirlines 條列全部釘選班，trigger 用最低那班', () => {
+    const out = [qp('捷星', 6077, 'GK 13', '08:30'), qp('酷航', 5500, 'TR 1', '13:00'), qp('捷星', 9000, 'GK 99', '20:00')];
+    const a = analyzeFlights(out, [], undefined, null, ['GK 13', 'TR 1']);
+    expect(a.cheapestRoundTripPrice).toBe(5500);    // 釘選裡最低的（觸發告警用）
+    // 條列全部釘選班（不縮成最便宜一家），由便宜到貴
+    expect(a.topAirlines).toEqual([
+      { airline: '酷航 · 13:00', price: 5500 },
+      { airline: '捷星 · 08:30', price: 6077 }
+    ]);
+  });
+
+  it('複選但只找到部分班 → 只回找到的那幾班', () => {
+    const out = [qp('捷星', 6077, 'GK 13', '08:30')];
+    const a = analyzeFlights(out, [], undefined, null, ['GK 13', 'TR 1']);  // TR 1 沒報價
+    expect(a.cheapestRoundTripPrice).toBe(6077);
+    expect(a.topAirlines).toEqual([{ airline: '捷星 · 08:30', price: 6077 }]);
+  });
+
+  it('找不到任何釘選班 → cheapestRoundTripPrice = null（caller 當暫無報價）', () => {
+    const a = analyzeFlights([qp('酷航', 5500, 'TR 1')], [], undefined, null, ['GK 13']);
     expect(a.cheapestRoundTripPrice).toBeNull();
     expect(a.topAirlines).toEqual([]);
   });
 
   it('釘選優先 — 忽略航司過濾（釘的班即使不在 filter 也回）', () => {
     const out = [qp('捷星', 6077, 'GK 13')];
-    const a = analyzeFlights(out, [], undefined, ['星宇航空'], 'GK 13');  // filter 不含捷星
+    const a = analyzeFlights(out, [], undefined, ['星宇航空'], ['GK 13']);  // filter 不含捷星
     expect(a.cheapestRoundTripPrice).toBe(6077);
   });
 

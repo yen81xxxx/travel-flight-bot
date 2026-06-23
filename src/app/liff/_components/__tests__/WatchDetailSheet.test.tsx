@@ -329,23 +329,23 @@ describe('WatchDetailSheet', () => {
     expect(getByText(/已隱藏 1 班/)).toBeInTheDocument();
   });
 
-  it('已釘選的訂閱 → 顯示「只追：X」+ 取消釘選 → 存檔送 pinned=null', async () => {
-    const w = { ...baseWatch, return_date: null, pinned_flight_number: 'GK 13', pinned_flight_label: '捷星 · 08:30' };
+  it('已釘選的訂閱（複選）→ 顯示「只追 N 班：…」+ 全部取消 → 存檔送 pinned=null', async () => {
+    const w = { ...baseWatch, return_date: null, pinned_flight_numbers: ['GK 13', 'JX 5'], pinned_flight_labels: ['捷星 · 08:30', '星宇 · 19:00'] };
     const { getByTestId, getByText, container } = render(
       <WatchDetailSheet open={true} onClose={() => {}} watch={w} />
     );
-    expect(container.textContent).toContain('只追：捷星 · 08:30');
-    fireEvent.click(getByTestId('pin-clear'));        // 取消釘選
+    expect(container.textContent).toContain('只追 2 班：捷星 · 08:30、星宇 · 19:00');
+    fireEvent.click(getByTestId('pin-clear'));        // 全部取消
     fireEvent.click(getByText('儲存變更'));
     await waitFor(() => {
       const patch = (global.fetch as unknown as jest.Mock).mock.calls.find(c => (c[1] as RequestInit)?.method === 'PATCH');
       const body = JSON.parse(patch![1].body);
-      expect(body.pinnedFlightNumber).toBeNull();
-      expect(body.pinnedFlightLabel).toBeNull();
+      expect(body.pinnedFlightNumbers).toBeNull();
+      expect(body.pinnedFlightLabels).toBeNull();
     });
   });
 
-  it('點航班清單一班 → 釘選；存檔送該班號 + label', async () => {
+  it('點航班清單兩班 → 複選釘選；存檔送班號 + label 陣列', async () => {
     global.fetch = jest.fn((url: string | URL | Request, init?: RequestInit) => {
       const u = typeof url === 'string' ? url : url.toString();
       if (u.includes('/api/subscriptions/flights')) {
@@ -365,18 +365,22 @@ describe('WatchDetailSheet', () => {
     }) as unknown as typeof fetch;
 
     const oneWay = { ...baseWatch, return_date: null };
-    const { findByTestId, getByText, container } = render(
+    const { findByTestId, getByTestId, getByText, container } = render(
       <WatchDetailSheet open={true} onClose={() => {}} watch={oneWay} />
     );
     const row = await findByTestId('detail-pin-JX 1');  // 點星宇 14:00 那班
     fireEvent.click(row);
-    expect(container.textContent).toContain('只追：星宇航空 · 14:00');
+    fireEvent.click(getByTestId('detail-pin-TR 1'));    // 再點酷航 07:00 那班（複選）
+    expect(container.textContent).toContain('只追 2 班：');
+    expect(container.textContent).toContain('星宇航空 · 14:00');
+    expect(container.textContent).toContain('酷航 · 07:00');
     fireEvent.click(getByText('儲存變更'));
     await waitFor(() => {
       const patch = (global.fetch as unknown as jest.Mock).mock.calls.find(c => (c[1] as RequestInit)?.method === 'PATCH');
       const body = JSON.parse(patch![1].body);
-      expect(body.pinnedFlightNumber).toBe('JX 1');
-      expect(body.pinnedFlightLabel).toBe('星宇航空 · 14:00');
+      expect(body.pinnedFlightNumbers).toEqual(expect.arrayContaining(['JX 1', 'TR 1']));
+      expect(body.pinnedFlightNumbers).toHaveLength(2);
+      expect(body.pinnedFlightLabels).toEqual(expect.arrayContaining(['星宇航空 · 14:00', '酷航 · 07:00']));
     });
   });
 });

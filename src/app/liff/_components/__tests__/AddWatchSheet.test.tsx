@@ -201,7 +201,7 @@ describe('AddWatchSheet', () => {
     });
   });
 
-  it('釘選航班：preview 後點一班（非最便宜）→ POST 帶 pinnedFlightNumber/Label + 該班價，不帶 airlineFilter', async () => {
+  it('釘選航班（複選）：preview 後勾兩班 → POST 帶 pinnedFlightNumbers/Labels 陣列 + 最低價，不帶 airlineFilter', async () => {
     responses.routeAirlines = { ok: true, airlines: ['捷星', '星宇航空'] };
     responses.search = {
       ok: true,
@@ -212,24 +212,26 @@ describe('AddWatchSheet', () => {
       ]
     };
     responses.subscriptions = { ok: true, action: 'created' };
-    const { getByLabelText, getByText, getByRole, findByTestId, queryByTestId } = render(
+    const { getByLabelText, getByText, getByRole, getByTestId, findByTestId, queryByTestId } = render(
       <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
     );
     fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
     fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
     fireEvent.click(getByRole('button', { name: /查目前最低價/ }));
-    // 航班清單出現 → 點星宇那班（9000，非最便宜的 6000）
-    const row = await findByTestId('pin-JX 803');
-    fireEvent.click(row);
+    // 航班清單出現 → 複選兩班（星宇 9000 + 捷星 6000）
+    const jx = await findByTestId('pin-JX 803');
+    fireEvent.click(jx);
+    fireEvent.click(getByTestId('pin-GK 13'));
     // 釘選後航司勾選 chip 應隱藏（釘選優先）
     expect(queryByTestId('airline-捷星')).toBeNull();
     fireEvent.click(getByText('開始追蹤'));
     await waitFor(() => {
       const postCall = (global.fetch as unknown as jest.Mock).mock.calls.find(c => c[0] === '/api/subscriptions');
       const body = JSON.parse(postCall![1].body);
-      expect(body.pinnedFlightNumber).toBe('JX 803');
-      expect(body.pinnedFlightLabel).toBe('星宇航空 · 14:00');
-      expect(body.maxPrice).toBe(9000);            // 點選自動帶入該班價
+      expect(body.pinnedFlightNumbers).toEqual(expect.arrayContaining(['JX 803', 'GK 13']));
+      expect(body.pinnedFlightNumbers).toHaveLength(2);
+      expect(body.pinnedFlightLabels).toEqual(expect.arrayContaining(['星宇航空 · 14:00', '捷星 · 08:30']));
+      expect(body.maxPrice).toBe(6000);            // 複選自動帶入「最低那班」的價
       expect(body.airlineFilter).toBeUndefined();  // 釘選優先 → 不送航司過濾
     });
   });
