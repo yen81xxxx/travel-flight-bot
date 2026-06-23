@@ -328,6 +328,57 @@ describe('WatchDetailSheet', () => {
     expect(getByText('JX 1')).toBeInTheDocument();                // 14:00 班留著
     expect(getByText(/已隱藏 1 班/)).toBeInTheDocument();
   });
+
+  it('已釘選的訂閱 → 顯示「只追：X」+ 取消釘選 → 存檔送 pinned=null', async () => {
+    const w = { ...baseWatch, return_date: null, pinned_flight_number: 'GK 13', pinned_flight_label: '捷星 · 08:30' };
+    const { getByTestId, getByText, container } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={w} />
+    );
+    expect(container.textContent).toContain('只追：捷星 · 08:30');
+    fireEvent.click(getByTestId('pin-clear'));        // 取消釘選
+    fireEvent.click(getByText('儲存變更'));
+    await waitFor(() => {
+      const patch = (global.fetch as unknown as jest.Mock).mock.calls.find(c => (c[1] as RequestInit)?.method === 'PATCH');
+      const body = JSON.parse(patch![1].body);
+      expect(body.pinnedFlightNumber).toBeNull();
+      expect(body.pinnedFlightLabel).toBeNull();
+    });
+  });
+
+  it('點航班清單一班 → 釘選；存檔送該班號 + label', async () => {
+    global.fetch = jest.fn((url: string | URL | Request, init?: RequestInit) => {
+      const u = typeof url === 'string' ? url : url.toString();
+      if (u.includes('/api/subscriptions/flights')) {
+        return Promise.resolve({ json: () => Promise.resolve({
+          ok: true,
+          outbound: [
+            { airline: '酷航', airline_code: 'TR', price: 5000, duration_minutes: 200, stops: 0, departure_time: '07:00', flight_number: 'TR 1' },
+            { airline: '星宇航空', airline_code: 'JX', price: 6000, duration_minutes: 200, stops: 0, departure_time: '14:00', flight_number: 'JX 1' }
+          ],
+          return: []
+        }) } as Response);
+      }
+      if (init?.method === 'PATCH' || init?.method === 'DELETE') {
+        return Promise.resolve({ json: () => Promise.resolve({ ok: true }) } as Response);
+      }
+      return Promise.resolve({ json: () => Promise.resolve({ ok: true }) } as Response);
+    }) as unknown as typeof fetch;
+
+    const oneWay = { ...baseWatch, return_date: null };
+    const { findByTestId, getByText, container } = render(
+      <WatchDetailSheet open={true} onClose={() => {}} watch={oneWay} />
+    );
+    const row = await findByTestId('detail-pin-JX 1');  // 點星宇 14:00 那班
+    fireEvent.click(row);
+    expect(container.textContent).toContain('只追：星宇航空 · 14:00');
+    fireEvent.click(getByText('儲存變更'));
+    await waitFor(() => {
+      const patch = (global.fetch as unknown as jest.Mock).mock.calls.find(c => (c[1] as RequestInit)?.method === 'PATCH');
+      const body = JSON.parse(patch![1].body);
+      expect(body.pinnedFlightNumber).toBe('JX 1');
+      expect(body.pinnedFlightLabel).toBe('星宇航空 · 14:00');
+    });
+  });
 });
 
 describe('WatchDetailSheet — G1 group join/leave', () => {

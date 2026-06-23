@@ -140,6 +140,8 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
   // 航司過濾：availableAirlines = 這條線有飛的；selectedAirlines = 勾的（全勾=不過濾）
   const [availableAirlines, setAvailableAirlines] = useState<string[]>([]);
   const [selectedAirlines, setSelectedAirlines] = useState<Set<string>>(new Set());
+  // 釘選航班（方案 B Phase 2b）：null = 沒釘選（追整條線）
+  const [pinnedFlight, setPinnedFlight] = useState<{ number: string; label: string } | null>(null);
 
   // === mutation state ===
   const [saving, setSaving] = useState(false);
@@ -193,6 +195,11 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
     setOutboundMax(outMax ?? (tfEnabled ? DAY_END : ''));
     setReturnMin(retMin ?? (tfEnabled && watch.return_date ? DAY_START : ''));
     setReturnMax(retMax ?? (tfEnabled && watch.return_date ? DAY_END : ''));
+    setPinnedFlight(
+      watch.pinned_flight_number
+        ? { number: watch.pinned_flight_number, label: watch.pinned_flight_label ?? watch.pinned_flight_number }
+        : null
+    );
     setPaused(!!watch.paused);
     setError(null);
     setConfirmDelete(false);
@@ -553,6 +560,9 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
           returnMinDepartureTime: timeFilterEnabled ? (returnMin || null) : null,
           returnMaxDepartureTime: timeFilterEnabled ? (returnMax || null) : null,
           airlineFilter: narrowed ? [...selectedAirlines] : null,
+          // 釘選航班（方案 B Phase 2b）：null = 取消釘選（改回追整條線）
+          pinnedFlightNumber: pinnedFlight?.number ?? null,
+          pinnedFlightLabel: pinnedFlight?.label ?? null,
           paused
         })
       });
@@ -898,6 +908,12 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
             flights={shownOutbound}
             showAll={showAllOutbound}
             onToggleAll={() => setShowAllOutbound(v => !v)}
+            pinnable
+            pinnedNumber={pinnedFlight?.number ?? null}
+            onPin={(f) => f.flight_number && setPinnedFlight({
+              number: f.flight_number,
+              label: f.airline && f.departure_time ? `${f.airline} · ${f.departure_time}` : (f.airline ?? f.flight_number)
+            })}
           />
           {timeFilterEnabled && shownOutbound.length === 0 && outboundFlights.length > 0 && (
             <p className="tw-hidden-note">這個時段內沒有{watch.return_date ? '去程' : ''}航班 — 放寬「最早 / 最晚」看看</p>
@@ -930,6 +946,21 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
       {/* === Per-watch settings === */}
       <div className="settings-block">
         <div className="block-head">追蹤設定</div>
+
+        {/* 釘選航班（方案 B Phase 2b）— 點上面航班清單某一班＝只追那班；可取消 */}
+        <div className="set-row">
+          <div className="set-label-stack">
+            <span>釘選航班</span>
+            <span className="set-sublabel">
+              {pinnedFlight ? `只追：${pinnedFlight.label}` : '點上面航班清單某一班＝只追那班'}
+            </span>
+          </div>
+          {pinnedFlight && (
+            <button type="button" className="pin-clear-btn" onClick={() => setPinnedFlight(null)} data-testid="pin-clear">
+              取消釘選
+            </button>
+          )}
+        </div>
 
         <div className="set-row">
           <span className="set-label">廉航目標價</span>
@@ -1217,6 +1248,19 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
         .set-label, .set-label-stack { font-size: 14px; color: var(--ios-label); flex: 1; min-width: 0; }
         .set-label-stack { display: flex; flex-direction: column; gap: 1px; }
         .set-sublabel { font-size: 11.5px; color: var(--ios-label-3); }
+        .pin-clear-btn {
+          appearance: none;
+          flex-shrink: 0;
+          background: var(--ios-fill-3);
+          border: none;
+          border-radius: 999px;
+          color: var(--ios-blue);
+          font-family: inherit;
+          font-size: 12.5px;
+          font-weight: 600;
+          padding: 6px 12px;
+          cursor: pointer;
+        }
         .set-airline {
           padding: 12px 0;
           border-bottom: 0.5px solid var(--ios-hairline);
@@ -1755,12 +1799,19 @@ function FlightList({
   label,
   flights,
   showAll,
-  onToggleAll
+  onToggleAll,
+  pinnable = false,
+  pinnedNumber = null,
+  onPin
 }: {
   label: string;
   flights: FlightRow[];
   showAll: boolean;
   onToggleAll: () => void;
+  // 釘選（方案 B Phase 2b）：pinnable → 每列可點選釘那一班；pinnedNumber → 高亮已釘的
+  pinnable?: boolean;
+  pinnedNumber?: string | null;
+  onPin?: (f: FlightRow) => void;
 }): React.ReactElement {
   const visible = showAll ? flights : flights.slice(0, TOP_N_DEFAULT);
   return (
@@ -1769,13 +1820,24 @@ function FlightList({
         <span className="fl-title">{label}</span>
         <span className="fl-count">{flights.length} 班</span>
       </div>
-      {visible.map((f, i) => (
-        <div key={i} className={`fl-row ${i === 0 ? 'cheapest' : ''}`}>
+      {visible.map((f, i) => {
+        const canPin = pinnable && !!f.flight_number;
+        const isPinned = canPin && f.flight_number === pinnedNumber;
+        return (
+        <div
+          key={i}
+          className={`fl-row ${i === 0 ? 'cheapest' : ''} ${canPin ? 'pinnable' : ''} ${isPinned ? 'pinned' : ''}`}
+          onClick={canPin ? () => onPin?.(f) : undefined}
+          role={canPin ? 'button' : undefined}
+          tabIndex={canPin ? 0 : undefined}
+          data-testid={canPin ? `detail-pin-${f.flight_number}` : undefined}
+        >
           <div className="fl-left">
             <div className="fl-line1">
               <span className="fl-airline">{f.airline ?? '—'}</span>
               {f.flight_number && <span className="fl-fno tnum">{f.flight_number}</span>}
-              {i === 0 && (
+              {isPinned && <span className="fl-badge pinned-badge"><Icon name="check" size={10} stroke={2.6} />已釘選</span>}
+              {!isPinned && i === 0 && (
                 <span className="fl-badge">
                   <Icon name="bolt" size={10} stroke={2.4} />
                   最便宜
@@ -1792,7 +1854,8 @@ function FlightList({
           </div>
           <div className="fl-price tnum">NT${f.price?.toLocaleString() ?? '—'}</div>
         </div>
-      ))}
+        );
+      })}
       {flights.length > TOP_N_DEFAULT && (
         <button type="button" className="fl-expand" onClick={onToggleAll}>
           {showAll
@@ -1833,6 +1896,15 @@ function FlightList({
           border-bottom: 0.5px solid var(--ios-hairline);
         }
         .fl-row:last-of-type { border-bottom: none; }
+        .fl-row.pinnable { cursor: pointer; border-radius: 8px; }
+        .fl-row.pinned {
+          background: rgba(10, 132, 255, 0.12);
+          box-shadow: inset 0 0 0 1px var(--ios-blue);
+        }
+        .pinned-badge {
+          background: var(--ios-blue) !important;
+          color: #fff !important;
+        }
         .fl-row.cheapest {
           background: rgba(48, 209, 88, 0.10);
           margin: 4px -10px;
