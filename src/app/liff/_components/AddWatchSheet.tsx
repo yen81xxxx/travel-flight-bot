@@ -61,6 +61,33 @@ interface Props {
 
 const todayISO = (): string => new Date().toISOString().slice(0, 10);
 
+/** 釘選航班清單的一列（從 /api/search 回的 outbound 抽班號 + 時間）。 */
+interface PinRow {
+  flightNumber: string;
+  airline: string;
+  time: string | null;  // 'HH:MM'
+  price: number;
+}
+
+/** 從 search 回的 outbound（含 raw）抽成可點選的航班列：去重(同班號留最低)、由便宜到貴。 */
+function toPinRows(
+  outbound: Array<{ airline?: string | null; price?: number | null; raw?: unknown }>
+): PinRow[] {
+  const byNum = new Map<string, PinRow>();
+  for (const q of outbound) {
+    const f = (q.raw as { flights?: Array<{ flight_number?: string; departure_airport?: { time?: string } }> } | undefined)?.flights?.[0];
+    const fn = f?.flight_number;
+    if (!fn || q.price == null) continue;
+    const t = f?.departure_airport?.time;
+    const time = typeof t === 'string' && t.length >= 16 ? t.slice(11, 16) : null;
+    const existing = byNum.get(fn);
+    if (!existing || q.price < existing.price) {
+      byNum.set(fn, { flightNumber: fn, airline: q.airline ?? '—', time, price: q.price });
+    }
+  }
+  return [...byNum.values()].sort((a, b) => a.price - b.price);
+}
+
 export function AddWatchSheet({
   open, onClose, userId, groupCtxId, defaultNotifyTarget = 'me', prefillRoute = null, onCreated, onRequestLogin
 }: Props): React.ReactElement {
@@ -90,6 +117,9 @@ export function AddWatchSheet({
   // === preview state ===
   const [previewing, setPreviewing] = useState(false);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
+  // === 釘選特定航班（方案 B Phase 2）===
+  const [flightRows, setFlightRows] = useState<PinRow[]>([]);
+  const [pinnedFlight, setPinnedFlight] = useState<{ number: string; label: string; price: number } | null>(null);
 
   // === submit state ===
   const [submitting, setSubmitting] = useState(false);
@@ -103,6 +133,8 @@ export function AddWatchSheet({
     if (open) {
       setError(null);
       setPreview(null);
+      setFlightRows([]);
+      setPinnedFlight(null);
       setDone(false);
       setNotifyTarget(defaultNotifyTarget);
       if (prefillRoute) {
@@ -111,6 +143,12 @@ export function AddWatchSheet({
       }
     }
   }, [open, defaultNotifyTarget, prefillRoute]);
+
+  // 路線 / 日期一變 → 清掉舊的航班清單 + 釘選（避免釘到別條線的班）
+  useEffect(() => {
+    setFlightRows([]);
+    setPinnedFlight(null);
+  }, [origin, destination, outboundDate, returnDate, isOneWay]);
 
   // 路線變動 → 撈這條線有飛的航司，預設全勾（純 DB 讀、不燒配額）
   useEffect(() => {
@@ -170,6 +208,8 @@ export function AddWatchSheet({
         airline: data.analysis?.cheapestAirline ?? null,
         fromCache: data.fromCache === true
       });
+      // 釘選用：把去程所有航班抽成可點選清單
+      setFlightRows(toPinRows(data.outbound ?? []));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -214,8 +254,11 @@ export function AddWatchSheet({
           maxPrice: parseInt(maxPriceStr, 10),
           outboundDate,
           ...(isOneWay ? {} : { returnDate }),
-          // 只在「縮小範圍」時送 airlineFilter；全勾 = 不送 = 追全部（舊行為）
-          ...(narrowedAirlines ? { airlineFilter: [...selectedAirlines] } : {}),
+          // 釘選特定航班（方案 B）：送班號 + 顯示快照。釘選優先 → 不送航司過濾。
+          ...(pinnedFlight
+            ? { pinnedFlightNumber: pinnedFlight.number, pinnedFlightLabel: pinnedFlight.label }
+            // 只在「縮小範圍」時送 airlineFilter；全勾 = 不送 = 追全部（舊行為）
+            : (narrowedAirlines ? { airlineFilter: [...selectedAirlines] } : {})),
           // G1: 建群組訂閱時把建立者 user 自動加入 group_member
           // 個人訂閱（sourceId 是 user）時 backend 會忽略此欄
           ...(notifyTarget === 'group' && userId ? { creatorUserId: userId } : {})
@@ -350,8 +393,8 @@ export function AddWatchSheet({
             )}
           </div>
 
-          {/* === 航司過濾（這條線有飛的才列；全勾 = 追全部） === */}
-          {availableAirlines.length > 0 && (
+          {/* === 航司過濾（這條線有飛的才列；全勾 = 追全部）。釘選特定航班時隱藏（釘選優先） === */}
+          {!pinnedFlight && availableAirlines.length > 0 && (
             <div className="airline-box">
               <div className="airline-label">
                 <Icon name="airplane" size={13} stroke={2} /> 航空公司
@@ -407,6 +450,45 @@ export function AddWatchSheet({
               </div>
             )}
           </div>
+
+          {/* === 釘選特定航班（方案 B）：點一班 = 只追那班 === */}
+          {flightRows.length > 0 && (
+            <div className="pin-box">
+              <div className="pin-label">
+                <Icon name="airplane" size={13} stroke={2} /> 選特定航班
+                <span className="pin-hint">點一班＝只追那班；不選＝追整條線</span>
+              </div>
+              <div className="pin-list">
+                <button
+                  type="button"
+                  className={`pin-row none ${!pinnedFlight ? 'on' : ''}`}
+                  onClick={() => setPinnedFlight(null)}
+                >
+                  <span className="pin-air">追整條線（不指定航班）</span>
+                  {!pinnedFlight && <Icon name="check" size={14} stroke={2.6} />}
+                </button>
+                {flightRows.map(f => {
+                  const on = pinnedFlight?.number === f.flightNumber;
+                  const label = f.time ? `${f.airline} · ${f.time}` : f.airline;
+                  return (
+                    <button
+                      key={f.flightNumber}
+                      type="button"
+                      data-testid={`pin-${f.flightNumber}`}
+                      className={`pin-row ${on ? 'on' : ''}`}
+                      onClick={() => { setPinnedFlight({ number: f.flightNumber, label, price: f.price }); setMaxPriceStr(String(f.price)); }}
+                    >
+                      <span className="pin-air">{f.airline}</span>
+                      <span className="pin-no tnum">{f.flightNumber}</span>
+                      {f.time && <span className="pin-time tnum">{f.time}</span>}
+                      <span className="pin-price tnum">NT${f.price.toLocaleString()}</span>
+                      {on && <Icon name="check" size={14} stroke={2.6} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* === Notify target picker (PR #4b) — 只有 user 同時在群組情境才出現 === */}
           {canChooseTarget && (
@@ -706,6 +788,69 @@ export function AddWatchSheet({
           font-family: var(--mono);
           padding: 11px 12px;
         }
+
+        .pin-box { margin-top: 16px; }
+        .pin-label {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 13px;
+          color: var(--ios-label-2);
+          margin-bottom: 8px;
+        }
+        .pin-hint {
+          font-size: 11px;
+          color: var(--ios-label-3);
+          margin-left: 2px;
+        }
+        .pin-list {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          max-height: 260px;
+          overflow-y: auto;
+        }
+        .pin-row {
+          appearance: none;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          width: 100%;
+          text-align: left;
+          background: var(--ios-bg-tertiary);
+          border: 1px solid transparent;
+          border-radius: 10px;
+          padding: 10px 12px;
+          color: var(--ios-label);
+          font-family: inherit;
+          font-size: 13px;
+          cursor: pointer;
+        }
+        .pin-row.on {
+          border-color: var(--ios-blue);
+          background: rgba(10, 132, 255, 0.12);
+        }
+        .pin-row.none { color: var(--ios-label-2); }
+        .pin-air { font-weight: 600; flex-shrink: 0; }
+        .pin-no {
+          font-family: var(--mono);
+          font-size: 11px;
+          color: var(--ios-label-3);
+          flex-shrink: 0;
+        }
+        .pin-time {
+          font-family: var(--mono);
+          font-size: 12px;
+          color: var(--ios-label-2);
+          flex-shrink: 0;
+        }
+        .pin-price {
+          font-family: var(--mono);
+          font-weight: 700;
+          margin-left: auto;
+          flex-shrink: 0;
+        }
+        .pin-row.on .pin-price { color: var(--ios-blue); }
 
         .airline-box { margin-top: 16px; }
         .airline-label {
