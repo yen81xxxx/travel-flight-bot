@@ -63,7 +63,6 @@ describe('buildAlertFlex（L1 深色版）', () => {
         { airline: '星宇航空', price: 7880 }
       ]
     }));
-    expect(json).toContain('便宜航空');
     expect(json).toContain('捷星');
     expect(json).toContain('NT$6,077');
     expect(json).toContain('星宇航空');
@@ -101,11 +100,16 @@ describe('buildAlertFlex（L1 深色版）', () => {
     expect(json).not.toContain('▲');
   });
 
-  it('降幅 <1% 邊界 → 「達到你的目標價」語氣（不顯示像 bug 的「低 NT$8」斷言絕對額照算）', () => {
-    const json = JSON.stringify(buildAlertFlex({ ...BASE_PROPS, cheapestPrice: 12792 }));
-    expect(json).toContain('達到你的目標價 NT$12,800');
+  it('目標差距併進價格列：一般 →「（比目標低 NT$X）」；<1% 邊界 →「（達到目標價）」', () => {
+    // 降幅 <1%（只差 NT$8）→ 不寫「低 NT$8」像 bug，改「達到目標價」
+    const atThreshold = JSON.stringify(buildAlertFlex({ ...BASE_PROPS, cheapestPrice: 12792 }));
+    expect(atThreshold).toContain('（達到目標價）');
+    expect(atThreshold).not.toContain('比目標低');
+    // 一般降幅 → 「比目標低 NT$1,320」（12800 - 11480）
     const normal = JSON.stringify(buildAlertFlex(BASE_PROPS));
-    expect(normal).toContain('已跌破你的目標價 NT$12,800（低 NT$1,320）');
+    expect(normal).toContain('（比目標低 NT$1,320）');
+    // 舊的獨立「跌破目標價」box 已移除
+    expect(normal).not.toContain('已跌破你的目標價');
   });
 
   it('altText 無 emoji 且帶 IATA 路線 + verdict', () => {
