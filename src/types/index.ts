@@ -74,6 +74,12 @@ export interface Subscription {
   // 共識把 derived 寫進 max_price 會蓋掉原值；當全員離開 / 沒人設目標（derived=null）
   // 時還原到這個基準，而不是卡在最後一次的共識值。個人訂閱忽略。
   base_max_price?: number | null;
+  // 釘選特定航班（migration 0013，方案 B）：只追這一班。
+  //   pinned_flight_number：比對 key（班號，例 'GK 13'）
+  //   pinned_flight_label ：顯示快照（例 '捷星 · 08:30'）
+  // null = 沒釘選，照舊追整條線。有值時忽略 airline_filter / 時段過濾。
+  pinned_flight_number?: string | null;
+  pinned_flight_label?: string | null;
 }
 
 /** G0: 群組成員（subscriptions: id 1 → N）。個人訂閱永遠 0 筆。*/

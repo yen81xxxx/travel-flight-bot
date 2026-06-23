@@ -169,11 +169,12 @@ describe('buildPatchUpdatePayload — undefined vs null 語義', () => {
 });
 
 describe('防回歸：欄位數量檢查', () => {
-  it('PatchBody 欄位數量 = 13（id + sourceId + 11 可選）', () => {
+  it('PatchBody 欄位數量 = 15（id + sourceId + 13 可選）', () => {
     // 新增欄位時請順便加測試（避免靜默落地未測的欄位）。
     // 目前：id, sourceId, paused, label, maxPrice, maxPriceTraditional,
     //       outboundMin/MaxDepartureTime, returnMin/MaxDepartureTime,
-    //       outboundDate, returnDate（=null → 單程）, airlineFilter（0012 航司過濾）
+    //       outboundDate, returnDate（=null → 單程）, airlineFilter（0012）,
+    //       pinnedFlightNumber/pinnedFlightLabel（0013 釘選航班）
     const allOptional = PatchBody.safeParse({ id: 1, sourceId: 'U' });
     expect(allOptional.success).toBe(true);
     const shape = (PatchBody as unknown as { _def: { shape: () => Record<string, unknown> } })._def.shape();
@@ -183,7 +184,8 @@ describe('防回歸：欄位數量檢查', () => {
       'maxPrice', 'maxPriceTraditional',
       'outboundMinDepartureTime', 'outboundMaxDepartureTime',
       'returnMinDepartureTime', 'returnMaxDepartureTime',
-      'outboundDate', 'returnDate', 'airlineFilter'
+      'outboundDate', 'returnDate', 'airlineFilter',
+      'pinnedFlightNumber', 'pinnedFlightLabel'
     ].sort());
   });
 
