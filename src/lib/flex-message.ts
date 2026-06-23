@@ -224,6 +224,23 @@ export function buildAlertFlex(props: AlertFlexProps) {
   // 前 3 便宜航空清單；沒有就退回單一 carrier 列（舊行為）
   const topBox = buildTopAirlinesBox(props.topAirlines) ?? carrierRow;
 
+  // verdict 徽章 — user 要求跟路線標題同一行（取代上面整條 header bar）
+  const verdictBadge = verdictMeta
+    ? {
+        type: 'box',
+        layout: 'vertical',
+        flex: 0,
+        backgroundColor: verdictMeta.bg,
+        cornerRadius: '999px',
+        paddingAll: '4px',
+        paddingStart: '10px',
+        paddingEnd: '10px',
+        contents: [
+          { type: 'text', text: verdictMeta.label, size: 'xs', weight: 'bold', color: verdictMeta.fg }
+        ]
+      }
+    : null;
+
   const verdictSuffix = verdictMeta ? `（${verdictMeta.label}）` : '';
   return {
     type: 'flex',
@@ -231,42 +248,7 @@ export function buildAlertFlex(props: AlertFlexProps) {
     contents: {
       type: 'bubble',
       size: 'kilo',
-      // hero strip：綠 tint + verdict badge。「價格達標」字 user 要求拿掉；
-      // 沒 verdict（薄資料）就整條 header 省略，不留空綠條。
-      ...(verdictMeta
-        ? {
-            header: {
-              type: 'box',
-              layout: 'horizontal',
-              alignItems: 'center',
-              contents: [
-                {
-                  type: 'box',
-                  layout: 'vertical',
-                  flex: 0,
-                  backgroundColor: verdictMeta.bg,
-                  cornerRadius: '999px',
-                  paddingAll: '4px',
-                  paddingStart: '10px',
-                  paddingEnd: '10px',
-                  contents: [
-                    {
-                      type: 'text',
-                      text: verdictMeta.label,
-                      size: 'xxs',
-                      weight: 'bold',
-                      color: verdictMeta.fg
-                    }
-                  ]
-                }
-              ],
-              backgroundColor: '#102818',
-              paddingAll: '12px',
-              paddingStart: '16px',
-              paddingEnd: '16px'
-            }
-          }
-        : {}),
+      // header bar 整條拿掉 — verdict 徽章改放路線標題那一行（user 要求）
       body: {
         type: 'box',
         layout: 'vertical',
@@ -274,12 +256,22 @@ export function buildAlertFlex(props: AlertFlexProps) {
         paddingAll: '16px',
         contents: [
           {
-            type: 'text',
-            text: `${getCity(props.origin)} → ${getCity(props.destination)}`,
-            weight: 'bold',
-            size: 'lg',
-            color: FLEX_DARK.text,
-            wrap: true
+            // 路線標題 + verdict 徽章同一行（徽章靠右）
+            type: 'box',
+            layout: 'horizontal',
+            alignItems: 'center',
+            contents: [
+              {
+                type: 'text',
+                text: `${getCity(props.origin)} → ${getCity(props.destination)}`,
+                weight: 'bold',
+                size: 'lg',
+                color: FLEX_DARK.text,
+                wrap: true,
+                flex: 1
+              },
+              ...(verdictBadge ? [verdictBadge] : [])
+            ]
           },
           {
             type: 'text',
@@ -375,7 +367,6 @@ export function buildAlertFlex(props: AlertFlexProps) {
         ]
       },
       styles: {
-        header: { separator: false },
         body: { separator: false }
       }
     }

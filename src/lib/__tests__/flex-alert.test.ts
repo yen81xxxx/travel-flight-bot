@@ -116,6 +116,26 @@ describe('buildAlertFlex（L1 深色版）', () => {
     const flex = buildAlertFlex(FULL_PROPS) as { altText: string };
     expect(flex.altText).toBe('價格達標：TPE → NRT NT$11,480（建議入手）');
   });
+
+  it('verdict 徽章移到路線標題那一行（不再有獨立 header bar）', () => {
+    const flex = buildAlertFlex(FULL_PROPS) as {
+      contents: { header?: unknown; body: { contents: { layout?: string }[] } };
+    };
+    expect(flex.contents.header).toBeUndefined();  // header bar 已拿掉
+    const firstRow = flex.contents.body.contents[0];
+    expect(firstRow.layout).toBe('horizontal');     // 路線那行是水平排版
+    const rowJson = JSON.stringify(firstRow);
+    expect(rowJson).toContain('東京');              // 路線（NRT = 東京）
+    expect(rowJson).toContain('建議入手');          // verdict 徽章同一行
+  });
+
+  it('無 verdict → 路線行只有路線、無徽章（薄資料不假裝）', () => {
+    const flex = buildAlertFlex(BASE_PROPS) as {
+      contents: { body: { contents: { contents?: unknown[] }[] } };
+    };
+    const firstRow = flex.contents.body.contents[0];
+    expect(JSON.stringify(firstRow)).not.toContain('建議入手');
+  });
 });
 
 describe('VERDICT_FLEX_META ↔ LIFF VERDICT_META parity', () => {
