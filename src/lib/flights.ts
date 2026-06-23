@@ -107,12 +107,13 @@ export function analyzeFlights(
   // 航司過濾：只在這些航司裡找最便宜。空 / null / undefined = 不過濾（舊行為）。
   // 存 displayName（'星宇航空' / '捷星'…），跟 normalizeAirlineName 對齊。
   airlineFilter?: string[] | null,
-  // 釘選特定航班（班號，例 'GK 13'）。有值 → 只追那一班，忽略時段/航司過濾（釘一班已最精確）。
-  // 找不到那班 → 整個 analysis 回空（cheapestRoundTripPrice=null），caller 視為「暫無報價」不報價。
-  pinnedFlightNumber?: string | null
+  // 釘選航班（班號陣列，例 ['GK 13','IT 201']）。有值 → 只追這幾班，忽略時段/航司過濾。
+  // topAirlines = 勾選的每一班（列出來，不縮成最便宜）；cheapestRoundTripPrice = 最低那班（觸發用）。
+  // 全找不到 → analysis 回空（cheapestRoundTripPrice=null），caller 視為「暫無報價」不報。
+  pinnedFlightNumbers?: string[] | null
 ): FlightAnalysis {
-  if (pinnedFlightNumber) {
-    return analyzePinnedFlight(outbound, pinnedFlightNumber);
+  if (pinnedFlightNumbers && pinnedFlightNumbers.length > 0) {
+    return analyzePinnedFlights(outbound, pinnedFlightNumbers);
   }
   // 起飛時段窗口過濾：套用後再排序找最便宜
   let fOutbound = filterByDepartureTime(outbound, timeFilter?.outboundMin, timeFilter?.outboundMax);
@@ -175,13 +176,21 @@ export function findPinnedFlightQuote(
 }
 
 /**
- * 釘選航班的 analysis：只看那一班。
- * 找到 → cheapestRoundTripPrice = 該班價格、topAirlines = [那一班]；
- * 找不到 → 全空（cheapestRoundTripPrice=null），caller 當「暫無報價」不報價、不誤判。
+ * 釘選航班（複選）的 analysis：把勾選的每一班都撈出來。
+ * topAirlines = 勾選的每一班（label='航司 · HH:MM' + 各自價，由便宜到貴）— 列出來不縮成一班。
+ * cheapestRoundTripPrice = 最低那班（警報觸發門檻用）。
+ * 全找不到 → 全空（cheapestRoundTripPrice=null），caller 當「暫無報價」不報、不誤判。
  */
-function analyzePinnedFlight(outbound: FlightQuote[], flightNumber: string): FlightAnalysis {
-  const pin = findPinnedFlightQuote(outbound, flightNumber);
-  if (!pin || pin.price == null) {
+function analyzePinnedFlights(outbound: FlightQuote[], flightNumbers: string[]): FlightAnalysis {
+  const matched: { quote: FlightQuote; label: string }[] = [];
+  for (const fn of flightNumbers) {
+    const q = findPinnedFlightQuote(outbound, fn);
+    if (!q || q.price == null) continue;
+    const time = extractDepartureHHMM(q);
+    const label = q.airline ? (time ? `${q.airline} · ${time}` : q.airline) : fn;
+    matched.push({ quote: q, label });
+  }
+  if (matched.length === 0) {
     return {
       cheapestOutbound: null,
       cheapestReturn: null,
@@ -194,15 +203,17 @@ function analyzePinnedFlight(outbound: FlightQuote[], flightNumber: string): Fli
       returnCount: 0
     };
   }
+  matched.sort((a, b) => (a.quote.price ?? Infinity) - (b.quote.price ?? Infinity));
+  const cheapest = matched[0].quote;
   return {
-    cheapestOutbound: pin,
+    cheapestOutbound: cheapest,
     cheapestReturn: null,
-    cheapestRoundTripPrice: pin.price,
-    cheapestAirline: pin.airline,
+    cheapestRoundTripPrice: cheapest.price,
+    cheapestAirline: cheapest.airline,
     traditionalRoundTrip: null,
     lccCombo: null,
-    topAirlines: [{ airline: pin.airline ?? '—', price: pin.price }],
-    outboundCount: 1,
+    topAirlines: matched.map(m => ({ airline: m.label, price: m.quote.price as number })),
+    outboundCount: matched.length,
     returnCount: 0
   };
 }

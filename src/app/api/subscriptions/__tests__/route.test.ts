@@ -174,7 +174,7 @@ describe('防回歸：欄位數量檢查', () => {
     // 目前：id, sourceId, paused, label, maxPrice, maxPriceTraditional,
     //       outboundMin/MaxDepartureTime, returnMin/MaxDepartureTime,
     //       outboundDate, returnDate（=null → 單程）, airlineFilter（0012）,
-    //       pinnedFlightNumber/pinnedFlightLabel（0013 釘選航班）
+    //       pinnedFlightNumbers/pinnedFlightLabels（0014 釘選航班複選）
     const allOptional = PatchBody.safeParse({ id: 1, sourceId: 'U' });
     expect(allOptional.success).toBe(true);
     const shape = (PatchBody as unknown as { _def: { shape: () => Record<string, unknown> } })._def.shape();
@@ -185,7 +185,7 @@ describe('防回歸：欄位數量檢查', () => {
       'outboundMinDepartureTime', 'outboundMaxDepartureTime',
       'returnMinDepartureTime', 'returnMaxDepartureTime',
       'outboundDate', 'returnDate', 'airlineFilter',
-      'pinnedFlightNumber', 'pinnedFlightLabel'
+      'pinnedFlightNumbers', 'pinnedFlightLabels'
     ].sort());
   });
 
