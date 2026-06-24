@@ -83,6 +83,8 @@ export function buildMultiSubsItem(
   // 跨機場（東京 = HND + NRT 之類）挑各分類最便宜
   let bestLcc: { price: number; outboundAirline: string; returnAirline: string; airport: string; isEstimate: boolean } | null = null;
   let bestTrad: { price: number; airline: string; airport: string } | null = null;
+  // 前 3 便宜航空：跨機場 merge，同航司留最低價（比照降價警報卡顯示前 3 家）
+  const airlineMin = new Map<string, number>();
   for (const f of route.fanout) {
     const a = analyzeFlights(f.outbound, f.return, timeFilter, sub.airline_filter);
     if (a.lccCombo && (!bestLcc || a.lccCombo.price < bestLcc.price)) {
@@ -91,7 +93,15 @@ export function buildMultiSubsItem(
     if (a.traditionalRoundTrip && (!bestTrad || a.traditionalRoundTrip.price < bestTrad.price)) {
       bestTrad = { ...a.traditionalRoundTrip, airport: f.airport };
     }
+    for (const t of a.topAirlines) {
+      const prev = airlineMin.get(t.airline);
+      if (prev == null || t.price < prev) airlineMin.set(t.airline, t.price);
+    }
   }
+  const topAirlines = [...airlineMin.entries()]
+    .map(([airline, price]) => ({ airline, price }))
+    .sort((x, y) => x.price - y.price)
+    .slice(0, 3);
 
   // 兩類比一比挑勝出者當「卡片頂部那個價」
   let bestCheapest: { price: number; airline: string | null; airport: string; category: 'lcc' | 'full-service' } | null = null;
@@ -125,6 +135,7 @@ export function buildMultiSubsItem(
     cheapestCategory: bestCheapest.category,
     cheapestAirline: bestCheapest.airline,
     vsPrevPct: vsPrev,
+    topAirlines,
     lcc: bestLcc ? {
       price: bestLcc.price,
       airport: bestLcc.airport,
