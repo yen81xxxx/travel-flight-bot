@@ -15,7 +15,10 @@
    - **typecheck / jest 綠 ≠ 功能 OK**。merge + 部署後要**實際操作那個功能一遍**才回報
    - 驗證擇一：對 prod 端到端腳本（建測試資料 → 操作 API → 讀回確認 → 清理）、`npm run e2e`、或真的在 LIFF / LINE 點一遍
    - **誠實回報實測結果**：測了什麼、看到什麼數字。沒測就說沒測，**禁止**講「應該沒問題」
-   - 血淚教訓：時段過濾「存了畫面沒變」就是只看 CI 綠沒實測 → 被 user 抓到（後端其實是對的，前端清單沒套）
+   - **「jsdom / jest 測不到」≠ 可以跳過 = 信號要換工具**：瀏覽器原生行為（`<input type=date>` 的 `showPicker`、`color-scheme`、`:hover`、原生彈窗…）jest 驗不了 → 用 Claude Preview 把**真元件** render 進真 Chromium（throwaway `src/app/liff/devtest/page.tsx` import 真元件包在 `.wl-wrap[data-theme=dark]` → `preview_start` → `preview_eval` 驗 `getComputedStyle` + spy 確認 click 真的觸發那個原生 API），驗完刪掉。OS 原生彈窗本體沒人截得到，但「觸發機制 + computed style」驗得到 → 就驗，別出貨叫 user 自己看
+   - 沒有任何一種改動是「太小 / 太原生」可豁免實測的；找得到「為何這次可以跳過」的理由，那個理由本身就是該停下來實測的信號
+   - 血淚教訓 1：時段過濾「存了畫面沒變」就是只看 CI 綠沒實測 → 被 user 抓到（後端其實是對的，前端清單沒套）
+   - 血淚教訓 2：日期欄位 `showPicker` 改完只跑 jest 就回報 → 被 user 抓「你測試過了齁?」；jsdom 根本沒 `showPicker`，當下該直接開 Preview 驗（後來補驗：click→showPicker 有觸發、color-scheme=dark 有套）
 
 ## 部署 / 版本
 
