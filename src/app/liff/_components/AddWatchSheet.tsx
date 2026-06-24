@@ -381,6 +381,7 @@ export function AddWatchSheet({
                 type="date"
                 value={outboundDate}
                 onChange={e => { setOutboundDate(e.target.value); setPreview(null); }}
+                onClick={e => e.currentTarget.showPicker?.()}
                 min={todayISO()}
               />
             </label>
@@ -391,6 +392,7 @@ export function AddWatchSheet({
                   type="date"
                   value={returnDate}
                   onChange={e => { setReturnDate(e.target.value); setPreview(null); }}
+                  onClick={e => e.currentTarget.showPicker?.()}
                   min={outboundDate || todayISO()}
                 />
               </label>
@@ -798,7 +800,11 @@ export function AddWatchSheet({
           font-size: 14px;
           font-family: var(--mono);
           padding: 11px 12px;
+          cursor: pointer;
         }
+        /* 深色主題下讓原生日曆 icon + 彈窗用深色（否則 icon 黑底黑、幾乎看不到） */
+        :global([data-theme='dark']) .date-input input { color-scheme: dark; }
+        .date-input input::-webkit-calendar-picker-indicator { cursor: pointer; }
 
         .pin-box { margin-top: 16px; }
         .pin-clearall {

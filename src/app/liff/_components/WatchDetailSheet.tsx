@@ -811,6 +811,7 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
                     type="date"
                     value={newOutDate}
                     onChange={e => setNewOutDate(e.target.value)}
+                    onClick={e => e.currentTarget.showPicker?.()}
                     min={new Date().toISOString().slice(0, 10)}
                     data-testid="new-out-date"
                   />
@@ -821,6 +822,7 @@ export function WatchDetailSheet({ open, onClose, watch, userId = null, onMutate
                     type="date"
                     value={newRetDate}
                     onChange={e => setNewRetDate(e.target.value)}
+                    onClick={e => e.currentTarget.showPicker?.()}
                     min={newOutDate || new Date().toISOString().slice(0, 10)}
                     data-testid="new-ret-date"
                   />
