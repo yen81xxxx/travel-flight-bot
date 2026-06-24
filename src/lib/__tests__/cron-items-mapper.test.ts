@@ -447,3 +447,41 @@ describe('buildMultiSubsItem — quota-exhausted 不會被誤導向 no-match', (
     expect(item.cheapestPrice).toBeNull();
   });
 });
+
+describe('buildMultiSubsItem — topAirlines（比照降價警報卡顯示前 3 家）', () => {
+  it('跨機場 merge → 取最便宜 3 家、由低到高；同航司留最低價', () => {
+    const route = makeRoute({
+      fanout: [
+        makeFanout({
+          airport: 'HND',
+          outbound: [
+            makeQuote({ airline: '捷星', price: 14000, trip_leg: 'outbound' }),
+            makeQuote({ airline: '酷航', price: 9000, trip_leg: 'outbound' }),
+            makeQuote({ airline: '星宇航空', price: 13000, trip_leg: 'outbound' })
+          ],
+          return: [makeQuote({ airline: '酷航', price: 9000, trip_leg: 'return' })]
+        }),
+        makeFanout({
+          airport: 'NRT',
+          outbound: [
+            makeQuote({ airline: '樂桃', price: 8000, trip_leg: 'outbound' }),
+            makeQuote({ airline: '捷星', price: 12000, trip_leg: 'outbound' })  // 捷星更便宜的那筆
+          ],
+          return: [makeQuote({ airline: '樂桃', price: 8000, trip_leg: 'return' })]
+        })
+      ]
+    });
+    const item = buildMultiSubsItem(makeSub({ max_price: 99999 }), route);
+    // 前 3 便宜：樂桃 8000、酷航 9000、捷星 12000（捷星跨機場取最低 12000，不是 14000）；星宇 13000 落榜
+    expect(item.topAirlines).toEqual([
+      { airline: '樂桃', price: 8000 },
+      { airline: '酷航', price: 9000 },
+      { airline: '捷星', price: 12000 }
+    ]);
+  });
+
+  it('沒匹配航班（空狀態）→ topAirlines 不存在（undefined）', () => {
+    const item = buildMultiSubsItem(makeSub(), undefined);
+    expect(item.topAirlines).toBeUndefined();
+  });
+});

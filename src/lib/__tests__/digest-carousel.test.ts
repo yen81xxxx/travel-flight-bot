@@ -149,4 +149,37 @@ describe('buildMultiSubsDailyFlex（carousel 結構）', () => {
     expect(json).toContain('監控中');
     expect(json).toContain('目標 NT$12,000・還差 NT$1,000');
   });
+
+  it('route bubble：比照警報卡列前 3 家航空 + 各自價（topAirlines）', () => {
+    const flex = buildMultiSubsDailyFlex({
+      items: [makeItem({
+        cheapestPrice: 8000,
+        lcc: { price: 8000, airport: 'NRT', outboundAirline: '樂桃', returnAirline: '樂桃', vsPrevPct: null },
+        topAirlines: [
+          { airline: '樂桃', price: 8000 },
+          { airline: '酷航', price: 9000 },
+          { airline: '捷星', price: 10000 }
+        ]
+      })],
+      sourceId: 'U1'
+    });
+    const json = JSON.stringify(flex);
+    // 三家航司 + 各自價都要出現在卡片裡（不再只顯示一個最低價）
+    expect(json).toContain('樂桃');
+    expect(json).toContain('NT$8,000');
+    expect(json).toContain('酷航');
+    expect(json).toContain('NT$9,000');
+    expect(json).toContain('捷星');
+    expect(json).toContain('NT$10,000');
+  });
+
+  it('route bubble：沒有 topAirlines → 不畫前 3 家那塊（降級不爆）', () => {
+    const flex = buildMultiSubsDailyFlex({
+      items: [makeItem({ cheapestPrice: 11000, lcc: { price: 11000, airport: 'NRT', outboundAirline: '酷航', returnAirline: '捷星', vsPrevPct: null } })],
+      sourceId: 'U1'
+    });
+    // topAirlines undefined → buildTopAirlinesBox 回 null，卡片照常 render（有價格、達標文案）
+    const json = JSON.stringify(flex);
+    expect(json).toContain('NT$11,000');
+  });
 });

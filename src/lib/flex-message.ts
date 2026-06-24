@@ -534,6 +534,9 @@ export interface MultiSubsItem {
   cheapestCategory: 'lcc' | 'full-service' | null;
   cheapestAirline: string | null;
   vsPrevPct: number | null;
+  // 前 3 便宜航空（跨機場 merge 後，去重取最低、由低到高）— 比照降價警報卡列出來，
+  // 取代「只顯示一個最低價」。沒料 / undefined → buildRouteBubble 不畫這塊。
+  topAirlines?: { airline: string; price: number }[];
   errorReason?: ItemErrorReason | null;  // 沒 cheapestPrice 時的原因（系統問題 vs 真的沒航班）
   // 廉航分類詳細（mix-and-match 組合）
   lcc?: {
@@ -832,6 +835,10 @@ function buildRouteBubble(item: MultiSubsItem, sourceId: string): Record<string,
       margin: 'sm',
       wrap: true
     });
+
+    // 比照降價警報卡：列前 3 便宜航空（廉/傳 tag + 各自價）。沒料就不畫。
+    const topBox = buildTopAirlinesBox(item.topAirlines);
+    if (topBox) bodyContents.push(topBox as Record<string, unknown>);
   } else if (item.errorReason === 'quota-exhausted') {
     bodyContents.push({
       type: 'text', text: '今日查詢額度暫滿，明日自動恢復', size: 'sm', color: '#ff9f0a', margin: 'md', wrap: true

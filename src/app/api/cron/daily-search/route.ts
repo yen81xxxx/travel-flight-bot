@@ -4,7 +4,6 @@ import { analyzeFlights } from '@/lib/flights';
 import { buildMultiSubsItem, isRouteError, type RouteOutcome } from '@/lib/cron-items-mapper';
 import { getLineClient } from '@/lib/line';
 import { getSupabase } from '@/lib/supabase';
-import { checkAllSubscriptions } from '@/lib/subscription-checker';
 import { cleanupOldRecords, getQuotaStats } from '@/lib/cleanup';
 import { sendOpsAlertIfNeeded } from '@/lib/ops-alert';
 import { buildDailyFlex, buildMultiSubsDailyFlex } from '@/lib/flex-message';
@@ -310,14 +309,11 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   });
 
   // ============================================
-  // 8) 跑訂閱降價檢查（這邊用每筆訂閱實際的日期，跟上面合併查詢的 cache 共用）
+  // 8) 降價警報已移除（user 決議：不分兩種通知）
+  //    —— 每日摘要（buildMultiSubsDailyFlex）已涵蓋達標路線 + 前 3 家航空，
+  //    不再另外推單張 buildAlertFlex 警報。subResult 留空殼維持回應 / ops 形狀。
   // ============================================
-  let subResult = { total: 0, notified: 0, skipped: 0, errors: 0, serpapiCalls: 0, allKeysExhausted: false };
-  try {
-    subResult = await checkAllSubscriptions();
-  } catch (err) {
-    console.error('[cron] subscription check failed:', err);
-  }
+  const subResult = { total: 0, notified: 0, skipped: 0, errors: 0, serpapiCalls: 0, allKeysExhausted: false };
 
   // ============================================
   // 8b) R4-B: 系統性異常 → 推文字告警給 admin（同一天只發一次）
@@ -348,7 +344,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     ok: pushedFail === 0,
     // 部署版本標記 — 改卡片版面時 bump 一下，方便從 API 回應驗證新 code 是否真的上線
-    cardVersion: 'v48-alert-verdict-inline-2026-06-23',
+    cardVersion: 'v49-digest-top3-no-alert-2026-06-24',
     daily: {
       sourcesTargeted: targets.length,
       sourcesOptedOut: optedOut.size,
