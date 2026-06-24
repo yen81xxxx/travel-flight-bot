@@ -1,7 +1,7 @@
 import { formatAirport, getCity, getCityAirports } from '@/config/airports';
 import { getAirlineCodesByCategory, getAirlineCategory, type AirlineCategory } from '@/config/airlines';
 // R4-A: 歷史卡 percentile 行用同一顆引擎（building → 不顯示 — 誠實 gate）
-import { computePriceIntel, type Verdict } from '@/app/liff/_lib/priceIntel';
+import { computePriceIntel } from '@/app/liff/_lib/priceIntel';
 import type { PricePoint } from '@/app/liff/_types';
 
 /* ============================================================
@@ -24,65 +24,6 @@ export const FLEX_DARK = {
   yellowTint: '#ffd60a2e',
   barDim: '#3a3a3e'
 } as const;
-
-/** verdict → 推播 badge 的字面 + 配色（與 LIFF VerdictBadge 同語意、hex 版） */
-export const VERDICT_FLEX_META: Record<Verdict, { label: string; fg: string; bg: string }> = {
-  'buy':      { label: '建議入手', fg: '#06351a', bg: '#30d158' },
-  'lean-buy': { label: '可考慮',   fg: '#06283a', bg: '#64d2ff' },
-  'watch':    { label: '觀察中',   fg: '#ffffff', bg: '#3a3a3e' },
-  'wait':     { label: '建議再等', fg: '#3a2102', bg: '#ff9f0a' }
-};
-
-/** 推播卡的航司顯示列 — sub-checker 從 analyzeFlights 結果導出後傳進來 */
-export interface CarrierDisplay {
-  tag: 'lcc' | 'trad' | null;
-  line: string;
-}
-
-/**
- * 從 analyzeFlights 的兩類結果導出 carrier 顯示（純函數）。
- * 規則同 quote-builder currentBest：取較便宜者、同價優先 LCC。
- */
-export function deriveCarrierDisplay(
-  lccCombo: { outboundAirline: string; returnAirline: string; price: number } | null,
-  traditionalRoundTrip: { airline: string; price: number } | null,
-  fallbackAirline: string | null
-): CarrierDisplay | null {
-  if (lccCombo && (!traditionalRoundTrip || lccCombo.price <= traditionalRoundTrip.price)) {
-    const line = lccCombo.outboundAirline === lccCombo.returnAirline
-      ? lccCombo.outboundAirline
-      : `${lccCombo.outboundAirline} → ${lccCombo.returnAirline}`;
-    return { tag: 'lcc', line };
-  }
-  if (traditionalRoundTrip) {
-    return { tag: 'trad', line: `${traditionalRoundTrip.airline}・同家來回` };
-  }
-  if (fallbackAirline) return { tag: null, line: fallbackAirline };
-  return null;
-}
-
-interface AlertFlexProps {
-  origin: string;
-  destination: string;
-  outboundDate: string;
-  returnDate: string | null;  // null = 單程訂閱
-  cheapestPrice: number;
-  threshold: number;
-  airline: string;
-  // 這條訂閱的 source_id（user 或 group）。給「我的訂閱」按鈕帶 ctx 用，
-  // 不傳就 fallback 到普通連結（個人訂閱情境）
-  sourceId?: string;
-  // === L1 新增（全部 optional — 拿不到就降級、推播照發） ===
-  /** priceIntel verdict（與 LIFF 同引擎算出）；null/undefined = 不顯示 badge */
-  verdict?: Verdict | null;
-  /** 航司顯示列（deriveCarrierDisplay 的輸出）；null = 退回 airline 字串 */
-  carrier?: CarrierDisplay | null;
-  /**
-   * 前 3 便宜航空（analyzeFlights.topAirlines）。有給就顯示「前 3 家」清單取代單一 carrier 列。
-   * 空 / 不給 → 退回 carrier / airline 單行（舊行為）。
-   */
-  topAirlines?: { airline: string; price: number }[];
-}
 
 /**
  * 「前 3 便宜航空」清單列（取代只顯示一家的 carrier 列）。純函數，方便單測。
@@ -169,209 +110,6 @@ interface DailyFlexProps {
 }
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://travel-flight-bot.vercel.app';
-
-/**
- * 價格達標提醒 Flex Message — L1 深色版（LINE_SURFACE_SPEC §A2）
- *
- * 設計語言對齊 LIFF：深色卡 #1b1b1f、零 emoji、verdict badge（同
- * priceIntel 引擎）、tabular 價格、mini 歷史 bars、主 CTA 留在 Travl
- *（看走勢與航班），Skyscanner 是次要 ghost（產品決議：convenience link）。
- *
- * 所有 L1 新欄位 optional — intel 撈不到就少 badge/delta/bars，推播照發。
- */
-export function buildAlertFlex(props: AlertFlexProps) {
-  const drop = props.threshold - props.cheapestPrice;
-  const dropPct = Math.round((drop / props.threshold) * 100);
-  // 邊界情況：降幅 < 1%（例如只差 NT$ 8）寫「低 NT$8」看起來像 bug → 改「達到目標價」語氣。
-  // 併進價格列顯示（user 要求）：目前最低 NT$X（比目標低 NT$Y）。
-  const isAtThreshold = dropPct < 1;
-  const targetInline = isAtThreshold
-    ? '達到目標價'
-    : `比目標低 NT$${drop.toLocaleString()}`;
-
-  const verdictMeta = props.verdict ? VERDICT_FLEX_META[props.verdict] : null;
-
-  // carrier 列：tag pill（廉航青 / 傳統黃）+ 航司字串
-  const carrier = props.carrier ?? (props.airline ? { tag: null, line: props.airline } : null);
-  const carrierRow = carrier
-    ? {
-        type: 'box',
-        layout: 'baseline',
-        margin: 'md',
-        spacing: 'sm',
-        contents: [
-          ...(carrier.tag
-            ? [{
-                type: 'text',
-                text: carrier.tag === 'lcc' ? '廉航' : '傳統',
-                size: 'xxs',
-                weight: 'bold',
-                color: carrier.tag === 'lcc' ? FLEX_DARK.cyan : FLEX_DARK.yellow,
-                flex: 0
-              }]
-            : []),
-          {
-            type: 'text',
-            text: carrier.line,
-            size: 'xs',
-            color: FLEX_DARK.soft,
-            wrap: true
-          }
-        ]
-      }
-    : null;
-
-  // 前 3 便宜航空清單；沒有就退回單一 carrier 列（舊行為）
-  const topBox = buildTopAirlinesBox(props.topAirlines) ?? carrierRow;
-
-  // verdict 徽章 — user 要求跟路線標題同一行（取代上面整條 header bar）
-  const verdictBadge = verdictMeta
-    ? {
-        type: 'box',
-        layout: 'vertical',
-        flex: 0,
-        backgroundColor: verdictMeta.bg,
-        cornerRadius: '999px',
-        paddingAll: '4px',
-        paddingStart: '10px',
-        paddingEnd: '10px',
-        contents: [
-          { type: 'text', text: verdictMeta.label, size: 'xs', weight: 'bold', color: verdictMeta.fg }
-        ]
-      }
-    : null;
-
-  const verdictSuffix = verdictMeta ? `（${verdictMeta.label}）` : '';
-  return {
-    type: 'flex',
-    altText: `價格達標：${props.origin} → ${props.destination} NT$${props.cheapestPrice.toLocaleString()}${verdictSuffix}`,
-    contents: {
-      type: 'bubble',
-      size: 'kilo',
-      // header bar 整條拿掉 — verdict 徽章改放路線標題那一行（user 要求）
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        backgroundColor: FLEX_DARK.cardBg,
-        paddingAll: '16px',
-        contents: [
-          {
-            // 路線標題 + verdict 徽章同一行（徽章靠右）
-            type: 'box',
-            layout: 'horizontal',
-            alignItems: 'center',
-            contents: [
-              {
-                type: 'text',
-                text: `${getCity(props.origin)} → ${getCity(props.destination)}`,
-                weight: 'bold',
-                size: 'lg',
-                color: FLEX_DARK.text,
-                wrap: true,
-                flex: 1
-              },
-              ...(verdictBadge ? [verdictBadge] : [])
-            ]
-          },
-          {
-            type: 'text',
-            text: `${props.origin} → ${props.destination}・${props.returnDate ? `${props.outboundDate} ~ ${props.returnDate}` : `單程 ${props.outboundDate}`}`,
-            size: 'xs',
-            color: FLEX_DARK.faint,
-            margin: 'xs'
-          },
-          {
-            type: 'box',
-            layout: 'horizontal',
-            margin: 'lg',
-            contents: [
-              {
-                type: 'box',
-                layout: 'vertical',
-                flex: 1,
-                contents: [
-                  {
-                    type: 'text',
-                    text: '目前最低',
-                    size: 'xxs',
-                    color: FLEX_DARK.faint
-                  },
-                  {
-                    type: 'box',
-                    layout: 'baseline',
-                    contents: [
-                      {
-                        type: 'text',
-                        text: 'NT$',
-                        size: 'sm',
-                        color: FLEX_DARK.soft,
-                        flex: 0
-                      },
-                      {
-                        type: 'text',
-                        text: props.cheapestPrice.toLocaleString(),
-                        weight: 'bold',
-                        size: '3xl',
-                        color: FLEX_DARK.text,
-                        margin: 'sm',
-                        flex: 0
-                      },
-                      // 比目標低多少 — 併進價格列（user 要求，取代底下獨立的「跌破目標價」box）
-                      {
-                        type: 'text',
-                        text: `（${targetInline}）`,
-                        size: 'sm',
-                        color: FLEX_DARK.green,
-                        margin: 'sm',
-                        flex: 0
-                      }
-                    ]
-                  }
-                ]
-              }
-            ]
-          },
-          ...(topBox ? [topBox] : [])
-        ]
-      },
-      footer: {
-        type: 'box',
-        layout: 'vertical',
-        spacing: 'sm',
-        backgroundColor: FLEX_DARK.cardBg,
-        paddingAll: '16px',
-        paddingTop: '0px',
-        contents: [
-          {
-            type: 'button',
-            style: 'primary',
-            color: FLEX_DARK.blue,
-            height: 'sm',
-            action: {
-              type: 'uri',
-              label: '看走勢與航班',
-              uri: subscriptionsUrlFor(props.sourceId)
-            }
-          },
-          {
-            // Skyscanner = 次要 ghost（產品決議：convenience、永遠排在 in-app CTA 下面）
-            type: 'button',
-            style: 'link',
-            height: 'sm',
-            action: {
-              type: 'uri',
-              label: '用 Skyscanner 訂',
-              uri: flightSearchUrl(props)
-            }
-          }
-        ]
-      },
-      styles: {
-        body: { separator: false }
-      }
-    }
-  };
-}
 
 /**
  * 每日排程 broadcast Flex Message
@@ -1139,14 +877,6 @@ function subscriptionsUrlFor(sourceId?: string): string {
 }
 
 /**
- * Skyscanner 的 deep link 比 Google Flights 可靠 —— 直接帶機場碼 + 日期到 URL path，
- * 不需要 NLP parse 就能 pre-fill 搜尋條件。日期格式是 YYMMDD。
- */
-function flightSearchUrl(p: AlertFlexProps): string {
-  return skyscannerUrl(p.origin, p.destination, p.outboundDate, p.returnDate);
-}
-
-/**
  * 廉航列：去 + 回可不同家。同家時顯示「虎航往返」，不同家時顯示「虎航去・捷星回」。
  * 整列可點，帶 Skyscanner 廉航直飛篩選參數。
  */
@@ -1290,26 +1020,6 @@ function formatTaipeiHmFromDate(d: Date): string {
     minute: '2-digit',
     hour12: false
   }).format(d);
-}
-
-/**
- * Skyscanner 官方 referrals deep-link 格式。
- * 文件：https://developers.skyscanner.net/docs/referrals/flights-parameters
- * 用 day-view 進入 Skyscanner，filter 參數會正確套用（之前用消費者 URL `/transport/flights/...` 不吃 filter）。
- */
-function skyscannerUrl(origin: string, destination: string, outboundDate: string, returnDate: string | null): string {
-  // 來回 → 帶 inboundDate；單程 → 省略 inboundDate（Skyscanner 自動視為單程）
-  const params = new URLSearchParams({
-    origin,
-    destination,
-    outboundDate,
-    adultsv2: '1',
-    locale: 'zh-TW',
-    market: 'TW',
-    currency: 'TWD'
-  });
-  if (returnDate) params.set('inboundDate', returnDate);
-  return `https://skyscanner.net/g/referrals/v1/flights/day-view/?${params.toString()}`;
 }
 
 /**
