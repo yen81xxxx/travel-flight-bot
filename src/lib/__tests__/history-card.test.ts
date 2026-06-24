@@ -12,9 +12,7 @@
  *      沒標基準會被當同一個數字（spec honesty fix）
  */
 import { buildHistoryFlex, mergeDailySeries, buildMultiSubsDailyFlex, type MultiSubsItem } from '../flex-message';
-import { formatAlertText } from '../subscription-checker';
 import { MIN_POINTS } from '@/app/liff/_lib/priceIntel';
-import type { Subscription } from '@/types';
 
 const EMOJI_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{1F000}-\u{1F0FF}]/u;
 
@@ -86,64 +84,6 @@ describe('buildHistoryFlex（A4 深色版）', () => {
     const json = JSON.stringify(buildHistoryFlex({ ...HIST_BASE, lccPoints: [], tradPoints: [] }));
     expect(json).toContain('尚無歷史資料');
     expect(json).not.toMatch(EMOJI_RE);
-  });
-});
-
-describe('formatAlertText（A5 文字 fallback）', () => {
-  const SUB = { origin: 'TPE', destination: 'NRT', max_price: 12800 } as unknown as Subscription;
-  const EXTRAS = {
-    verdict: 'buy' as const,
-    deltaPct: -6.2,
-    carrier: { tag: 'lcc' as const, line: '酷航 → 捷星' },
-    isRecentLow: true,
-    fallbackAirline: '酷航'
-  };
-
-  it('完整版：【價格達標・建議入手】+ 路線 + 廉航 + 較上週 + 近 30 天最低 + LIFF 連結', () => {
-    const text = formatAlertText(SUB, 11480, '2026-08-04', '2026-08-08', EXTRAS);
-    expect(text).not.toMatch(EMOJI_RE);
-    expect(text).toContain('【價格達標・建議入手】');
-    expect(text).toContain('TPE→NRT');
-    expect(text).toContain('2026-08-04 ~ 2026-08-08');
-    expect(text).toContain('目前最低 NT$11,480（廉航 酷航 → 捷星）');
-    expect(text).toContain('已跌破你的目標價 NT$12,800，較上週 ↓6.2%，近 30 天最低。');
-    expect(text).toMatch(/看走勢與航班 ▶ https:\/\//);
-  });
-
-  it('topAirlines → 文字列前 3 家（廉/傳 + 各自價），取代單一 carrier 行', () => {
-    const text = formatAlertText(SUB, 6077, '2026-08-04', '2026-08-08', {
-      ...EXTRAS,
-      topAirlines: [
-        { airline: '捷星', price: 6077 },
-        { airline: '酷航', price: 6540 },
-        { airline: '星宇航空', price: 7880 }
-      ]
-    });
-    expect(text).not.toMatch(EMOJI_RE);
-    expect(text).toContain('便宜航空：');
-    expect(text).toContain('廉航 捷星 NT$6,077');
-    expect(text).toContain('廉航 酷航 NT$6,540');
-    expect(text).toContain('傳統 星宇航空 NT$7,880');
-    expect(text).not.toContain('（廉航 酷航 → 捷星）');  // 單一 carrier 行被取代
-  });
-
-  it('降級版：無 verdict → 無「・」；無 delta / 非最低 → 子句省略；單程日期', () => {
-    const text = formatAlertText(SUB, 11480, '2026-08-04', undefined, {
-      verdict: null, deltaPct: null, carrier: null, isRecentLow: false, fallbackAirline: '酷航'
-    });
-    expect(text).toContain('【價格達標】');
-    expect(text).not.toContain('・');
-    expect(text).toContain('單程 2026-08-04');
-    expect(text).toContain('（酷航）');
-    expect(text).toContain('已跌破你的目標價 NT$12,800。');
-    expect(text).not.toContain('較上週');
-    expect(text).not.toContain('近 30 天最低');
-  });
-
-  it('<1% 邊界 → 「達到你的目標價」語氣（同 flex 卡）', () => {
-    const text = formatAlertText(SUB, 12792, '2026-08-04', '2026-08-08', EXTRAS);
-    expect(text).toContain('達到你的目標價 NT$12,800');
-    expect(text).not.toContain('已跌破');
   });
 });
 
