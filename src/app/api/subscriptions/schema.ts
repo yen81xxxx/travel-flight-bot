@@ -7,9 +7,44 @@
  *   - 純資料層輯獨立 → 可單獨單測 → 改 schema 時不會炸 endpoint
  */
 import { z } from 'zod';
+import { isTaiwanAirport, isJapanAirport } from '@/config/airports';
 
 // 'HH:MM' 24h 格式
 export const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * 開口式來回驗證（POST / PATCH 共用，純函數方便單測）。規則：
+ *   - returnOrigin / returnDestination 必須「同時給」或「都不給」
+ *   - 給了且帶 origin（POST 建立）→ 必須有 returnDate；回段方向跟去段相反
+ *     （去 TW→JP 則回 JP→TW，反之亦然 → 整體仍是「去再回」的往返）
+ *   - PATCH 局部更新沒帶 origin → 只檢查 both-or-neither（route 已存在 DB，方向不重驗）
+ */
+export function validateOpenJaw(
+  d: { origin?: string | null; destination?: string | null; returnDate?: string | null; returnOrigin: string | null; returnDestination: string | null },
+  ctx: z.RefinementCtx
+): void {
+  const hasRo = d.returnOrigin != null;
+  const hasRd = d.returnDestination != null;
+  if (!hasRo && !hasRd) return;                 // 非開口式，跳過
+  if (hasRo !== hasRd) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '開口式回程的出發與抵達要一起填' });
+    return;
+  }
+  if (!d.origin) return;                          // PATCH 局部更新（沒帶 origin）→ 只驗 both-or-neither
+  if (!d.returnDate) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '開口式來回需要回程日期' });
+    return;
+  }
+  const outToJp = isTaiwanAirport(d.origin);      // 去段是 TW→JP？
+  const ro = d.returnOrigin as string;
+  const rd = d.returnDestination as string;
+  const legBackOk = outToJp
+    ? (isJapanAirport(ro) && isTaiwanAirport(rd))   // 去 TW→JP → 回 JP→TW
+    : (isTaiwanAirport(ro) && isJapanAirport(rd));  // 去 JP→TW → 回 TW→JP
+  if (!legBackOk) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '回程方向要跟去程相反（去日本就從日本回台灣）' });
+  }
+}
 
 /**
  * PATCH /api/subscriptions body schema。
@@ -39,7 +74,16 @@ export const PatchBody = z.object({
   airlineFilter: z.array(z.string()).nullable().optional(),
   // 釘選航班（0014 複選，方案 B）：班號陣列 + 顯示快照陣列；[] 或 null 表取消釘選（追整條線）
   pinnedFlightNumbers: z.array(z.string()).nullable().optional(),
-  pinnedFlightLabels: z.array(z.string()).nullable().optional()
+  pinnedFlightLabels: z.array(z.string()).nullable().optional(),
+  // 開口式來回（0015）：回段不同地點的出發 / 抵達；null 表清掉（改回對稱來回）。
+  // 兩者要一起給（both-or-neither）— superRefine 檢查。IATA 合法性靠 LIFF 端把關。
+  returnOrigin: z.string().nullable().optional(),
+  returnDestination: z.string().nullable().optional()
+}).superRefine((body, ctx) => {
+  validateOpenJaw(
+    { returnDate: body.returnDate ?? null, returnOrigin: body.returnOrigin ?? null, returnDestination: body.returnDestination ?? null },
+    ctx
+  );
 });
 
 export type PatchBodyInput = z.infer<typeof PatchBody>;
@@ -95,5 +139,8 @@ export function buildPatchUpdatePayload(body: PatchBodyInput): Record<string, un
   if (body.pinnedFlightLabels !== undefined) {
     update.pinned_flight_labels = body.pinnedFlightLabels && body.pinnedFlightLabels.length > 0 ? body.pinnedFlightLabels : null;
   }
+  // 開口式來回（0015）：null → 寫 null（清掉、改回對稱來回）；有值 → 寫；undefined → 不動
+  if (body.returnOrigin !== undefined) update.return_origin = body.returnOrigin;
+  if (body.returnDestination !== undefined) update.return_destination = body.returnDestination;
   return update;
 }

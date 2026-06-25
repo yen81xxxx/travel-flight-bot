@@ -47,6 +47,12 @@ export interface Subscription {
   destination: string;
   outbound_date: string | null;
   return_date: string | null;
+  // 開口式來回（migration 0015）：回程走不同地點時，回段的出發 / 抵達。
+  //   去段：origin → destination          @ outbound_date
+  //   回段：return_origin → return_destination @ return_date
+  // 兩欄都 null = 對稱來回 / 單程（舊行為）；兩欄都有值 = 開口式（回段獨立單程查）。
+  return_origin?: string | null;
+  return_destination?: string | null;
   max_price: number;                       // 主目標價（廉航 + 預設套兩類）
   max_price_traditional?: number | null;   // 傳統航空另設（null = 跟隨 max_price）
   // 起飛時段窗口過濾 — 'HH:MM' 字串，NULL 表該方向不限

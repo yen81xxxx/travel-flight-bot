@@ -76,6 +76,9 @@ export interface WatchWithQuote {
   destination: string;
   outbound_date: string | null;
   return_date: string | null;
+  /** 開口式來回（0015）：回段不同地點時的出發 / 抵達；兩欄 null = 對稱來回 / 單程 */
+  return_origin?: string | null;
+  return_destination?: string | null;
   max_price: number;
   max_price_traditional: number | null;
   active: boolean;

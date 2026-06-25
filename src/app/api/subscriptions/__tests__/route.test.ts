@@ -13,7 +13,8 @@
  *   - 空 body（只給 id+sourceId）→ payload 為空（API 會回 400 no fields）
  */
 
-import { PatchBody, buildPatchUpdatePayload, mutationResult } from '../schema';
+import { z } from 'zod';
+import { PatchBody, buildPatchUpdatePayload, mutationResult, validateOpenJaw } from '../schema';
 
 describe('PatchBody schema — 必填欄位', () => {
   it('id + sourceId 必填', () => {
@@ -169,15 +170,17 @@ describe('buildPatchUpdatePayload — undefined vs null 語義', () => {
 });
 
 describe('防回歸：欄位數量檢查', () => {
-  it('PatchBody 欄位數量 = 15（id + sourceId + 13 可選）', () => {
+  it('PatchBody 欄位數量 = 17（id + sourceId + 15 可選）', () => {
     // 新增欄位時請順便加測試（避免靜默落地未測的欄位）。
     // 目前：id, sourceId, paused, label, maxPrice, maxPriceTraditional,
     //       outboundMin/MaxDepartureTime, returnMin/MaxDepartureTime,
     //       outboundDate, returnDate（=null → 單程）, airlineFilter（0012）,
-    //       pinnedFlightNumbers/pinnedFlightLabels（0014 釘選航班複選）
+    //       pinnedFlightNumbers/pinnedFlightLabels（0014 釘選航班複選）,
+    //       returnOrigin/returnDestination（0015 開口式來回）
     const allOptional = PatchBody.safeParse({ id: 1, sourceId: 'U' });
     expect(allOptional.success).toBe(true);
-    const shape = (PatchBody as unknown as { _def: { shape: () => Record<string, unknown> } })._def.shape();
+    // PatchBody 現在外包 superRefine（ZodEffects）→ shape 在 _def.schema 裡
+    const shape = (PatchBody as unknown as { _def: { schema: { _def: { shape: () => Record<string, unknown> } } } })._def.schema._def.shape();
     expect(Object.keys(shape).sort()).toEqual([
       'id', 'sourceId',
       'paused', 'label',
@@ -185,7 +188,8 @@ describe('防回歸：欄位數量檢查', () => {
       'outboundMinDepartureTime', 'outboundMaxDepartureTime',
       'returnMinDepartureTime', 'returnMaxDepartureTime',
       'outboundDate', 'returnDate', 'airlineFilter',
-      'pinnedFlightNumbers', 'pinnedFlightLabels'
+      'pinnedFlightNumbers', 'pinnedFlightLabels',
+      'returnOrigin', 'returnDestination'
     ].sort());
   });
 
@@ -244,5 +248,60 @@ describe('mutationResult — PATCH/DELETE 影響筆數判斷（回報 bug 的修
   it('真的 DB error → 500 + 帶原訊息', () => {
     expect(mutationResult(null, { message: 'connection lost' }))
       .toEqual({ ok: false, status: 500, error: 'connection lost' });
+  });
+});
+
+describe('開口式來回驗證（validateOpenJaw，0015）', () => {
+  // 模擬 POST 路徑：帶 origin/destination → 走完整方向檢查
+  const PostLike = z.object({
+    origin: z.string(), destination: z.string(),
+    returnDate: z.string().nullable().optional(),
+    returnOrigin: z.string().nullable().optional(),
+    returnDestination: z.string().nullable().optional()
+  }).superRefine((d, ctx) => validateOpenJaw(
+    { origin: d.origin, destination: d.destination, returnDate: d.returnDate ?? null,
+      returnOrigin: d.returnOrigin ?? null, returnDestination: d.returnDestination ?? null }, ctx));
+
+  it('非開口式（兩欄都不給）→ 合法', () => {
+    expect(PostLike.safeParse({ origin: 'TPE', destination: 'NRT', returnDate: '2027-02-05' }).success).toBe(true);
+  });
+
+  it('只給回程出發、沒給回程抵達 → 擋（both-or-neither）', () => {
+    expect(PostLike.safeParse({ origin: 'TPE', destination: 'NRT', returnDate: '2027-02-05', returnOrigin: 'HND' }).success).toBe(false);
+  });
+
+  it('開口式但沒回程日期 → 擋', () => {
+    const r = PostLike.safeParse({ origin: 'TPE', destination: 'NRT', returnOrigin: 'HND', returnDestination: 'TSA' });
+    expect(r.success).toBe(false);
+  });
+
+  it('合法開口式：去 TPE→NRT、回 HND→TSA（方向相反）→ 合法', () => {
+    const r = PostLike.safeParse({ origin: 'TPE', destination: 'NRT', returnDate: '2027-02-05', returnOrigin: 'HND', returnDestination: 'TSA' });
+    expect(r.success).toBe(true);
+  });
+
+  it('回程方向錯（去 TW→JP，回程卻 JP→JP）→ 擋', () => {
+    const r = PostLike.safeParse({ origin: 'TPE', destination: 'NRT', returnDate: '2027-02-05', returnOrigin: 'NRT', returnDestination: 'HND' });
+    expect(r.success).toBe(false);
+  });
+
+  it('PATCH 路徑（無 origin）：兩欄同時給 → 合法（不重驗方向）', () => {
+    expect(PatchBody.safeParse({ id: 1, sourceId: 'U', returnOrigin: 'HND', returnDestination: 'TSA' }).success).toBe(true);
+  });
+
+  it('PATCH 路徑：只給一欄 → 擋（both-or-neither）', () => {
+    expect(PatchBody.safeParse({ id: 1, sourceId: 'U', returnOrigin: 'HND' }).success).toBe(false);
+  });
+
+  it('PATCH 路徑：兩欄給 null（清掉、改回對稱來回）→ 合法', () => {
+    expect(PatchBody.safeParse({ id: 1, sourceId: 'U', returnOrigin: null, returnDestination: null }).success).toBe(true);
+  });
+
+  it('buildPatchUpdatePayload：開口式欄位 undefined 不進 payload；給值/ null 才寫', () => {
+    expect(buildPatchUpdatePayload({ id: 1, sourceId: 'U' })).not.toHaveProperty('return_origin');
+    const set = buildPatchUpdatePayload({ id: 1, sourceId: 'U', returnOrigin: 'HND', returnDestination: 'TSA' });
+    expect(set).toMatchObject({ return_origin: 'HND', return_destination: 'TSA' });
+    const cleared = buildPatchUpdatePayload({ id: 1, sourceId: 'U', returnOrigin: null, returnDestination: null });
+    expect(cleared).toMatchObject({ return_origin: null, return_destination: null });
   });
 });
