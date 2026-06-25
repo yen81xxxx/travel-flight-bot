@@ -265,13 +265,23 @@ describe('AddWatchSheet — 開口式來回（0015）', () => {
     });
   });
 
-  it('開口式開著時，預覽按鈕不出現（分兩段、不支援單一預覽）', () => {
-    const { getByLabelText, getByTestId, queryByRole } = render(
+  it('開口式：預覽鈕在 → 兩段各自單程搜尋、顯示合併價', async () => {
+    responses.search = { ok: true, analysis: { cheapestRoundTripPrice: 5000, cheapestAirline: '樂桃' }, fromCache: true };
+    const { getByLabelText, getByRole, getByTestId, container } = render(
       <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
     );
     fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
     fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
-    fireEvent.click(getByTestId('openjaw-toggle'));
-    expect(queryByRole('button', { name: /查目前最低價/ })).toBeNull();
+    fireEvent.click(getByTestId('openjaw-toggle'));   // 預設 returnOrigin=NRT, returnDestination=TPE
+    const previewBtn = getByRole('button', { name: /查目前最低價/ });
+    expect(previewBtn).not.toBeDisabled();
+    fireEvent.click(previewBtn);
+    // 兩段各自打 /api/search（單程，不帶 returnDate）+ 合併價 = 5000 + 5000 = 10000
+    await waitFor(() => {
+      const searchCalls = (global.fetch as unknown as jest.Mock).mock.calls.filter(c => c[0] === '/api/search');
+      expect(searchCalls.length).toBe(2);
+      for (const c of searchCalls) expect(JSON.parse(c[1].body).returnDate).toBeUndefined();
+      expect(container.textContent).toContain('10,000');
+    });
   });
 });
