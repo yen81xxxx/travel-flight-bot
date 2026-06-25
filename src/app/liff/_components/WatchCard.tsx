@@ -76,6 +76,8 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
   // === 路線 + meta ===
   const originCity = getCity(w.origin);
   const destCity = getCity(w.destination);
+  // 開口式來回（0015）：回程不同地點 → codes 列多顯示回段
+  const isOpenJaw = !!(w.return_origin && w.return_destination);
   const days = daysUntil(w.outbound_date);
   const dateRange = w.outbound_date
     ? (w.return_date ? `${mdFmt(w.outbound_date)}–${mdFmt(w.return_date)}` : `${mdFmt(w.outbound_date)} 單程`)
@@ -119,9 +121,13 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
             <Icon name="airplane" size={15} style={{ transform: 'rotate(90deg)', color: 'var(--ios-blue)', margin: '0 4px' }} />
             {destCity}
           </div>
-          <span className="wc-codes tnum">{w.origin}→{w.destination}</span>
+          <span className="wc-codes tnum">
+            {w.origin}→{w.destination}
+            {isOpenJaw && <span className="wc-oj"> · 回 {w.return_origin}→{w.return_destination}</span>}
+          </span>
         </div>
         <div className="wc-tags">
+          {isOpenJaw && <span className="oj-pill" data-testid="oj-pill">開口式</span>}
           {w.paused && (
             <span className="paused-pill">
               <Icon name="pause" size={11} stroke={2} /> 已暫停
@@ -298,7 +304,18 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
           color: var(--ios-label-3);
           letter-spacing: 0.5px;
         }
+        .wc-oj { color: var(--ios-blue); }
         .wc-tags { display: flex; gap: 6px; flex-shrink: 0; }
+        .oj-pill {
+          display: inline-flex;
+          align-items: center;
+          padding: 3px 8px;
+          border-radius: var(--r-pill);
+          font-size: 10.5px;
+          font-weight: 600;
+          background: rgba(10, 132, 255, 0.16);
+          color: var(--ios-blue);
+        }
         .paused-pill, .src-pill {
           display: inline-flex;
           align-items: center;

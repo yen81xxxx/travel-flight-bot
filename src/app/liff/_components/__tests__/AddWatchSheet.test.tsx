@@ -236,3 +236,42 @@ describe('AddWatchSheet', () => {
     });
   });
 });
+
+describe('AddWatchSheet — 開口式來回（0015）', () => {
+  it('單程時不顯示「回程不同地點」開關', () => {
+    const { getByText, queryByTestId } = render(
+      <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
+    );
+    fireEvent.click(getByText('單程'));
+    expect(queryByTestId('openjaw-toggle')).toBeNull();
+  });
+
+  it('開「回程不同地點」→ 送 returnOrigin/returnDestination（預設帶對稱值）', async () => {
+    const { getByLabelText, getByText, getByTestId } = render(
+      <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
+    );
+    fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
+    fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
+    fireEvent.click(getByTestId('openjaw-toggle'));   // 預設 returnOrigin=NRT(去程抵達), returnDestination=TPE(去程出發)
+    const amount = document.querySelector(String.raw`[data-testid="target-amount"]`) as HTMLInputElement;
+    fireEvent.change(amount, { target: { value: '13000' } });
+    fireEvent.click(getByText('開始追蹤'));
+    await waitFor(() => {
+      const postCall = (global.fetch as unknown as jest.Mock).mock.calls.find(c => c[0] === '/api/subscriptions');
+      const body = JSON.parse(postCall![1].body);
+      expect(body.returnOrigin).toBe('NRT');
+      expect(body.returnDestination).toBe('TPE');
+      expect(body.returnDate).toBe('2026-09-05');
+    });
+  });
+
+  it('開口式開著時，預覽按鈕不出現（分兩段、不支援單一預覽）', () => {
+    const { getByLabelText, getByTestId, queryByRole } = render(
+      <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
+    );
+    fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
+    fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
+    fireEvent.click(getByTestId('openjaw-toggle'));
+    expect(queryByRole('button', { name: /查目前最低價/ })).toBeNull();
+  });
+});

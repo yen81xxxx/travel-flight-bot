@@ -278,3 +278,17 @@ describe('WatchCard — PR #19 報價更新中 degraded panel', () => {
     expect(container.textContent).toContain('目前最低');
   });
 });
+
+describe('WatchCard — 開口式來回（0015）', () => {
+  it('有 return_origin/destination → 顯示「開口式」pill + 回段路線', () => {
+    const w = { ...baseWatch, destination: 'NRT', return_origin: 'HND', return_destination: 'TSA' };
+    const { getByTestId, container } = render(<WatchCard watch={w} onOpen={() => {}} />);
+    expect(getByTestId('oj-pill').textContent).toContain('開口式');
+    expect(container.textContent).toContain('回 HND→TSA');
+  });
+
+  it('一般來回（無回段地點）→ 不顯示開口式 pill', () => {
+    const { queryByTestId } = render(<WatchCard watch={baseWatch} onOpen={() => {}} />);
+    expect(queryByTestId('oj-pill')).toBeNull();
+  });
+});
