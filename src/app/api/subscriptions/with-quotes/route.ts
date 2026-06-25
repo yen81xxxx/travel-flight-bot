@@ -116,6 +116,8 @@ function subToApi(sub: Subscription): Omit<WatchWithQuote, 'quote'> {
     destination: sub.destination,
     outbound_date: sub.outbound_date,
     return_date: sub.return_date,
+    return_origin: sub.return_origin ?? null,
+    return_destination: sub.return_destination ?? null,
     max_price: Number(sub.max_price),
     max_price_traditional: sub.max_price_traditional != null ? Number(sub.max_price_traditional) : null,
     active: sub.active,

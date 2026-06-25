@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getSupabase } from '@/lib/supabase';
 import { ALL_AIRPORTS, isTaiwanAirport, isJapanAirport, formatAirport } from '@/config/airports';
 import { pushText } from '@/lib/line';
+import { validateOpenJaw } from './schema';
 import type { SourceType } from '@/types';
 
 export const runtime = 'nodejs';
@@ -18,6 +19,10 @@ const PostBody = z.object({
   maxPriceTraditional: z.number().positive().nullable().optional(),
   outboundDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  // 開口式來回（0015）：回段不同地點的出發 / 抵達。兩者同時給才算開口式；
+  // 都不給 = 對稱來回 / 單程（舊行為）。
+  returnOrigin: z.enum(VALID_IATA as [string, ...string[]]).optional(),
+  returnDestination: z.enum(VALID_IATA as [string, ...string[]]).optional(),
   label: z.string().optional(),
   // 航司過濾（migration 0012）：displayName 陣列；空/不給 = 不過濾（追全部白名單）
   airlineFilter: z.array(z.string()).optional(),
@@ -38,7 +43,13 @@ const PostBody = z.object({
     return (tw1 && jp2) || (jp1 && tw2);
   },
   { message: '出發地與目的地必須一個在台灣、一個在日本' }
-);
+).superRefine((data, ctx) => {
+  validateOpenJaw(
+    { origin: data.origin, destination: data.destination, returnDate: data.returnDate ?? null,
+      returnOrigin: data.returnOrigin ?? null, returnDestination: data.returnDestination ?? null },
+    ctx
+  );
+});
 
 /** 列出某個 sourceId 的訂閱 */
 export async function GET(req: NextRequest): Promise<NextResponse> {
@@ -110,6 +121,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // 釘選航班（複選）：空陣列正規化成 null（沒釘選 = 追整條線）
   const pinnedNumbersValue = body.pinnedFlightNumbers && body.pinnedFlightNumbers.length > 0 ? body.pinnedFlightNumbers : null;
   const pinnedLabelsValue = body.pinnedFlightLabels && body.pinnedFlightLabels.length > 0 ? body.pinnedFlightLabels : null;
+  // 開口式來回（0015）：兩欄同時有值才算（驗證已保證 both-or-neither）；否則 null = 對稱來回
+  const returnOriginValue = body.returnOrigin ?? null;
+  const returnDestinationValue = body.returnDestination ?? null;
 
   if (existing) {
     const { error } = await supabase
@@ -119,6 +133,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         max_price_traditional: body.maxPriceTraditional ?? null,
         outbound_date: body.outboundDate ?? null,
         return_date: body.returnDate ?? null,
+        return_origin: returnOriginValue,
+        return_destination: returnDestinationValue,
         label: body.label ?? null,
         airline_filter: airlineFilterValue,
         pinned_flight_numbers: pinnedNumbersValue,
@@ -157,6 +173,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       destination: body.destination,
       outbound_date: body.outboundDate ?? null,
       return_date: body.returnDate ?? null,
+      return_origin: returnOriginValue,
+      return_destination: returnDestinationValue,
       max_price: body.maxPrice,
       max_price_traditional: body.maxPriceTraditional ?? null,
       label: body.label ?? null,
