@@ -107,6 +107,10 @@ export function AddWatchSheet({
   const [outboundDate, setOutboundDate] = useState<string>('');
   const [returnDate, setReturnDate] = useState<string>('');
   const [maxPriceStr, setMaxPriceStr] = useState<string>('');
+  // 開口式來回（0015）：回程不同地點。openJaw=true 時回段走 returnOrigin→returnDestination。
+  const [openJaw, setOpenJaw] = useState(false);
+  const [returnOrigin, setReturnOrigin] = useState<string>('');
+  const [returnDestination, setReturnDestination] = useState<string>('');
 
   // === 航司過濾 ===
   // availableAirlines = 這條線實際有飛的白名單航司（route-airlines endpoint）
@@ -136,6 +140,7 @@ export function AddWatchSheet({
       setPreview(null);
       setFlightRows([]);
       setPinnedFlights(new Map());
+      setOpenJaw(false);
       setDone(false);
       setNotifyTarget(defaultNotifyTarget);
       if (prefillRoute) {
@@ -184,7 +189,8 @@ export function AddWatchSheet({
   const jpRegions = groupJpByRegion();
 
   // === preview 邏輯 ===
-  const canPreview = origin && destination && outboundDate && (isOneWay || returnDate);
+  // 開口式分兩段、不支援單一路線預覽 → 關掉預覽
+  const canPreview = origin && destination && outboundDate && (isOneWay || returnDate) && !openJaw;
 
   const handlePreview = async () => {
     if (!canPreview) return;
@@ -236,9 +242,11 @@ export function AddWatchSheet({
   // === 開始追蹤 ===
   // 有航司清單時至少要勾 1 家（不能 0 家 = 沒東西可追）
   const hasAirlineSelection = availableAirlines.length === 0 || selectedAirlines.size > 0;
+  // 開口式：回程兩個地點都要選
+  const openJawReady = !openJaw || (!!returnOrigin && !!returnDestination);
   const canSubmit = sourceId && origin && destination && outboundDate
     && (isOneWay || returnDate) && /^\d+$/.test(maxPriceStr) && parseInt(maxPriceStr, 10) > 0
-    && hasAirlineSelection;
+    && hasAirlineSelection && openJawReady;
 
   const handleSubmit = async () => {
     if (!canSubmit || !sourceId) return;
@@ -255,6 +263,8 @@ export function AddWatchSheet({
           maxPrice: parseInt(maxPriceStr, 10),
           outboundDate,
           ...(isOneWay ? {} : { returnDate }),
+          // 開口式來回（0015）：回程不同地點 → 送回段 origin/destination
+          ...(openJaw && !isOneWay ? { returnOrigin, returnDestination } : {}),
           // 釘選航班（複選，方案 B）：送班號陣列 + label 陣列。釘選優先 → 不送航司過濾。
           ...(pinnedFlights.size > 0
             ? {
@@ -399,6 +409,56 @@ export function AddWatchSheet({
             )}
           </div>
 
+          {/* === 開口式來回（回程不同地點）— 只有「來回」時可開 === */}
+          {!isOneWay && (
+            <div className="openjaw-box">
+              <button
+                type="button"
+                className={`openjaw-toggle ${openJaw ? 'on' : ''}`}
+                data-testid="openjaw-toggle"
+                onClick={() => {
+                  setOpenJaw(prev => {
+                    const next = !prev;
+                    // 打開時帶對稱預設（回程出發=去程抵達、回程抵達=去程出發），使用者再各自改
+                    if (next) {
+                      setReturnOrigin(ro => ro || destination);
+                      setReturnDestination(rd => rd || origin);
+                    }
+                    return next;
+                  });
+                  setPreview(null);
+                }}
+              >
+                <Icon name={openJaw ? 'checkCircle' : 'plus'} size={14} stroke={2.2} />
+                <span>回程不同地點（開口式）</span>
+              </button>
+              {openJaw && (
+                <>
+                  <div className="route-pass openjaw-pass">
+                    <RouteSlot
+                      label="回程出發"
+                      value={returnOrigin}
+                      onChange={v => { setReturnOrigin(v); setPreview(null); }}
+                      twOptions={TW_ORIGINS}
+                      jpRegions={jpRegions}
+                    />
+                    <button type="button" className="swap-btn" onClick={() => { const a = returnOrigin; setReturnOrigin(returnDestination); setReturnDestination(a); setPreview(null); }} aria-label="對調">
+                      <Icon name="swap" size={18} stroke={2.2} />
+                    </button>
+                    <RouteSlot
+                      label="回程抵達"
+                      value={returnDestination}
+                      onChange={v => { setReturnDestination(v); setPreview(null); }}
+                      twOptions={TW_ORIGINS}
+                      jpRegions={jpRegions}
+                    />
+                  </div>
+                  <p className="openjaw-hint">開口式會分兩段各自追蹤、合併顯示總價（不支援預覽 / 釘選特定航班）。</p>
+                </>
+              )}
+            </div>
+          )}
+
           {/* === 航司過濾（這條線有飛的才列；全勾 = 追全部）。釘選航班時隱藏（釘選優先） === */}
           {pinnedFlights.size === 0 && availableAirlines.length > 0 && (
             <div className="airline-box">
@@ -430,7 +490,8 @@ export function AddWatchSheet({
             </div>
           )}
 
-          {/* === Preview button + result === */}
+          {/* === Preview button + result（開口式分兩段、不支援單一預覽） === */}
+          {!openJaw && (
           <div className="preview-box">
             {!preview ? (
               <button
@@ -456,6 +517,7 @@ export function AddWatchSheet({
               </div>
             )}
           </div>
+          )}
 
           {/* === 釘選航班（方案 B 複選）：勾幾班 = 只追這幾班 === */}
           {flightRows.length > 0 && (
@@ -805,6 +867,33 @@ export function AddWatchSheet({
         /* 深色主題下讓原生日曆 icon + 彈窗用深色（否則 icon 黑底黑、幾乎看不到） */
         :global([data-theme='dark']) .date-input input { color-scheme: dark; }
         .date-input input::-webkit-calendar-picker-indicator { cursor: pointer; }
+
+        .openjaw-box { margin-top: 16px; }
+        .openjaw-toggle {
+          appearance: none;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          width: 100%;
+          background: var(--ios-fill-2);
+          border: 1px solid transparent;
+          border-radius: var(--r-field);
+          color: var(--ios-label-2);
+          font-family: inherit;
+          font-size: 13.5px;
+          font-weight: 600;
+          padding: 11px 14px;
+          cursor: pointer;
+          text-align: left;
+        }
+        .openjaw-toggle.on { color: var(--ios-blue); border-color: var(--ios-blue); background: rgba(10, 132, 255, 0.12); }
+        .openjaw-pass { margin-top: 12px; }
+        .openjaw-hint {
+          margin-top: 8px;
+          font-size: 11.5px;
+          color: var(--ios-label-3);
+          line-height: 1.5;
+        }
 
         .pin-box { margin-top: 16px; }
         .pin-clearall {
