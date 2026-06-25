@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { searchFlights, AllKeysExhaustedError } from '@/lib/serpapi';
 import { analyzeFlights } from '@/lib/flights';
-import { buildMultiSubsItem, isRouteError, type RouteOutcome } from '@/lib/cron-items-mapper';
+import { buildMultiSubsItem, buildOpenJawItem, isOpenJaw, isRouteError, type RouteOutcome } from '@/lib/cron-items-mapper';
 import { getLineClient } from '@/lib/line';
 import { getSupabase } from '@/lib/supabase';
 import { cleanupOldRecords, getQuotaStats } from '@/lib/cleanup';
@@ -15,6 +15,31 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
+
+// route 查詢 key：origin|destination|outboundDate|returnDate（空字串 = 單程）
+function legKey(origin: string, destination: string, outbound: string | null, ret: string | null): string {
+  return [origin, destination, outbound ?? '', ret ?? ''].join('|');
+}
+/**
+ * 一筆 sub 要查的 route key。
+ *   對稱來回 / 單程 → out 一條（沿用 sub.return_date）。
+ *   開口式 → 兩條「單程」：去段 origin→destination@outbound、回段 return_origin→return_destination@return
+ *            （兩條都把 return 段留空 = 各自單程查）。
+ */
+function subRouteKeys(sub: Subscription): { out: string; back: string | null } {
+  if (isOpenJaw(sub)) {
+    return {
+      out: legKey(sub.origin, sub.destination, sub.outbound_date, ''),
+      back: legKey(sub.return_origin!, sub.return_destination!, sub.return_date, '')
+    };
+  }
+  return { out: legKey(sub.origin, sub.destination, sub.outbound_date, sub.return_date), back: null };
+}
+/** 該 sub 涉及的所有 route key（開口式 2 條，其餘 1 條）。*/
+function keysOf(sub: Subscription): string[] {
+  const k = subRouteKeys(sub);
+  return k.back ? [k.out, k.back] : [k.out];
+}
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   return runDailySearch(req);
@@ -70,15 +95,12 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   // ============================================
   const queryGroups = new Map<string, Subscription[]>();
   for (const sub of eligibleSubs) {
-    const key = [
-      sub.origin,
-      sub.destination,
-      sub.outbound_date ?? '',
-      sub.return_date ?? ''
-    ].join('|');
-    const arr = queryGroups.get(key) ?? [];
-    arr.push(sub);
-    queryGroups.set(key, arr);
+    // 開口式 sub → 兩條單程 route key 都要查；其餘一條。
+    for (const key of keysOf(sub)) {
+      const arr = queryGroups.get(key) ?? [];
+      arr.push(sub);
+      queryGroups.set(key, arr);
+    }
   }
 
   // 兼容變數：targets 仍給後續 fallback 邏輯使用（targets.length === 0 才走 fallback）
@@ -217,24 +239,29 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
     // 對每筆 sub 套用其時間過濾、跨機場跨分類挑最便宜，組成 MultiSubsItem
     // 邏輯抽到 cron-items-mapper.ts buildMultiSubsItem，方便單獨測試
     const items = subs.map((sub) => {
-      const key = [sub.origin, sub.destination, sub.outbound_date ?? '', sub.return_date ?? ''].join('|');
-      return buildMultiSubsItem(sub, routeResults.get(key));
+      if (isOpenJaw(sub)) {
+        const k = subRouteKeys(sub);
+        return buildOpenJawItem(sub, routeResults.get(k.out), routeResults.get(k.back!));
+      }
+      return buildMultiSubsItem(sub, routeResults.get(subRouteKeys(sub).out));
     });
 
-    // 找這個 source 所有 routes 裡最新 cachedAt（若全部都吃快取）
-    const allCached = subs.every(sub => {
-      const key = [sub.origin, sub.destination, sub.outbound_date ?? '', sub.return_date ?? ''].join('|');
-      const r = routeResults.get(key);
-      // RouteError 視為「不算全 cache」(isRouteError 排除掉 quota 錯誤路線)
-      return r != null && !isRouteError(r) && r.fromCacheAll === true;
-    });
+    // 找這個 source 所有 routes 裡最新 cachedAt（若全部都吃快取）— 開口式兩段都要算
+    const allCached = subs.every(sub =>
+      keysOf(sub).every(key => {
+        const r = routeResults.get(key);
+        // RouteError 視為「不算全 cache」(isRouteError 排除掉 quota 錯誤路線)
+        return r != null && !isRouteError(r) && r.fromCacheAll === true;
+      })
+    );
     let combinedCachedAt: string | null = null;
     if (allCached) {
       for (const sub of subs) {
-        const key = [sub.origin, sub.destination, sub.outbound_date ?? '', sub.return_date ?? ''].join('|');
-        const r = routeResults.get(key);
-        if (r != null && !isRouteError(r) && r.bestCachedAt && (!combinedCachedAt || r.bestCachedAt > combinedCachedAt)) {
-          combinedCachedAt = r.bestCachedAt;
+        for (const key of keysOf(sub)) {
+          const r = routeResults.get(key);
+          if (r != null && !isRouteError(r) && r.bestCachedAt && (!combinedCachedAt || r.bestCachedAt > combinedCachedAt)) {
+            combinedCachedAt = r.bestCachedAt;
+          }
         }
       }
     }

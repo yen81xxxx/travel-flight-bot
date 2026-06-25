@@ -292,6 +292,25 @@ export interface MultiSubsItem {
     airline: string;
     vsPrevPct: number | null;
   } | null;
+  // 開口式來回（0015）：兩段各自摘要。null / undefined = 非開口式（對稱來回 / 單程）。
+  // cheapestPrice = out.price + back.price（任一段沒料 → null）。卡片改成顯示兩段。
+  openJaw?: OpenJawLegs | null;
+}
+
+/** 開口式單段摘要（去段 or 回段）*/
+export interface OpenJawLeg {
+  origin: string;
+  destination: string;        // 訂閱原始 dest（city，可能多機場 → airport 帶勝出機場）
+  date: string;
+  price: number | null;
+  airline: string | null;
+  airport: string | null;
+  topAirlines: { airline: string; price: number }[];
+}
+
+export interface OpenJawLegs {
+  out: OpenJawLeg;
+  back: OpenJawLeg;
 }
 
 interface MultiSubsDailyFlexProps {

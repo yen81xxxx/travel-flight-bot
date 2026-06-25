@@ -16,7 +16,7 @@
  *   - maxPriceTraditional 不漏帶
  */
 
-import { buildMultiSubsItem, type RouteData, type RouteOutcome } from '../cron-items-mapper';
+import { buildMultiSubsItem, buildOpenJawItem, isOpenJaw, type RouteData, type RouteOutcome } from '../cron-items-mapper';
 import type { Subscription, FlightQuote, SerpApiFlight } from '@/types';
 
 // ===== fixtures =====
@@ -483,5 +483,65 @@ describe('buildMultiSubsItem — topAirlines（比照降價警報卡顯示前 3 
   it('沒匹配航班（空狀態）→ topAirlines 不存在（undefined）', () => {
     const item = buildMultiSubsItem(makeSub(), undefined);
     expect(item.topAirlines).toBeUndefined();
+  });
+});
+
+describe('buildOpenJawItem — 開口式來回（兩段相加，0015）', () => {
+  const oneWayRoute = (quotes: FlightQuote[]): RouteData =>
+    makeRoute({ fanout: [makeFanout({ airport: 'X', outbound: quotes, return: [] })] });
+  const ojSub = (over: Partial<Subscription> = {}) => makeSub({
+    origin: 'TPE', destination: 'NRT', outbound_date: '2027-01-29', return_date: '2027-02-05',
+    return_origin: 'HND', return_destination: 'TSA', max_price: 99999, ...over
+  });
+
+  it('isOpenJaw：兩欄都有值才算', () => {
+    expect(isOpenJaw({ return_origin: 'HND', return_destination: 'TSA' })).toBe(true);
+    expect(isOpenJaw({ return_origin: 'HND', return_destination: null })).toBe(false);
+    expect(isOpenJaw({ return_origin: null, return_destination: null })).toBe(false);
+  });
+
+  it('兩段都有料 → 合併價 = 兩段最低相加 + 各段 topAirlines/路線', () => {
+    const legOut = oneWayRoute([
+      makeQuote({ airline: '樂桃', price: 5000, trip_leg: 'outbound' }),
+      makeQuote({ airline: '捷星', price: 6000, trip_leg: 'outbound' })
+    ]);
+    const legBack = oneWayRoute([makeQuote({ airline: '台灣虎航', price: 4000, trip_leg: 'outbound' })]);
+    const item = buildOpenJawItem(ojSub(), legOut, legBack);
+    expect(item.cheapestPrice).toBe(9000);   // 5000 + 4000
+    expect(item.cheapestCategory).toBeNull();
+    expect(item.openJaw?.out.price).toBe(5000);
+    expect(item.openJaw?.back.price).toBe(4000);
+    expect(item.openJaw?.out.topAirlines).toEqual([{ airline: '樂桃', price: 5000 }, { airline: '捷星', price: 6000 }]);
+    expect(item.openJaw?.back.topAirlines).toEqual([{ airline: '台灣虎航', price: 4000 }]);
+    expect(item.openJaw?.out.destination).toBe('NRT');
+    expect(item.openJaw?.back.origin).toBe('HND');
+    expect(item.openJaw?.back.destination).toBe('TSA');
+    expect(item.openJaw?.back.date).toBe('2027-02-05');
+  });
+
+  it('任一段沒料 → 合併價 null（caller 當暫無報價）', () => {
+    const legOut = oneWayRoute([makeQuote({ airline: '樂桃', price: 5000, trip_leg: 'outbound' })]);
+    const item = buildOpenJawItem(ojSub(), legOut, undefined);   // 回段沒查到
+    expect(item.cheapestPrice).toBeNull();
+    expect(item.openJaw?.out.price).toBe(5000);
+    expect(item.openJaw?.back.price).toBeNull();
+  });
+
+  it('某段配額用光 → errorReason=quota-exhausted、合併價 null', () => {
+    const legOut = oneWayRoute([makeQuote({ airline: '樂桃', price: 5000, trip_leg: 'outbound' })]);
+    const item = buildOpenJawItem(ojSub(), legOut, { error: 'quota-exhausted' });
+    expect(item.cheapestPrice).toBeNull();
+    expect(item.errorReason).toBe('quota-exhausted');
+  });
+
+  it('回段時段過濾用 return_min/max（對應單程 outbound 時間）', () => {
+    const sub = ojSub({ return_min_departure_time: '12:00' });
+    const legOut = oneWayRoute([makeQuote({ airline: '樂桃', price: 5000, trip_leg: 'outbound', depTime: '08:00' })]);
+    const legBack = oneWayRoute([
+      makeQuote({ airline: '台灣虎航', price: 4000, trip_leg: 'outbound', depTime: '11:00' }),  // 12:00 前 → 擋
+      makeQuote({ airline: '酷航', price: 4500, trip_leg: 'outbound', depTime: '14:00' })
+    ]);
+    const item = buildOpenJawItem(sub, legOut, legBack);
+    expect(item.openJaw?.back.price).toBe(4500);   // 11:00 的 4000 被擋，取 14:00 的 4500
   });
 });
