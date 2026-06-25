@@ -189,8 +189,21 @@ export function AddWatchSheet({
   const jpRegions = groupJpByRegion();
 
   // === preview 邏輯 ===
-  // 開口式分兩段、不支援單一路線預覽 → 關掉預覽
-  const canPreview = origin && destination && outboundDate && (isOneWay || returnDate) && !openJaw;
+  // 開口式：要回程兩地點都選了才能查（查價會分兩段各自單程搜尋再相加）
+  const canPreview = origin && destination && outboundDate && (isOneWay || returnDate)
+    && (!openJaw || (!!returnOrigin && !!returnDestination));
+
+  const searchLeg = async (o: string, d: string, date: string) => {
+    const res = await fetch('/api/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // 單程搜尋（不帶 returnDate）→ analysis.cheapestRoundTripPrice = 該段最低
+      body: JSON.stringify({ origin: o, destination: d, outboundDate: date })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '查詢失敗');
+    return { price: data.analysis?.cheapestRoundTripPrice ?? null, airline: data.analysis?.cheapestAirline ?? null, fromCache: data.fromCache === true, outbound: data.outbound ?? [] };
+  };
 
   const handlePreview = async () => {
     if (!canPreview) return;
@@ -198,6 +211,22 @@ export function AddWatchSheet({
     setPreview(null);
     setError(null);
     try {
+      if (openJaw) {
+        // 開口式：去段 + 回段各自單程搜尋，合併價相加
+        const [out, back] = await Promise.all([
+          searchLeg(origin, destination, outboundDate),
+          searchLeg(returnOrigin, returnDestination, returnDate)
+        ]);
+        const combined = (out.price != null && back.price != null) ? out.price + back.price : null;
+        setPreview({
+          lowestPrice: combined,
+          airline: combined != null ? `去 ${out.airline ?? '—'}・回 ${back.airline ?? '—'}` : null,
+          fromCache: out.fromCache && back.fromCache
+        });
+        // 開口式不釘選特定航班 → 不抽航班清單
+        setFlightRows([]);
+        return;
+      }
       const res = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -453,7 +482,7 @@ export function AddWatchSheet({
                       jpRegions={jpRegions}
                     />
                   </div>
-                  <p className="openjaw-hint">開口式會分兩段各自追蹤、合併顯示總價（不支援預覽 / 釘選特定航班）。</p>
+                  <p className="openjaw-hint">開口式會分兩段各自追蹤、合併顯示總價。查價時兩段各自搜尋再相加（不支援釘選特定航班）。</p>
                 </>
               )}
             </div>
@@ -490,8 +519,7 @@ export function AddWatchSheet({
             </div>
           )}
 
-          {/* === Preview button + result（開口式分兩段、不支援單一預覽） === */}
-          {!openJaw && (
+          {/* === Preview button + result（開口式 = 兩段各自單程搜尋相加） === */}
           <div className="preview-box">
             {!preview ? (
               <button
@@ -517,7 +545,6 @@ export function AddWatchSheet({
               </div>
             )}
           </div>
-          )}
 
           {/* === 釘選航班（方案 B 複選）：勾幾班 = 只追這幾班 === */}
           {flightRows.length > 0 && (
