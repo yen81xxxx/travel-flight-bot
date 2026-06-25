@@ -183,3 +183,48 @@ describe('buildMultiSubsDailyFlex（carousel 結構）', () => {
     expect(json).toContain('NT$11,000');
   });
 });
+
+describe('buildRouteBubble — 開口式來回（0015，畫兩段）', () => {
+  const ojItem = (over: Partial<MultiSubsItem> = {}): MultiSubsItem => makeItem({
+    origin: 'TPE', destination: 'NRT', outboundDate: '2027-01-29', returnDate: '2027-02-05',
+    maxPrice: 12000, maxPriceTraditional: null,
+    cheapestPrice: 9000, cheapestCategory: null, cheapestAirline: '樂桃', cheapestAirport: 'NRT',
+    lcc: null, traditional: null, vsPrevPct: null,
+    openJaw: {
+      out: { origin: 'TPE', destination: 'NRT', date: '2027-01-29', price: 5000, airline: '樂桃', airport: 'NRT', topAirlines: [] },
+      back: { origin: 'HND', destination: 'TSA', date: '2027-02-05', price: 4000, airline: '台灣虎航', airport: 'TSA', topAirlines: [] }
+    },
+    ...over
+  });
+
+  it('isItemHit：合併價 ≤ 目標 → 達標；> 目標 → 不達標', () => {
+    expect(isItemHit(ojItem())).toBe(true);                          // 9000 ≤ 12000
+    expect(isItemHit(ojItem({ cheapestPrice: 13000 }))).toBe(false); // 13000 > 12000
+  });
+
+  it('卡片畫兩段：去/回路線 + 各段價 + 合計 + 開口式 pill + 達標目標文案', () => {
+    const flex = buildMultiSubsDailyFlex({ items: [ojItem()], sourceId: 'U1' });
+    const json = JSON.stringify(flex);
+    expect(json).toContain('開口式');
+    expect(json).toContain('HND');                 // 回段出發
+    expect(json).toContain('TSA');                 // 回段抵達
+    expect(json).toContain('NT$5,000');            // 去段價
+    expect(json).toContain('NT$4,000');            // 回段價
+    expect(json).toContain('台灣虎航');             // 回段航司
+    expect(json).toContain('合計');
+    expect(json).toContain('9,000');               // 合計
+    expect(json).toContain('低於目標 NT$12,000（省 NT$3,000）');
+  });
+
+  it('某段查無（合併價 null）→ 非 noteworthy、不進 carousel（不顯示半截卡）', () => {
+    const flex = buildMultiSubsDailyFlex({ items: [ojItem({
+      cheapestPrice: null,
+      openJaw: {
+        out: { origin: 'TPE', destination: 'NRT', date: '2027-01-29', price: 5000, airline: '樂桃', airport: 'NRT', topAirlines: [] },
+        back: { origin: 'HND', destination: 'TSA', date: '2027-02-05', price: null, airline: null, airport: null, topAirlines: [] }
+      }
+    })], sourceId: 'U1' }) as { contents: { contents: unknown[] } };
+    // 合併價 null → 非 hit、無 delta → pickNoteworthy 排除 → 只剩 lead bubble，不顯示壞掉的半截卡
+    expect(flex.contents.contents).toHaveLength(1);
+  });
+});

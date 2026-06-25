@@ -331,6 +331,8 @@ export const NOTEWORTHY_DELTA_PCT = 3;
 
 /** 該 item 是否「達標」— 任一分類跌破各自目標（lcc←maxPrice / trad←maxPriceTraditional??maxPrice） */
 export function isItemHit(item: MultiSubsItem): boolean {
+  // 開口式：合併價（兩段相加）跟單一目標比；沒有 lcc/traditional 分類
+  if (item.openJaw) return item.cheapestPrice != null && item.cheapestPrice <= item.maxPrice;
   if (item.lcc && item.lcc.price <= item.maxPrice) return true;
   const tradTarget = item.maxPriceTraditional ?? item.maxPrice;
   if (item.traditional && item.traditional.price <= tradTarget) return true;
@@ -496,17 +498,72 @@ function buildDigestLeadBubble(p: {
   };
 }
 
+/** 開口式單段的目的地 label（多機場時帶勝出機場）*/
+function legDestLabel(leg: OpenJawLeg): string {
+  return (leg.airport && leg.airport !== leg.destination)
+    ? `${getCity(leg.destination)} (${leg.airport})`
+    : formatAirport(leg.destination);
+}
+
+/**
+ * 開口式 route bubble 的 body：去 / 回兩段各一列（路線 + 各段價 + 日期·航司），
+ * 底下合計 + 目標對照。沒料 / 配額用光走對應降級文字。
+ */
+function pushOpenJawBody(bodyContents: Record<string, unknown>[], item: MultiSubsItem, hit: boolean): void {
+  const oj = item.openJaw!;
+  const legBox = (prefix: string, leg: OpenJawLeg): Record<string, unknown> => ({
+    type: 'box', layout: 'vertical', margin: 'md', spacing: 'xs',
+    contents: [
+      {
+        type: 'box', layout: 'baseline',
+        contents: [
+          { type: 'text', text: prefix, size: 'sm', weight: 'bold', color: FLEX_DARK.cyan, flex: 0 },
+          { type: 'text', text: `${formatAirport(leg.origin)} → ${legDestLabel(leg)}`, size: 'sm', weight: 'bold', color: FLEX_DARK.text, wrap: true, flex: 1, margin: 'md' },
+          { type: 'text', text: leg.price != null ? `NT$${leg.price.toLocaleString()}` : '查無', size: 'sm', weight: 'bold', color: leg.price != null ? FLEX_DARK.text : FLEX_DARK.faint, align: 'end', flex: 0 }
+        ]
+      },
+      { type: 'text', text: `${leg.date}${leg.airline ? '・' + leg.airline : ''}`, size: 'xxs', color: FLEX_DARK.faint }
+    ]
+  });
+  bodyContents.push(legBox('去', oj.out), legBox('回', oj.back));
+  if (item.label) bodyContents.push({ type: 'text', text: item.label, size: 'xxs', color: FLEX_DARK.faint, margin: 'sm' });
+
+  if (item.cheapestPrice != null) {
+    const diff = Math.abs(item.cheapestPrice - item.maxPrice);
+    bodyContents.push({
+      type: 'box', layout: 'baseline', margin: 'lg',
+      contents: [
+        { type: 'text', text: '合計 NT$', size: 'sm', color: FLEX_DARK.soft, flex: 0 },
+        { type: 'text', text: item.cheapestPrice.toLocaleString(), size: 'xxl', weight: 'bold', color: FLEX_DARK.text, margin: 'sm', flex: 0 }
+      ]
+    });
+    bodyContents.push({
+      type: 'text',
+      text: hit
+        ? `低於目標 NT$${item.maxPrice.toLocaleString()}（省 NT$${diff.toLocaleString()}）`
+        : `目標 NT$${item.maxPrice.toLocaleString()}・還差 NT$${diff.toLocaleString()}`,
+      size: 'xs', color: hit ? FLEX_DARK.green : FLEX_DARK.soft, margin: 'sm', wrap: true
+    });
+  } else if (item.errorReason === 'quota-exhausted') {
+    bodyContents.push({ type: 'text', text: '今日查詢額度暫滿，明日自動恢復', size: 'sm', color: '#ff9f0a', margin: 'md', wrap: true });
+  } else {
+    bodyContents.push({ type: 'text', text: '此條件查無符合航班', size: 'sm', color: FLEX_DARK.faint, margin: 'md', wrap: true });
+  }
+}
+
 /** noteworthy route bubble — 已達標/監控中 + 路線 + 勝出分類價 + delta（spec §A1） */
 function buildRouteBubble(item: MultiSubsItem, sourceId: string): Record<string, unknown> {
   const hit = isItemHit(item);
   const delta = bestDelta(item);
 
-  // 勝出分類（cheapest）的 tag — 沒料就不放
-  const tag = item.cheapestCategory === 'lcc'
-    ? { text: '廉航', color: FLEX_DARK.cyan }
-    : item.cheapestCategory === 'full-service'
-      ? { text: '傳統', color: FLEX_DARK.yellow }
-      : null;
+  // tag：開口式優先標「開口式」；否則勝出分類（廉/傳）；沒料不放
+  const tag = item.openJaw
+    ? { text: '開口式', color: FLEX_DARK.blue }
+    : item.cheapestCategory === 'lcc'
+      ? { text: '廉航', color: FLEX_DARK.cyan }
+      : item.cheapestCategory === 'full-service'
+        ? { text: '傳統', color: FLEX_DARK.yellow }
+        : null;
 
   const showAirport = item.cheapestAirport && item.cheapestAirport !== item.destination;
   const destLabel = showAirport
@@ -516,7 +573,12 @@ function buildRouteBubble(item: MultiSubsItem, sourceId: string): Record<string,
     ? `${item.outboundDate} ~ ${item.returnDate}`
     : `單程 ${item.outboundDate}`;
 
-  const bodyContents: Record<string, unknown>[] = [
+  const bodyContents: Record<string, unknown>[] = [];
+  if (item.openJaw) {
+    // 開口式：兩段各一列 + 合計（不走下面的單一路線版面）
+    pushOpenJawBody(bodyContents, item, hit);
+  } else {
+  bodyContents.push(
     {
       type: 'text',
       text: `${formatAirport(item.origin)} → ${destLabel}`,
@@ -526,7 +588,7 @@ function buildRouteBubble(item: MultiSubsItem, sourceId: string): Record<string,
       wrap: true
     },
     { type: 'text', text: dateText, size: 'xs', color: FLEX_DARK.faint, margin: 'xs' }
-  ];
+  );
   if (item.label) {
     bodyContents.push({ type: 'text', text: item.label, size: 'xxs', color: FLEX_DARK.faint, margin: 'xs' });
   }
@@ -604,6 +666,7 @@ function buildRouteBubble(item: MultiSubsItem, sourceId: string): Record<string,
     bodyContents.push({
       type: 'text', text: '此條件查無符合航班', size: 'sm', color: FLEX_DARK.faint, margin: 'md', wrap: true
     });
+  }
   }
 
   return {
