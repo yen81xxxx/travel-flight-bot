@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { searchFlights } from '@/lib/serpapi';
+import { searchFlights, searchMultiCity } from '@/lib/serpapi';
 import { analyzeFlights, formatAnalysisForLine } from '@/lib/flights';
 import { pushText } from '@/lib/line';
 import { getSupabase } from '@/lib/supabase';
@@ -12,24 +12,34 @@ export const maxDuration = 60;  // 含 2 次 SerpApi（round-trip）+ DB + push
 
 const VALID_IATA = ALL_AIRPORTS.map(a => a.iata);
 
-const SearchBody = z.object({
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const LegSchema = z.object({
   origin: z.enum(VALID_IATA as [string, ...string[]]),
   destination: z.enum(VALID_IATA as [string, ...string[]]),
-  outboundDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  date: z.string().regex(ISO_DATE)
+});
+
+const SearchBody = z.object({
+  // 單一路線模式（origin/destination/outboundDate）— legs 模式時這些可省略
+  origin: z.enum(VALID_IATA as [string, ...string[]]).optional(),
+  destination: z.enum(VALID_IATA as [string, ...string[]]).optional(),
+  outboundDate: z.string().regex(ISO_DATE).optional(),
   // returnDate 省略 → 單程搜尋（searchFlights 內部用 type=2 one-way）
-  returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  returnDate: z.string().regex(ISO_DATE).optional(),
+  // 開口式多城市模式：給 2 段（去/回 不同地點）→ 走 SerpApi multi-city，回傳整程最低總價
+  legs: z.array(LegSchema).length(2).optional(),
   sourceId: z.string().optional()
-}).refine(
-  (data) => {
-    // 出發地與目的地必須一個在台灣、一個在日本
-    const tw1 = isTaiwanAirport(data.origin);
-    const jp1 = isJapanAirport(data.origin);
-    const tw2 = isTaiwanAirport(data.destination);
-    const jp2 = isJapanAirport(data.destination);
-    return (tw1 && jp2) || (jp1 && tw2);
-  },
-  { message: '出發地與目的地必須一個在台灣、一個在日本' }
-);
+}).superRefine((d, ctx) => {
+  if (d.legs) return;  // 多城市模式：legs 由 LegSchema 驗
+  // 單一路線模式：origin/destination/outboundDate 必填 + 一台一日
+  if (!d.origin || !d.destination || !d.outboundDate) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: '需要 origin / destination / outboundDate，或改用 legs（開口式）' });
+    return;
+  }
+  const ok = (isTaiwanAirport(d.origin) && isJapanAirport(d.destination))
+    || (isJapanAirport(d.origin) && isTaiwanAirport(d.destination));
+  if (!ok) ctx.addIssue({ code: z.ZodIssueCode.custom, message: '出發地與目的地必須一個在台灣、一個在日本' });
+});
 
 /**
  * 任意人都可呼叫的搜尋 API（給 LIFF / 網站表單用）。
@@ -57,6 +67,28 @@ async function handlePost(req: NextRequest): Promise<NextResponse> {
       { ok: false, error: 'Invalid request body', details: err instanceof Error ? err.message : String(err) },
       { status: 400 }
     );
+  }
+
+  // === 開口式多城市模式：一張多城市票的整程最低總價 ===
+  if (body.legs) {
+    try {
+      const result = await searchMultiCity(body.legs.map(l => ({ origin: l.origin, destination: l.destination, date: l.date })));
+      return NextResponse.json({
+        ok: true, multiCity: true,
+        cheapestTotal: result.cheapestTotal,
+        airline: result.airline,
+        serpapiCalls: result.serpapiCalls
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[api/search] multi-city failed:', err);
+      return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    }
+  }
+
+  // 到這裡一定是單一路線模式（multi-city 已 return）— superRefine 保證三欄都有，narrow 型別
+  if (!body.origin || !body.destination || !body.outboundDate) {
+    return NextResponse.json({ ok: false, error: '缺少搜尋條件' }, { status: 400 });
   }
 
   // 來回搜尋才檢查回程晚於去程；單程不需要
