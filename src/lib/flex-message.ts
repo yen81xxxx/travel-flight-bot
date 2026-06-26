@@ -292,25 +292,23 @@ export interface MultiSubsItem {
     airline: string;
     vsPrevPct: number | null;
   } | null;
-  // 開口式來回（0015）：兩段各自摘要。null / undefined = 非開口式（對稱來回 / 單程）。
-  // cheapestPrice = out.price + back.price（任一段沒料 → null）。卡片改成顯示兩段。
+  // 開口式來回（0015 → multi-city）：去 / 回兩段路線 + 整張多城市票最低總價。
+  // null / undefined = 非開口式。cheapestPrice = 整程總價（一張多城市票）。
   openJaw?: OpenJawLegs | null;
 }
 
-/** 開口式單段摘要（去段 or 回段）*/
+/** 開口式單段路線（multi-city 一張票，沒有各段單獨價）*/
 export interface OpenJawLeg {
   origin: string;
-  destination: string;        // 訂閱原始 dest（city，可能多機場 → airport 帶勝出機場）
+  destination: string;
   date: string;
-  price: number | null;
-  airline: string | null;
-  airport: string | null;
-  topAirlines: { airline: string; price: number }[];
 }
 
 export interface OpenJawLegs {
   out: OpenJawLeg;
   back: OpenJawLeg;
+  /** 一張多城市票的代表航司（最低那張的第一段航司）；null = 查無 */
+  airline: string | null;
 }
 
 interface MultiSubsDailyFlexProps {
@@ -498,34 +496,21 @@ function buildDigestLeadBubble(p: {
   };
 }
 
-/** 開口式單段的目的地 label（多機場時帶勝出機場）*/
-function legDestLabel(leg: OpenJawLeg): string {
-  return (leg.airport && leg.airport !== leg.destination)
-    ? `${getCity(leg.destination)} (${leg.airport})`
-    : formatAirport(leg.destination);
-}
-
 /**
- * 開口式 route bubble 的 body：去 / 回兩段各一列（路線 + 各段價 + 日期·航司），
- * 底下合計 + 目標對照。沒料 / 配額用光走對應降級文字。
+ * 開口式 route bubble 的 body（multi-city 一張票）：去 / 回兩段路線各一列，
+ * 底下「一張多城市票 NT$總價（航司 起）」+ 目標對照。沒料 / 配額用光走降級文字。
  */
 function pushOpenJawBody(bodyContents: Record<string, unknown>[], item: MultiSubsItem, hit: boolean): void {
   const oj = item.openJaw!;
-  const legBox = (prefix: string, leg: OpenJawLeg): Record<string, unknown> => ({
-    type: 'box', layout: 'vertical', margin: 'md', spacing: 'xs',
+  const legRow = (prefix: string, leg: OpenJawLeg): Record<string, unknown> => ({
+    type: 'box', layout: 'baseline', margin: 'md',
     contents: [
-      {
-        type: 'box', layout: 'baseline',
-        contents: [
-          { type: 'text', text: prefix, size: 'sm', weight: 'bold', color: FLEX_DARK.cyan, flex: 0 },
-          { type: 'text', text: `${formatAirport(leg.origin)} → ${legDestLabel(leg)}`, size: 'sm', weight: 'bold', color: FLEX_DARK.text, wrap: true, flex: 1, margin: 'md' },
-          { type: 'text', text: leg.price != null ? `NT$${leg.price.toLocaleString()}` : '查無', size: 'sm', weight: 'bold', color: leg.price != null ? FLEX_DARK.text : FLEX_DARK.faint, align: 'end', flex: 0 }
-        ]
-      },
-      { type: 'text', text: `${leg.date}${leg.airline ? '・' + leg.airline : ''}`, size: 'xxs', color: FLEX_DARK.faint }
+      { type: 'text', text: prefix, size: 'sm', weight: 'bold', color: FLEX_DARK.cyan, flex: 0 },
+      { type: 'text', text: `${formatAirport(leg.origin)} → ${formatAirport(leg.destination)}`, size: 'sm', weight: 'bold', color: FLEX_DARK.text, wrap: true, flex: 1, margin: 'md' },
+      { type: 'text', text: leg.date.slice(5).replace('-', '/'), size: 'xs', color: FLEX_DARK.faint, flex: 0 }
     ]
   });
-  bodyContents.push(legBox('去', oj.out), legBox('回', oj.back));
+  bodyContents.push(legRow('去', oj.out), legRow('回', oj.back));
   if (item.label) bodyContents.push({ type: 'text', text: item.label, size: 'xxs', color: FLEX_DARK.faint, margin: 'sm' });
 
   if (item.cheapestPrice != null) {
@@ -533,10 +518,11 @@ function pushOpenJawBody(bodyContents: Record<string, unknown>[], item: MultiSub
     bodyContents.push({
       type: 'box', layout: 'baseline', margin: 'lg',
       contents: [
-        { type: 'text', text: '合計 NT$', size: 'sm', color: FLEX_DARK.soft, flex: 0 },
+        { type: 'text', text: '一張票 NT$', size: 'sm', color: FLEX_DARK.soft, flex: 0 },
         { type: 'text', text: item.cheapestPrice.toLocaleString(), size: 'xxl', weight: 'bold', color: FLEX_DARK.text, margin: 'sm', flex: 0 }
       ]
     });
+    if (oj.airline) bodyContents.push({ type: 'text', text: `多城市單一票・${oj.airline} 起`, size: 'xxs', color: FLEX_DARK.faint, margin: 'xs' });
     bodyContents.push({
       type: 'text',
       text: hit
@@ -547,7 +533,7 @@ function pushOpenJawBody(bodyContents: Record<string, unknown>[], item: MultiSub
   } else if (item.errorReason === 'quota-exhausted') {
     bodyContents.push({ type: 'text', text: '今日查詢額度暫滿，明日自動恢復', size: 'sm', color: '#ff9f0a', margin: 'md', wrap: true });
   } else {
-    bodyContents.push({ type: 'text', text: '此條件查無符合航班', size: 'sm', color: FLEX_DARK.faint, margin: 'md', wrap: true });
+    bodyContents.push({ type: 'text', text: '此條件查無多城市票', size: 'sm', color: FLEX_DARK.faint, margin: 'md', wrap: true });
   }
 }
 

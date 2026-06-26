@@ -154,7 +154,7 @@ export function buildMultiSubsItem(
 }
 
 // ============================================================
-// 開口式來回（0015）：一筆 = 兩段獨立單程，合併價 = 兩段最低相加
+// 開口式來回（0015 → multi-city）：一筆 = 一張多城市票，cheapestPrice = 整程總價
 // ============================================================
 
 /** 這筆訂閱是不是開口式（回程不同地點）？兩欄都有值才算。 */
@@ -164,62 +164,25 @@ export function isOpenJaw(
   return !!(sub.return_origin && sub.return_destination);
 }
 
-/** 單段（單程）分析：跨機場挑最低 + merge 前 3 航司。route 是該段的 one-way 查詢結果。 */
-function analyzeOneWayLeg(
-  route: RouteOutcome | null | undefined,
-  timeFilter: TimeFilter,
-  airlineFilter: string[] | null | undefined
-): { price: number | null; airline: string | null; airport: string | null; topAirlines: { airline: string; price: number }[]; error: 'quota-exhausted' | null } {
-  if (!route) return { price: null, airline: null, airport: null, topAirlines: [], error: null };
-  if (isRouteError(route)) return { price: null, airline: null, airport: null, topAirlines: [], error: route.error };
-
-  let best: { price: number; airline: string | null; airport: string } | null = null;
-  const airlineMin = new Map<string, number>();
-  for (const f of route.fanout) {
-    // 單程 leg：return 必為空陣列 → analyzeFlights 用 cheapestOut 當該段最低
-    const a = analyzeFlights(f.outbound, [], timeFilter, airlineFilter);
-    if (a.cheapestRoundTripPrice != null && (!best || a.cheapestRoundTripPrice < best.price)) {
-      best = { price: a.cheapestRoundTripPrice, airline: a.cheapestAirline, airport: f.airport };
-    }
-    for (const t of a.topAirlines) {
-      const prev = airlineMin.get(t.airline);
-      if (prev == null || t.price < prev) airlineMin.set(t.airline, t.price);
-    }
-  }
-  const topAirlines = [...airlineMin.entries()]
-    .map(([airline, price]) => ({ airline, price }))
-    .sort((x, y) => x.price - y.price)
-    .slice(0, 3);
-  return { price: best?.price ?? null, airline: best?.airline ?? null, airport: best?.airport ?? null, topAirlines, error: null };
+/** searchMultiCity 結果餵進 buildOpenJawItem 的形狀（保持 mapper 純函數、不 import serpapi）*/
+export interface OpenJawSearchResult {
+  cheapestTotal: number | null;
+  airline: string | null;
+  error?: 'quota-exhausted' | null;
 }
 
 /**
- * 開口式 item：去段 + 回段各自單程分析，合併價 = 兩段相加（任一段沒料 → null）。
- *   legOut  = origin → destination          @ outbound_date 的單程查詢結果
- *   legBack = return_origin → return_destination @ return_date 的單程查詢結果
- * 去段套 outbound 時段窗口；回段是獨立單程，其出發時間存成 trip_leg=outbound，
- * 所以回段的 return_min/max 要對應到 outboundMin/Max 餵進 analyzeFlights。
+ * 開口式 item（multi-city 一張票）：cheapestPrice = 整程最低總價（searchMultiCity 回的）。
+ * 沒料 → null；配額用光 → errorReason='quota-exhausted'。
+ * 開口式是一張票 → 沒有 lcc/traditional 分類、沒有各段單獨價、vsPrev 先不算。
  */
 export function buildOpenJawItem(
   sub: Subscription,
-  legOut: RouteOutcome | null | undefined,
-  legBack: RouteOutcome | null | undefined
+  result: OpenJawSearchResult | null | undefined
 ): MultiSubsItem {
-  const outTf: TimeFilter = {
-    outboundMin: sub.outbound_min_departure_time ?? null,
-    outboundMax: sub.outbound_max_departure_time ?? null,
-    returnMin: null, returnMax: null
-  };
-  const backTf: TimeFilter = {
-    outboundMin: sub.return_min_departure_time ?? null,
-    outboundMax: sub.return_max_departure_time ?? null,
-    returnMin: null, returnMax: null
-  };
-  const out = analyzeOneWayLeg(legOut, outTf, sub.airline_filter);
-  const back = analyzeOneWayLeg(legBack, backTf, sub.airline_filter);
-
-  const combined = (out.price != null && back.price != null) ? out.price + back.price : null;
-  const errorReason = (out.error || back.error) ? 'quota-exhausted' : null;
+  const total = result?.cheapestTotal ?? null;
+  const airline = result?.airline ?? null;
+  const errorReason = result?.error === 'quota-exhausted' ? 'quota-exhausted' : null;
 
   return {
     origin: sub.origin,
@@ -229,15 +192,16 @@ export function buildOpenJawItem(
     maxPrice: Number(sub.max_price),
     maxPriceTraditional: sub.max_price_traditional != null ? Number(sub.max_price_traditional) : null,
     label: sub.label,
-    cheapestPrice: combined,
-    cheapestAirport: out.airport,
-    cheapestCategory: null,   // 開口式不縮成單一分類（兩段可能不同類）
-    cheapestAirline: out.airline,
-    vsPrevPct: null,          // 開口式先不算 vsPrev（兩段 baseline 複雜，後續再說）
+    cheapestPrice: total,
+    cheapestAirport: null,
+    cheapestCategory: null,
+    cheapestAirline: airline,
+    vsPrevPct: null,
     errorReason,
     openJaw: {
-      out: { origin: sub.origin, destination: sub.destination, date: sub.outbound_date ?? '', price: out.price, airline: out.airline, airport: out.airport, topAirlines: out.topAirlines },
-      back: { origin: sub.return_origin!, destination: sub.return_destination!, date: sub.return_date ?? '', price: back.price, airline: back.airline, airport: back.airport, topAirlines: back.topAirlines }
+      out: { origin: sub.origin, destination: sub.destination, date: sub.outbound_date ?? '' },
+      back: { origin: sub.return_origin!, destination: sub.return_destination!, date: sub.return_date ?? '' },
+      airline
     }
   };
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchFlights, AllKeysExhaustedError } from '@/lib/serpapi';
+import { searchFlights, searchMultiCity, AllKeysExhaustedError } from '@/lib/serpapi';
 import { analyzeFlights } from '@/lib/flights';
-import { buildMultiSubsItem, buildOpenJawItem, isOpenJaw, isRouteError, type RouteOutcome } from '@/lib/cron-items-mapper';
+import { buildMultiSubsItem, buildOpenJawItem, isOpenJaw, isRouteError, type RouteOutcome, type OpenJawSearchResult } from '@/lib/cron-items-mapper';
 import { getLineClient } from '@/lib/line';
 import { getSupabase } from '@/lib/supabase';
 import { cleanupOldRecords, getQuotaStats } from '@/lib/cleanup';
@@ -20,25 +20,13 @@ export const maxDuration = 60;
 function legKey(origin: string, destination: string, outbound: string | null, ret: string | null): string {
   return [origin, destination, outbound ?? '', ret ?? ''].join('|');
 }
-/**
- * 一筆 sub 要查的 route key。
- *   對稱來回 / 單程 → out 一條（沿用 sub.return_date）。
- *   開口式 → 兩條「單程」：去段 origin→destination@outbound、回段 return_origin→return_destination@return
- *            （兩條都把 return 段留空 = 各自單程查）。
- */
-function subRouteKeys(sub: Subscription): { out: string; back: string | null } {
-  if (isOpenJaw(sub)) {
-    return {
-      out: legKey(sub.origin, sub.destination, sub.outbound_date, ''),
-      back: legKey(sub.return_origin!, sub.return_destination!, sub.return_date, '')
-    };
-  }
-  return { out: legKey(sub.origin, sub.destination, sub.outbound_date, sub.return_date), back: null };
+/** 非開口式 sub 的 route key（開口式走 multi-city 另一條路徑、不進 route-key 查詢）。*/
+function routeKeyOf(sub: Subscription): string {
+  return legKey(sub.origin, sub.destination, sub.outbound_date, sub.return_date);
 }
-/** 該 sub 涉及的所有 route key（開口式 2 條，其餘 1 條）。*/
+/** 該 sub 涉及的 route key（開口式回 [] — 不走 route-key 查詢）。*/
 function keysOf(sub: Subscription): string[] {
-  const k = subRouteKeys(sub);
-  return k.back ? [k.out, k.back] : [k.out];
+  return isOpenJaw(sub) ? [] : [routeKeyOf(sub)];
 }
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
@@ -95,7 +83,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   // ============================================
   const queryGroups = new Map<string, Subscription[]>();
   for (const sub of eligibleSubs) {
-    // 開口式 sub → 兩條單程 route key 都要查；其餘一條。
+    // 開口式 sub → keysOf 回 []（走 5a-oj multi-city）；其餘一條 route key。
     for (const key of keysOf(sub)) {
       const arr = queryGroups.get(key) ?? [];
       arr.push(sub);
@@ -226,6 +214,34 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   }));
 
   // ============================================
+  // 5a-oj) 開口式 sub → 各自一次 multi-city 搜尋（一張多城市票的整程最低總價）
+  //        每筆一次 SerpApi call；結果存 openJawResults[sub.id] 給 5b 用。
+  // ============================================
+  const openJawResults = new Map<number, OpenJawSearchResult | null>();
+  await Promise.all(eligibleSubs.filter(isOpenJaw).map(async (sub) => {
+    if (allKeysExhausted || !sub.id || !sub.outbound_date || !sub.return_date) {
+      openJawResults.set(sub.id ?? -1, allKeysExhausted ? { cheapestTotal: null, airline: null, error: 'quota-exhausted' } : null);
+      return;
+    }
+    try {
+      const r = await searchMultiCity([
+        { origin: sub.origin, destination: sub.destination, date: sub.outbound_date },
+        { origin: sub.return_origin!, destination: sub.return_destination!, date: sub.return_date }
+      ]);
+      totalSerpapiCalls += r.serpapiCalls;
+      openJawResults.set(sub.id, { cheapestTotal: r.cheapestTotal, airline: r.airline });
+    } catch (err) {
+      if (err instanceof AllKeysExhaustedError) {
+        allKeysExhausted = true;
+        openJawResults.set(sub.id, { cheapestTotal: null, airline: null, error: 'quota-exhausted' });
+      } else {
+        console.error(`[cron] open-jaw multi-city failed for sub ${sub.id}:`, err);
+        openJawResults.set(sub.id, null);
+      }
+    }
+  }));
+
+  // ============================================
   // 5b) 按 source_id 分組 eligibleSubs，每個 source 發一張多訂閱總表卡
   // ============================================
   const subsBySource = new Map<string, Subscription[]>();
@@ -240,10 +256,9 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
     // 邏輯抽到 cron-items-mapper.ts buildMultiSubsItem，方便單獨測試
     const items = subs.map((sub) => {
       if (isOpenJaw(sub)) {
-        const k = subRouteKeys(sub);
-        return buildOpenJawItem(sub, routeResults.get(k.out), routeResults.get(k.back!));
+        return buildOpenJawItem(sub, sub.id ? openJawResults.get(sub.id) : null);
       }
-      return buildMultiSubsItem(sub, routeResults.get(subRouteKeys(sub).out));
+      return buildMultiSubsItem(sub, routeResults.get(routeKeyOf(sub)));
     });
 
     // 找這個 source 所有 routes 裡最新 cachedAt（若全部都吃快取）— 開口式兩段都要算
@@ -371,7 +386,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     ok: pushedFail === 0,
     // 部署版本標記 — 改卡片版面時 bump 一下，方便從 API 回應驗證新 code 是否真的上線
-    cardVersion: 'v50-openjaw-2legs-2026-06-25',
+    cardVersion: 'v51-openjaw-multicity-2026-06-26',
     daily: {
       sourcesTargeted: targets.length,
       sourcesOptedOut: optedOut.size,
