@@ -157,6 +157,39 @@ export async function searchFlights(params: SearchParams): Promise<SearchResult>
   };
 }
 
+/** 開口式多城市搜尋的一段 */
+export interface MultiCityLeg { origin: string; destination: string; date: string; }
+export interface MultiCityResult {
+  /** 整個開口式行程（同一張多城市票）的最低總價；查無 → null */
+  cheapestTotal: number | null;
+  /** 最低那張票第一段的航司（顯示用） */
+  airline: string | null;
+  serpapiCalls: number;
+}
+
+/**
+ * 開口式 = 真・多城市單一票（SerpApi type=3 + multi_city_json）。
+ * 回傳整個行程的最低總價（Google Flights 對「選了第一段」算的整程估價）。
+ * 偏好第一段直飛（flights.length===1）— 跟全站「只直飛」一致；沒有直飛才退回全部。
+ * 一次 SerpApi call（用第一段卡片上的整程估價，不再為了拿第二段細節多打一次）。
+ */
+export async function searchMultiCity(legs: MultiCityLeg[]): Promise<MultiCityResult> {
+  const multi = JSON.stringify(legs.map(l => ({ departure_id: l.origin, arrival_id: l.destination, date: l.date })));
+  const resp = await callSerpApi({ type: '3', multi_city_json: multi });
+  const all = [...(resp.best_flights ?? []), ...(resp.other_flights ?? [])];
+  const pick = (onlyDirect: boolean): { price: number; airline: string | null } | null => {
+    let best: { price: number; airline: string | null } | null = null;
+    for (const f of all) {
+      if (f.price == null) continue;
+      if (onlyDirect && (f.flights?.length ?? 0) !== 1) continue;  // 第一段直飛
+      if (!best || f.price < best.price) best = { price: f.price, airline: f.flights?.[0]?.airline ?? null };
+    }
+    return best;
+  };
+  const best = pick(true) ?? pick(false);
+  return { cheapestTotal: best?.price ?? null, airline: best?.airline ?? null, serpapiCalls: 1 };
+}
+
 /**
  * 從原始 SerpApi response 裡挑「最便宜的廉航直飛 outbound」用來查 return。
  * 必須直飛（flights.length === 1），確保 return list 配對的是純廉航直飛 outbound。

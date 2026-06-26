@@ -193,18 +193,6 @@ export function AddWatchSheet({
   const canPreview = origin && destination && outboundDate && (isOneWay || returnDate)
     && (!openJaw || (!!returnOrigin && !!returnDestination));
 
-  const searchLeg = async (o: string, d: string, date: string) => {
-    const res = await fetch('/api/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      // 單程搜尋（不帶 returnDate）→ analysis.cheapestRoundTripPrice = 該段最低
-      body: JSON.stringify({ origin: o, destination: d, outboundDate: date })
-    });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || '查詢失敗');
-    return { price: data.analysis?.cheapestRoundTripPrice ?? null, airline: data.analysis?.cheapestAirline ?? null, fromCache: data.fromCache === true, outbound: data.outbound ?? [] };
-  };
-
   const handlePreview = async () => {
     if (!canPreview) return;
     setPreviewing(true);
@@ -212,16 +200,23 @@ export function AddWatchSheet({
     setError(null);
     try {
       if (openJaw) {
-        // 開口式：去段 + 回段各自單程搜尋，合併價相加
-        const [out, back] = await Promise.all([
-          searchLeg(origin, destination, outboundDate),
-          searchLeg(returnOrigin, returnDestination, returnDate)
-        ]);
-        const combined = (out.price != null && back.price != null) ? out.price + back.price : null;
+        // 開口式：真・多城市單一票（一次 multi-city 搜尋）→ 整程最低總價
+        const res = await fetch('/api/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            legs: [
+              { origin, destination, date: outboundDate },
+              { origin: returnOrigin, destination: returnDestination, date: returnDate }
+            ]
+          })
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || '查詢失敗');
         setPreview({
-          lowestPrice: combined,
-          airline: combined != null ? `去 ${out.airline ?? '—'}・回 ${back.airline ?? '—'}` : null,
-          fromCache: out.fromCache && back.fromCache
+          lowestPrice: data.cheapestTotal ?? null,
+          airline: data.cheapestTotal != null ? `多城市一張票（${data.airline ?? '—'} 起）` : null,
+          fromCache: false
         });
         // 開口式不釘選特定航班 → 不抽航班清單
         setFlightRows([]);

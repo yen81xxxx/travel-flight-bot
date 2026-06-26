@@ -265,8 +265,8 @@ describe('AddWatchSheet — 開口式來回（0015）', () => {
     });
   });
 
-  it('開口式：預覽鈕在 → 兩段各自單程搜尋、顯示合併價', async () => {
-    responses.search = { ok: true, analysis: { cheapestRoundTripPrice: 5000, cheapestAirline: '樂桃' }, fromCache: true };
+  it('開口式：預覽鈕在 → 一次 multi-city 搜尋（legs）、顯示整程單一票總價', async () => {
+    responses.search = { ok: true, multiCity: true, cheapestTotal: 18683, airline: '中華航空' };
     const { getByLabelText, getByRole, getByTestId, container } = render(
       <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
     );
@@ -276,12 +276,15 @@ describe('AddWatchSheet — 開口式來回（0015）', () => {
     const previewBtn = getByRole('button', { name: /查目前最低價/ });
     expect(previewBtn).not.toBeDisabled();
     fireEvent.click(previewBtn);
-    // 兩段各自打 /api/search（單程，不帶 returnDate）+ 合併價 = 5000 + 5000 = 10000
+    // 一次 /api/search 帶 legs（去 + 回，各帶 date、無 returnDate）→ 顯示整程總價 18,683
     await waitFor(() => {
       const searchCalls = (global.fetch as unknown as jest.Mock).mock.calls.filter(c => c[0] === '/api/search');
-      expect(searchCalls.length).toBe(2);
-      for (const c of searchCalls) expect(JSON.parse(c[1].body).returnDate).toBeUndefined();
-      expect(container.textContent).toContain('10,000');
+      expect(searchCalls.length).toBe(1);
+      const body = JSON.parse(searchCalls[0][1].body);
+      expect(body.legs).toHaveLength(2);
+      expect(body.legs[0]).toMatchObject({ origin: 'TPE', destination: 'NRT', date: '2026-09-01' });
+      expect(body.legs[1]).toMatchObject({ origin: 'NRT', destination: 'TPE', date: '2026-09-05' });
+      expect(container.textContent).toContain('18,683');
     });
   });
 });
