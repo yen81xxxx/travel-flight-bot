@@ -189,7 +189,7 @@ export function AddWatchSheet({
   const jpRegions = groupJpByRegion();
 
   // === preview 邏輯 ===
-  // 開口式：要回程兩地點都選了才能查（查價會分兩段各自單程搜尋再相加）
+  // 開口式：要回程兩地點都選了才能查（查價是一次 multi-city 搜尋 → 整程一張票最低總價）
   const canPreview = origin && destination && outboundDate && (isOneWay || returnDate)
     && (!openJaw || (!!returnOrigin && !!returnDestination));
 
@@ -215,7 +215,7 @@ export function AddWatchSheet({
         if (!data.ok) throw new Error(data.error || '查詢失敗');
         setPreview({
           lowestPrice: data.cheapestTotal ?? null,
-          airline: data.cheapestTotal != null ? `多城市一張票（${data.airline ?? '—'} 起）` : null,
+          airline: data.cheapestTotal != null ? `一張多城市票・${data.airline ?? '—'} 起` : null,
           fromCache: false
         });
         // 開口式不釘選特定航班 → 不抽航班清單
@@ -477,7 +477,7 @@ export function AddWatchSheet({
                       jpRegions={jpRegions}
                     />
                   </div>
-                  <p className="openjaw-hint">開口式會分兩段各自追蹤、合併顯示總價。查價時兩段各自搜尋再相加（不支援釘選特定航班）。</p>
+                  <p className="openjaw-hint">開口式 = 一張多城市票（去 + 回兩段同一張機票），查價直接抓整程最低總價（不支援釘選特定航班）。</p>
                 </>
               )}
             </div>
@@ -514,7 +514,7 @@ export function AddWatchSheet({
             </div>
           )}
 
-          {/* === Preview button + result（開口式 = 兩段各自單程搜尋相加） === */}
+          {/* === Preview button + result（開口式 = 一次 multi-city 搜尋，整程一張票） === */}
           <div className="preview-box">
             {!preview ? (
               <button
@@ -534,6 +534,12 @@ export function AddWatchSheet({
                   {preview.lowestPrice != null ? `NT$ ${preview.lowestPrice.toLocaleString()}` : '查無資料'}
                 </div>
                 {preview.airline && <div className="pr-airline">{preview.airline}</div>}
+                {/* 開口式：標清這張票涵蓋「去 + 回」兩段（避免誤會成只有一個航班） */}
+                {openJaw && preview.lowestPrice != null && (
+                  <div className="pr-legs tnum" data-testid="pr-legs">
+                    去 {origin}→{destination} · 回 {returnOrigin}→{returnDestination}
+                  </div>
+                )}
                 <button type="button" className="pr-redo" onClick={() => setPreview(null)}>
                   重新查
                 </button>
@@ -1083,6 +1089,12 @@ export function AddWatchSheet({
         .pr-airline {
           font-size: 12px;
           color: var(--ios-label-2);
+        }
+        .pr-legs {
+          font-size: 11.5px;
+          color: var(--ios-label-3);
+          margin-top: 3px;
+          letter-spacing: 0.2px;
         }
         .pr-redo {
           position: absolute;
