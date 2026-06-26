@@ -35,6 +35,13 @@
   --ios-separator-2: rgba(84, 84, 88, 0.45);
   --ios-hairline: rgba(84, 84, 88, 0.35);
 
+  /* frosted glass material — iOS「厚材質」毛玻璃（sheet 面板、未來的 sticky nav）。
+     高不透明度（不是純透明）+ blur + saturate，才有 iOS 那種半透明又看得清內容的質感。
+     不支援 backdrop-filter 的瀏覽器：--glass-bg 本身就夠不透明，退化成半透明底也 OK。 */
+  --glass-bg: rgba(28, 28, 30, 0.72);
+  --glass-blur: saturate(180%) blur(20px);
+  --glass-hairline: rgba(255, 255, 255, 0.08);
+
   /* legacy aliases — kept for SubscriptionsViewV2 backward compatibility,
      remove once PR 3/4 finishes migrating consumers to the canonical names */
   --ios-bg-grouped: #1c1c1e;
@@ -96,6 +103,10 @@
   --ios-separator: rgba(60, 60, 67, 0.36);
   --ios-separator-2: rgba(60, 60, 67, 0.24);
   --ios-hairline: rgba(60, 60, 67, 0.18);
+
+  /* frosted glass material — 淺色版（白材質） */
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-hairline: rgba(0, 0, 0, 0.06);
 
   /* legacy aliases */
   --ios-bg-grouped: #f2f2f7;

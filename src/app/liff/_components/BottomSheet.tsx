@@ -98,9 +98,14 @@ export function BottomSheet({ open, onClose, title, subtitle, headerRight, child
           position: absolute;
           left: 0; right: 0; bottom: 0;
           max-height: 92vh;
-          background: var(--ios-bg-secondary);
+          /* iOS 毛玻璃面板：半透明材質 + 背景模糊，後面被遮罩壓暗的清單會朦朧透出來 */
+          background: var(--glass-bg);
+          backdrop-filter: var(--glass-blur);
+          -webkit-backdrop-filter: var(--glass-blur);
           color: var(--ios-label);
           border-radius: 22px 22px 0 0;
+          /* 頂緣一道極細高光 — iOS 材質邊緣的招牌細節（不佔版面，用 inset shadow） */
+          box-shadow: inset 0 0.5px 0 var(--glass-hairline);
           transform: translateY(100%);
           transition: transform 0.28s cubic-bezier(0.32, 0.72, 0.16, 1);
           display: flex;
