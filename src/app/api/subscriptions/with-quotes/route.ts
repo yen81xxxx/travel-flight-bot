@@ -17,10 +17,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
 import { getCityAirports } from '@/config/airports';
+import { isOpenJaw } from '@/lib/cron-items-mapper';
 import type { Subscription, FlightQuote } from '@/types';
 import type { WatchWithQuote } from '@/app/liff/_types';
 import {
   buildWatchQuote,
+  buildOpenJawWatchQuote,
   type QuoteSourceData,
   type AirportFlights
 } from './quote-builder';
@@ -146,6 +148,9 @@ async function computeQuoteForSub(
 ) {
   if (!sub.outbound_date) return null; // 任何日期型訂閱，本 endpoint 還不支援 — frontend 降級
 
+  // 開口式：報價是「整張多城市票」總價（cron 存進 flight_quotes，return_origin/dest 有值那種）
+  if (isOpenJaw(sub)) return computeOpenJawQuoteForSub(supabase, sub, days);
+
   const destinations = getCityAirports(sub.destination);
   const now = Date.now();
 
@@ -218,4 +223,57 @@ async function computeQuoteForSub(
 
   const src: QuoteSourceData = { recentByAirport, weekAgoMin, daily };
   return buildWatchQuote(sub, src);
+}
+
+/**
+ * 開口式 quote：報價是「整張多城市票」總價（cron 用 searchMultiCity 存進 flight_quotes，
+ * return_origin/return_destination 有值那種）。算 currentBest（近 6h 最低）+ 走勢 + delta。
+ * 沒料 → null（前端「監控中」）。
+ */
+async function computeOpenJawQuoteForSub(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  sub: Subscription,
+  days: number
+) {
+  const now = Date.now();
+  const recent6hSince = new Date(now - SIX_HOURS).toISOString();
+  const weekAgoStart = new Date(now - 8 * ONE_DAY).toISOString();
+  const weekAgoEnd = new Date(now - 6 * ONE_DAY).toISOString();
+  const historySince = new Date(now - days * ONE_DAY).toISOString();
+
+  const ojFilter = (q: ReturnType<typeof supabase['from']>) =>
+    q.eq('origin', sub.origin).eq('destination', sub.destination)
+      .eq('outbound_date', sub.outbound_date).eq('return_date', sub.return_date)
+      .eq('return_origin', sub.return_origin).eq('return_destination', sub.return_destination)
+      .eq('stops', 0).not('price', 'is', null);
+
+  const [recentRes, weekRes, historyRes] = await Promise.all([
+    ojFilter(supabase.from('flight_quotes').select('price, airline')).gte('queried_at', recent6hSince),
+    ojFilter(supabase.from('flight_quotes').select('price')).gte('queried_at', weekAgoStart).lt('queried_at', weekAgoEnd),
+    ojFilter(supabase.from('flight_quotes').select('queried_at, price')).gte('queried_at', historySince)
+  ]);
+  if (recentRes.error) console.warn('[with-quotes] open-jaw recent err:', recentRes.error.message);
+
+  let recentMin: number | null = null;
+  let recentAirline: string | null = null;
+  for (const r of (recentRes.data ?? []) as { price: number | null; airline: string | null }[]) {
+    if (r.price != null && (recentMin == null || r.price < recentMin)) { recentMin = r.price; recentAirline = r.airline; }
+  }
+  let weekAgoMin: number | null = null;
+  for (const r of (weekRes.data ?? []) as { price: number | null }[]) {
+    if (r.price != null && (weekAgoMin == null || r.price < weekAgoMin)) weekAgoMin = r.price;
+  }
+  const byDay = new Map<string, number>();
+  for (const r of (historyRes.data ?? []) as { queried_at: string; price: number | null }[]) {
+    if (r.price == null) continue;
+    const day = r.queried_at.slice(0, 10);
+    const cur = byDay.get(day);
+    if (cur == null || r.price < cur) byDay.set(day, r.price);
+  }
+  const daily = Array.from(byDay.entries())
+    .map(([date, minPrice]) => ({ date, minPrice }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  return buildOpenJawWatchQuote(sub, { recentMin, recentAirline, weekAgoMin, daily });
 }

@@ -291,4 +291,44 @@ describe('WatchCard — 開口式來回（0015）', () => {
     const { queryByTestId } = render(<WatchCard watch={baseWatch} onOpen={() => {}} />);
     expect(queryByTestId('oj-pill')).toBeNull();
   });
+
+  it('quote.openJaw 有值 → 航司列顯示「多城市票・航司 起」而非廉/傳', () => {
+    const w: WatchItem = {
+      ...baseWatch,
+      destination: 'NRT',
+      return_origin: 'HND',
+      return_destination: 'TSA',
+      quote: {
+        currentBest: 18683,
+        currentType: 'lcc',  // placeholder — openJaw marker 才是判斷依據
+        lcc: null,
+        trad: null,
+        deltaPct: null,
+        history: [],
+        openJaw: { airline: '中華航空' }
+      }
+    };
+    const { container } = render(<WatchCard watch={w} onOpen={() => {}} />);
+    expect(container.textContent).toContain('多城市票');
+    expect(container.textContent).toContain('中華航空');
+    expect(container.textContent).toContain('18,683');
+    // 不該誤標廉航 / 傳統
+    expect(container.textContent).not.toContain('廉航');
+    expect(container.textContent).not.toContain('傳統');
+  });
+
+  it('quote.openJaw.airline=null → 顯示 dash 不 crash', () => {
+    const w: WatchItem = {
+      ...baseWatch,
+      return_origin: 'HND',
+      return_destination: 'TSA',
+      quote: {
+        currentBest: 18683, currentType: 'lcc', lcc: null, trad: null,
+        deltaPct: null, history: [], openJaw: { airline: null }
+      }
+    };
+    const { container } = render(<WatchCard watch={w} onOpen={() => {}} />);
+    expect(container.textContent).toContain('多城市票');
+    expect(container.textContent).toContain('—');
+  });
 });

@@ -17,11 +17,13 @@
  */
 import {
   buildWatchQuote,
+  buildOpenJawWatchQuote,
   formatShortDate,
   dailyToHistory,
   computeDeltaPct,
   computeDaysUntil,
-  type QuoteSourceData
+  type QuoteSourceData,
+  type OpenJawQuoteSource
 } from '../quote-builder';
 import type { Subscription, FlightQuote } from '@/types';
 import { MIN_POINTS } from '@/app/liff/_lib/priceIntel';
@@ -288,6 +290,71 @@ describe('buildWatchQuote — 單程訂閱', () => {
     if (q?.lcc) {
       expect(q.lcc.ret).toBeNull();
     }
+  });
+});
+
+describe('buildOpenJawWatchQuote — 開口式多城市單一票', () => {
+  // 開口式 sub：去 TPE→NRT 1/29、回 HND→TSA 2/5
+  const ojSub: Subscription = {
+    ...baseSub,
+    origin: 'TPE',
+    destination: 'NRT',
+    outbound_date: '2026-01-29',
+    return_date: '2026-02-05',
+    return_origin: 'HND',
+    return_destination: 'TSA'
+  };
+
+  it('沒近 6h 報價 (recentMin=null) → null（前端降級「監控中」）', () => {
+    const src: OpenJawQuoteSource = { recentMin: null, recentAirline: null, weekAgoMin: null, daily: [] };
+    expect(buildOpenJawWatchQuote(ojSub, src)).toBeNull();
+  });
+
+  it('有整程報價 → currentBest=整程總價、openJaw marker 帶航司、lcc/trad 皆 null', () => {
+    const src: OpenJawQuoteSource = {
+      recentMin: 18683,
+      recentAirline: '中華航空',
+      weekAgoMin: null,
+      daily: []
+    };
+    const q = buildOpenJawWatchQuote(ojSub, src);
+    expect(q).not.toBeNull();
+    expect(q!.currentBest).toBe(18683);
+    expect(q!.lcc).toBeNull();
+    expect(q!.trad).toBeNull();
+    // openJaw marker 是 WatchCard 判斷「畫多城市票・航司」而非廉/傳的依據
+    expect(q!.openJaw).toEqual({ airline: '中華航空' });
+  });
+
+  it('整程價走勢 + delta 照算（用存的整程價，不分機場）', () => {
+    const src: OpenJawQuoteSource = {
+      recentMin: 18000,
+      recentAirline: '中華航空',
+      weekAgoMin: 20000,  // 一週前較貴
+      daily: [
+        { date: '2026-06-20', minPrice: 21000 },
+        { date: '2026-06-21', minPrice: 18000 }
+      ]
+    };
+    const q = buildOpenJawWatchQuote(ojSub, src);
+    // (18000 - 20000) / 20000 * 100 = -10 → 便宜了 10%
+    expect(q!.deltaPct).toBe(-10);
+    expect(q!.history).toEqual([
+      { d: '6/20', p: 21000 },
+      { d: '6/21', p: 18000 }
+    ]);
+  });
+
+  it('航司可為 null（SerpApi 沒回航司）→ openJaw.airline=null（卡片顯示 dash）', () => {
+    const src: OpenJawQuoteSource = { recentMin: 18683, recentAirline: null, weekAgoMin: null, daily: [] };
+    const q = buildOpenJawWatchQuote(ojSub, src);
+    expect(q!.openJaw).toEqual({ airline: null });
+  });
+
+  it('quote 內含 intel 欄位（跟一般 quote 一致，不能漏）', () => {
+    const src: OpenJawQuoteSource = { recentMin: 18683, recentAirline: '中華航空', weekAgoMin: null, daily: [] };
+    const q = buildOpenJawWatchQuote(ojSub, src);
+    expect(q!.intel).toBeDefined();
   });
 });
 

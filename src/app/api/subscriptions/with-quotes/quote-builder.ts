@@ -169,6 +169,35 @@ export function buildWatchQuote(
   };
 }
 
+/** 開口式（multi-city）的 source — 整程價（非分機場），from with-quotes route. */
+export interface OpenJawQuoteSource {
+  recentMin: number | null;
+  recentAirline: string | null;
+  weekAgoMin: number | null;
+  daily: { date: string; minPrice: number }[];
+}
+
+/**
+ * 開口式（multi-city）的 WatchQuote：currentBest = 整張多城市票最低總價，沒有 lcc/trad 分類。
+ * 走勢 / delta / intel 跟一般一樣算（用存的整程價）。沒料 → null（前端「監控中」）。
+ */
+export function buildOpenJawWatchQuote(sub: Subscription, src: OpenJawQuoteSource): WatchQuote | null {
+  if (src.recentMin == null) return null;
+  const history = dailyToHistory(src.daily);
+  const deltaPct = computeDeltaPct(src.recentMin, src.weekAgoMin);
+  const intel = computePriceIntel(history, src.recentMin, Number(sub.max_price), computeDaysUntil(sub.outbound_date), deltaPct);
+  return {
+    currentBest: src.recentMin,
+    currentType: 'lcc',          // placeholder；openJaw marker 讓 WatchCard 知道是多城市票（不顯示廉/傳）
+    lcc: null,
+    trad: null,
+    deltaPct,
+    history,
+    intel,
+    openJaw: { airline: src.recentAirline }
+  };
+}
+
 /**
  * 從 outbound_date 算還剩幾天。null / 壞日期 → null（前端會跳過 days reason）。
  * 純字串切，不靠 Date 解析 → 避免 UTC vs local 時區把今天算成明天。

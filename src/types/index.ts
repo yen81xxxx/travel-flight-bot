@@ -19,6 +19,11 @@ export interface FlightQuote {
   stops: number;
   flight_type: FlightType;
   trip_leg: TripLeg;
+  // 開口式 multi-city 整程報價（0016）：回段路線。一般報價兩欄皆 null。
+  // 開口式報價：price = 整程總價、origin/dest/outbound = 去段、return_date = 回段日、
+  // return_origin/return_destination = 回段路線。
+  return_origin?: string | null;
+  return_destination?: string | null;
   raw?: unknown;
   queried_at?: string;
 }
