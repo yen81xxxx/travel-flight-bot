@@ -164,16 +164,48 @@ export interface MultiCityResult {
   cheapestTotal: number | null;
   /** 最低那張票第一段的航司（顯示用） */
   airline: string | null;
+  fromCache: boolean;
   serpapiCalls: number;
+}
+
+/** 開口式 2 段 → 讀 6h 內的整程報價快取（flight_quotes 裡 return_origin/dest 有值那種）。*/
+async function readMultiCityCache(legs: MultiCityLeg[]): Promise<{ price: number; airline: string | null } | null> {
+  const [out, back] = legs;
+  const cutoff = new Date(Date.now() - CACHE_TTL_HOURS * 3600 * 1000).toISOString();
+  const { data, error } = await getSupabase()
+    .from('flight_quotes')
+    .select('price, airline')
+    .eq('origin', out.origin).eq('destination', out.destination).eq('outbound_date', out.date)
+    .eq('return_date', back.date).eq('return_origin', back.origin).eq('return_destination', back.destination)
+    .eq('stops', 0).not('price', 'is', null).gte('queried_at', cutoff)
+    .order('price', { ascending: true }).limit(1);
+  if (error || !data || data.length === 0) return null;
+  return { price: data[0].price as number, airline: (data[0].airline as string | null) ?? null };
+}
+
+/** 把開口式整程最低價存進 flight_quotes（=歷史來源 + 之後 6h 快取）。*/
+async function storeMultiCityQuote(legs: MultiCityLeg[], best: { price: number; airline: string | null }): Promise<void> {
+  const [out, back] = legs;
+  const { error } = await getSupabase().from('flight_quotes').insert({
+    origin: out.origin, destination: out.destination, outbound_date: out.date,
+    return_date: back.date, return_origin: back.origin, return_destination: back.destination,
+    airline: best.airline, airline_code: null, price: best.price, currency: 'TWD',
+    duration_minutes: null, stops: 0, flight_type: 'best', trip_leg: 'outbound', raw: null
+  });
+  if (error) console.error('[serpapi] failed to cache multi-city quote:', error.message);
 }
 
 /**
  * 開口式 = 真・多城市單一票（SerpApi type=3 + multi_city_json）。
  * 回傳整個行程的最低總價（Google Flights 對「選了第一段」算的整程估價）。
  * 偏好第一段直飛（flights.length===1）— 跟全站「只直飛」一致；沒有直飛才退回全部。
- * 一次 SerpApi call（用第一段卡片上的整程估價，不再為了拿第二段細節多打一次）。
+ * 2 段（開口式）會走 6h 快取（讀）+ 把結果存進 flight_quotes（寫，給歷史走勢用）。
  */
 export async function searchMultiCity(legs: MultiCityLeg[]): Promise<MultiCityResult> {
+  if (legs.length === 2) {
+    const cached = await readMultiCityCache(legs);
+    if (cached) return { cheapestTotal: cached.price, airline: cached.airline, fromCache: true, serpapiCalls: 0 };
+  }
   const multi = JSON.stringify(legs.map(l => ({ departure_id: l.origin, arrival_id: l.destination, date: l.date })));
   const resp = await callSerpApi({ type: '3', multi_city_json: multi });
   const all = [...(resp.best_flights ?? []), ...(resp.other_flights ?? [])];
@@ -187,7 +219,8 @@ export async function searchMultiCity(legs: MultiCityLeg[]): Promise<MultiCityRe
     return best;
   };
   const best = pick(true) ?? pick(false);
-  return { cheapestTotal: best?.price ?? null, airline: best?.airline ?? null, serpapiCalls: 1 };
+  if (legs.length === 2 && best) await storeMultiCityQuote(legs, best);
+  return { cheapestTotal: best?.price ?? null, airline: best?.airline ?? null, fromCache: false, serpapiCalls: 1 };
 }
 
 /**

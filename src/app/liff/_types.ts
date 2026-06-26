@@ -52,6 +52,11 @@ export interface WatchQuote {
    * 沒必要為了 backward-compat 強行寫 null。
    */
   intel?: PriceIntel | null;
+  /**
+   * 開口式 multi-city（0016）：有值 → currentBest 是「整張多城市票」的總價，
+   * 沒有廉/傳分類（lcc/trad 皆 null）。WatchCard 用這個標「多城市票・航司」。
+   */
+  openJaw?: { airline: string | null } | null;
 }
 
 // PriceIntel 來自 priceIntel 模組，先 import 才能在 WatchQuote 內用，

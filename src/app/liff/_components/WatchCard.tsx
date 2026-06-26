@@ -86,7 +86,15 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
   // === 航司 label ===
   let carrierLabel: React.ReactNode = null;
   if (w.quote) {
-    if (w.quote.currentType === 'lcc' && w.quote.lcc) {
+    if (w.quote.openJaw) {
+      // 開口式：currentBest 是整張多城市票總價，沒廉/傳分類 → 標「多城市票・航司 起」
+      carrierLabel = (
+        <>
+          <span className="wc-ctag oj">多城市票</span>
+          {w.quote.openJaw.airline ?? '—'} 起
+        </>
+      );
+    } else if (w.quote.currentType === 'lcc' && w.quote.lcc) {
       const { out, ret } = w.quote.lcc;
       carrierLabel = (
         <>
@@ -416,6 +424,10 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
         .wc-ctag.trad {
           background: rgba(255, 214, 10, 0.18);
           color: var(--ios-yellow);
+        }
+        .wc-ctag.oj {
+          background: rgba(10, 132, 255, 0.16);
+          color: var(--ios-blue);
         }
         .wc-spark-wrap {
           display: flex;
