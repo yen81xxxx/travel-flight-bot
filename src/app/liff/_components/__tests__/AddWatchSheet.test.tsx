@@ -325,4 +325,66 @@ describe('AddWatchSheet — 開口式來回（0015）', () => {
     expect(rows[0].textContent).toContain('最低');
     expect(rows[0].textContent).toContain('中華航空');
   });
+
+  it('開口式：點一組組合 → 釘該去程班、目標價帶整趟總價、submit 送 pinnedFlightNumbers', async () => {
+    responses.search = {
+      ok: true, multiCity: true, cheapestTotal: 18683, airline: '中華航空',
+      options: [
+        { airline: '中華航空', flightNumber: 'CI 100', time: '08:30', price: 18683 },
+        { airline: '長榮航空', flightNumber: 'BR 198', time: '10:15', price: 19050 }
+      ]
+    };
+    responses.subscriptions = { ok: true, action: 'created' };
+    const { getByLabelText, getByRole, getByText, getByTestId, getAllByTestId, container } = render(
+      <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
+    );
+    fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
+    fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
+    fireEvent.click(getByTestId('openjaw-toggle'));
+    fireEvent.click(getByRole('button', { name: /查目前最低價/ }));
+    await waitFor(() => expect(getByTestId('mc-list')).toBeInTheDocument());
+
+    // 點第二組（長榮 BR 198 / 整趟 19,050）→ 該列選取、底部顯示已選
+    fireEvent.click(getAllByTestId('mc-row')[1]);
+    expect(getAllByTestId('mc-row')[1].className).toContain('on');
+    expect(container.textContent).toContain('已選追蹤');
+    expect(container.textContent).toContain('長榮航空');
+
+    // submit → 帶 pinnedFlightNumbers=['BR 198']、目標價=整趟 19050、開口式回段
+    fireEvent.click(getByText('開始追蹤'));
+    await waitFor(() => {
+      const postCall = (global.fetch as unknown as jest.Mock).mock.calls.find(c => c[0] === '/api/subscriptions');
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body);
+      expect(body.pinnedFlightNumbers).toEqual(['BR 198']);
+      expect(body.pinnedFlightLabels[0]).toContain('長榮航空');
+      expect(body.maxPrice).toBe(19050);
+      expect(body.returnOrigin).toBe('NRT');
+      expect(body.returnDestination).toBe('TPE');
+    });
+  });
+
+  it('開口式：再點同一組 → 取消釘選（改追整程最低）', async () => {
+    responses.search = {
+      ok: true, multiCity: true, cheapestTotal: 18683, airline: '中華航空',
+      options: [
+        { airline: '中華航空', flightNumber: 'CI 100', time: '08:30', price: 18683 },
+        { airline: '長榮航空', flightNumber: 'BR 198', time: '10:15', price: 19050 }
+      ]
+    };
+    const { getByLabelText, getByRole, getByTestId, getAllByTestId, container } = render(
+      <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
+    );
+    fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
+    fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
+    fireEvent.click(getByTestId('openjaw-toggle'));
+    fireEvent.click(getByRole('button', { name: /查目前最低價/ }));
+    await waitFor(() => expect(getByTestId('mc-list')).toBeInTheDocument());
+    const row = () => getAllByTestId('mc-row')[1];
+    fireEvent.click(row());                       // 選
+    expect(row().className).toContain('on');
+    fireEvent.click(row());                       // 再點 → 取消
+    expect(row().className).not.toContain('on');
+    expect(container.textContent).not.toContain('已選追蹤');
+  });
 });

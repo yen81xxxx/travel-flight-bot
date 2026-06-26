@@ -24,6 +24,9 @@ export interface FlightQuote {
   // return_origin/return_destination = 回段路線。
   return_origin?: string | null;
   return_destination?: string | null;
+  // 開口式「釘去程班」報價（0017）：這筆整趟價是釘哪個去程班號（例 'CI 106'）。
+  // NULL = 一般 / 最便宜組合的報價（追整程最低那種）。釘班 sub 各自存自己這欄、不互相覆蓋。
+  pinned_outbound_flight?: string | null;
   raw?: unknown;
   queried_at?: string;
 }

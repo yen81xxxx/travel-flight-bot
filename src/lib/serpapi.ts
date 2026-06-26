@@ -201,7 +201,10 @@ function buildMultiCityOptions(all: SerpApiFlight[], limit = 8): MultiCityOption
   return Array.from(byFlight.values()).sort((a, b) => a.price - b.price).slice(0, limit);
 }
 
-/** 開口式 2 段 → 讀 6h 內的整程報價快取（flight_quotes 裡 return_origin/dest 有值那種）。*/
+/**
+ * 開口式 2 段 → 讀 6h 內的整程報價快取（flight_quotes 裡 return_origin/dest 有值那種）。
+ * 只讀「未釘班」那種（pinned_outbound_flight IS NULL）— 釘班 sub 各自存自己的價，不能混。
+ */
 async function readMultiCityCache(legs: MultiCityLeg[]): Promise<{ price: number; airline: string | null } | null> {
   const [out, back] = legs;
   const cutoff = new Date(Date.now() - CACHE_TTL_HOURS * 3600 * 1000).toISOString();
@@ -210,20 +213,28 @@ async function readMultiCityCache(legs: MultiCityLeg[]): Promise<{ price: number
     .select('price, airline')
     .eq('origin', out.origin).eq('destination', out.destination).eq('outbound_date', out.date)
     .eq('return_date', back.date).eq('return_origin', back.origin).eq('return_destination', back.destination)
-    .eq('stops', 0).not('price', 'is', null).gte('queried_at', cutoff)
+    .eq('stops', 0).is('pinned_outbound_flight', null).not('price', 'is', null).gte('queried_at', cutoff)
     .order('price', { ascending: true }).limit(1);
   if (error || !data || data.length === 0) return null;
   return { price: data[0].price as number, airline: (data[0].airline as string | null) ?? null };
 }
 
-/** 把開口式整程最低價存進 flight_quotes（=歷史來源 + 之後 6h 快取）。*/
-async function storeMultiCityQuote(legs: MultiCityLeg[], best: { price: number; airline: string | null }): Promise<void> {
+/**
+ * 把開口式整程價存進 flight_quotes（=歷史來源 + 之後 6h 快取）。
+ * pinnedOutboundFlight：釘了去程某班 → 存該班的整趟價，並標記是哪班（一般/最便宜的存 null）。
+ */
+async function storeMultiCityQuote(
+  legs: MultiCityLeg[],
+  best: { price: number; airline: string | null },
+  pinnedOutboundFlight: string | null = null
+): Promise<void> {
   const [out, back] = legs;
   const { error } = await getSupabase().from('flight_quotes').insert({
     origin: out.origin, destination: out.destination, outbound_date: out.date,
     return_date: back.date, return_origin: back.origin, return_destination: back.destination,
     airline: best.airline, airline_code: null, price: best.price, currency: 'TWD',
-    duration_minutes: null, stops: 0, flight_type: 'best', trip_leg: 'outbound', raw: null
+    duration_minutes: null, stops: 0, flight_type: 'best', trip_leg: 'outbound', raw: null,
+    pinned_outbound_flight: pinnedOutboundFlight
   });
   if (error) console.error('[serpapi] failed to cache multi-city quote:', error.message);
 }
@@ -236,11 +247,13 @@ async function storeMultiCityQuote(legs: MultiCityLeg[], best: { price: number; 
  */
 export async function searchMultiCity(
   legs: MultiCityLeg[],
-  opts?: { includeOptions?: boolean }
+  opts?: { includeOptions?: boolean; pinnedOutboundFlight?: string }
 ): Promise<MultiCityResult> {
+  const pinned = opts?.pinnedOutboundFlight;
   // includeOptions（預覽用）要列出完整「多組組合」→ 跳過 6h 快取（快取只存最便宜那一筆、沒有清單）。
-  // 每日 cron 不帶 includeOptions → 照舊吃快取、只要最便宜，配額不變。
-  if (legs.length === 2 && !opts?.includeOptions) {
+  // pinned（釘班）→ 也跳過：快取存的是「未釘班的最便宜」，跟釘的那班不同價。
+  // 每日 cron 一般開口式（不釘班）→ 照舊吃快取、配額不變。
+  if (legs.length === 2 && !opts?.includeOptions && !pinned) {
     const cached = await readMultiCityCache(legs);
     if (cached) return { cheapestTotal: cached.price, airline: cached.airline, options: [], fromCache: true, serpapiCalls: 0 };
   }
@@ -256,8 +269,17 @@ export async function searchMultiCity(
     }
     return best;
   };
-  const best = pick(true) ?? pick(false);
-  if (legs.length === 2 && best) await storeMultiCityQuote(legs, best);
+  // 釘班：只看去程班號 == pinned 的那組，取其整趟總價（當天沒這班 → null，前端降級「監控中」）
+  const pickPinned = (fn: string): { price: number; airline: string | null } | null => {
+    let best: { price: number; airline: string | null } | null = null;
+    for (const f of all) {
+      if (f.price == null || f.flights?.[0]?.flight_number !== fn) continue;
+      if (!best || f.price < best.price) best = { price: f.price, airline: f.flights?.[0]?.airline ?? null };
+    }
+    return best;
+  };
+  const best = pinned ? pickPinned(pinned) : (pick(true) ?? pick(false));
+  if (legs.length === 2 && best) await storeMultiCityQuote(legs, best, pinned ?? null);
   return {
     cheapestTotal: best?.price ?? null,
     airline: best?.airline ?? null,
