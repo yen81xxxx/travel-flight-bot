@@ -6,7 +6,7 @@
  * 對應 design_handoff_travl_vision/API_CONTRACT.md。
  *
  * 資料來源策略（PR #1 確認方案 B）：
- *   - currentBest/lcc/trad ← flight_quotes 過去 6h（cron 寫入的、跟卡片邏輯一致）
+ *   - currentBest/lcc/trad ← flight_quotes 最近一次每日報價（RECENT_WINDOW_MS，預設 30h）
  *   - deltaPct             ← 即時算：7 天前 ±1 天最低 vs 現在
  *   - history              ← 過去 N 天 (預設 30) 每日 minPrice，'M/D' 格式
  *
@@ -30,7 +30,11 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const SIX_HOURS = 6 * 3600 * 1000;
+// 「目前最低」往回看多久算「最近」。報價一天只刷一次（09:00 cron），所以這個視窗
+// 必須 > 一天，否則 cron 跑完 6h 後 recent 視窗就空了 → 卡片整晚掉回「報價更新中」。
+// 30h = 一天 + 6h 餘裕（cron 偶爾延遲也涵蓋）。真的超過 30h 沒新報價（cron 掛了）才降級
+// 成 null，那時顯示「報價更新中」反而是對的（資料真的舊了）。
+const RECENT_WINDOW_MS = 30 * 3600 * 1000;
 const ONE_DAY = 86400 * 1000;
 const DEFAULT_HISTORY_DAYS = 30;
 const MAX_HISTORY_DAYS = 90;
@@ -155,7 +159,7 @@ async function computeQuoteForSub(
   const now = Date.now();
 
   // 3 個範圍同時撈（這 3 個 query 都打同一個 table 但條件不同）
-  const recent6hSince = new Date(now - SIX_HOURS).toISOString();
+  const recentSince = new Date(now - RECENT_WINDOW_MS).toISOString();
   const weekAgoStart = new Date(now - 8 * ONE_DAY).toISOString(); // 7 天前 ±1 天
   const weekAgoEnd = new Date(now - 6 * ONE_DAY).toISOString();
   const historySince = new Date(now - days * ONE_DAY).toISOString();
@@ -172,9 +176,9 @@ async function computeQuoteForSub(
   };
 
   const [recentRes, weekRes, historyRes] = await Promise.all([
-    // recent 6h — 完整 row（要餵給 analyzeFlights）
+    // recent 視窗（預設 30h）— 完整 row（要餵給 analyzeFlights）
     baseFilter(supabase.from('flight_quotes').select('*'))
-      .gte('queried_at', recent6hSince),
+      .gte('queried_at', recentSince),
     // 7 天前 ±1 天 — 只要 price（算 weekAgoMin）
     baseFilter(supabase.from('flight_quotes').select('price'))
       .gte('queried_at', weekAgoStart)
@@ -227,7 +231,7 @@ async function computeQuoteForSub(
 
 /**
  * 開口式 quote：報價是「整張多城市票」總價（cron 用 searchMultiCity 存進 flight_quotes，
- * return_origin/return_destination 有值那種）。算 currentBest（近 6h 最低）+ 走勢 + delta。
+ * return_origin/return_destination 有值那種）。算 currentBest（RECENT_WINDOW_MS 內最低）+ 走勢 + delta。
  * 沒料 → null（前端「監控中」）。
  */
 async function computeOpenJawQuoteForSub(
@@ -237,7 +241,7 @@ async function computeOpenJawQuoteForSub(
   days: number
 ) {
   const now = Date.now();
-  const recent6hSince = new Date(now - SIX_HOURS).toISOString();
+  const recentSince = new Date(now - RECENT_WINDOW_MS).toISOString();
   const weekAgoStart = new Date(now - 8 * ONE_DAY).toISOString();
   const weekAgoEnd = new Date(now - 6 * ONE_DAY).toISOString();
   const historySince = new Date(now - days * ONE_DAY).toISOString();
@@ -249,7 +253,7 @@ async function computeOpenJawQuoteForSub(
       .eq('stops', 0).not('price', 'is', null);
 
   const [recentRes, weekRes, historyRes] = await Promise.all([
-    ojFilter(supabase.from('flight_quotes').select('price, airline')).gte('queried_at', recent6hSince),
+    ojFilter(supabase.from('flight_quotes').select('price, airline')).gte('queried_at', recentSince),
     ojFilter(supabase.from('flight_quotes').select('price')).gte('queried_at', weekAgoStart).lt('queried_at', weekAgoEnd),
     ojFilter(supabase.from('flight_quotes').select('queried_at, price')).gte('queried_at', historySince)
   ]);

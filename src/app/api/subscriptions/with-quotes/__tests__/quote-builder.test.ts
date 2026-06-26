@@ -305,7 +305,7 @@ describe('buildOpenJawWatchQuote — 開口式多城市單一票', () => {
     return_destination: 'TSA'
   };
 
-  it('沒近 6h 報價 (recentMin=null) → null（前端降級「監控中」）', () => {
+  it('沒最近報價 (recentMin=null) → null（前端降級「監控中」）', () => {
     const src: OpenJawQuoteSource = { recentMin: null, recentAirline: null, weekAgoMin: null, daily: [] };
     expect(buildOpenJawWatchQuote(ojSub, src)).toBeNull();
   });

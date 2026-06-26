@@ -26,7 +26,7 @@ export interface AirportFlights {
 
 /** Builder input — route.ts 撈完 DB 後填好這包傳進來 */
 export interface QuoteSourceData {
-  /** 過去 6h 內、按 fanout airport 分組的報價（東京 = HND + NRT 之類） */
+  /** 最近視窗內（route 的 RECENT_WINDOW_MS，預設 30h）、按 fanout airport 分組的報價（東京 = HND + NRT 之類） */
   recentByAirport: Map<string, AirportFlights>;
   /** 7 天前 ±1 天的最低價（不分類）— 算 deltaPct 用 */
   weekAgoMin: number | null;
