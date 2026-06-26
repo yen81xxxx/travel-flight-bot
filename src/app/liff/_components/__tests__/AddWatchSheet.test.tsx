@@ -286,5 +286,12 @@ describe('AddWatchSheet — 開口式來回（0015）', () => {
       expect(body.legs[1]).toMatchObject({ origin: 'NRT', destination: 'TPE', date: '2026-09-05' });
       expect(container.textContent).toContain('18,683');
     });
+    // 標清這是「一張多城市票」+ 帶頭航司（不再寫會誤會的「多城市一張票（…）」）
+    expect(container.textContent).toContain('一張多城市票');
+    expect(container.textContent).toContain('中華航空');
+    // 去 + 回兩段都標出來 → 使用者不會誤會成「只有一個航班」
+    const legs = getByTestId('pr-legs');
+    expect(legs.textContent).toContain('去 TPE→NRT');
+    expect(legs.textContent).toContain('回 NRT→TPE');
   });
 });
