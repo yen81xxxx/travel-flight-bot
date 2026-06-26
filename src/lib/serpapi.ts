@@ -159,13 +159,46 @@ export async function searchFlights(params: SearchParams): Promise<SearchResult>
 
 /** 開口式多城市搜尋的一段 */
 export interface MultiCityLeg { origin: string; destination: string; date: string; }
+/** 開口式查價列出的「一組來回組合」— 用去程那班當代表，price 是整趟（去+回一張票）總價 */
+export interface MultiCityOption {
+  airline: string | null;      // 去程帶頭航司
+  flightNumber: string | null; // 去程班號（之後釘選 / 追特定組合用）
+  time: string | null;         // 去程起飛 'HH:MM'
+  price: number;               // 整趟總價（含回程，Google 配最便宜的接）
+}
 export interface MultiCityResult {
   /** 整個開口式行程（同一張多城市票）的最低總價；查無 → null */
   cheapestTotal: number | null;
   /** 最低那張票第一段的航司（顯示用） */
   airline: string | null;
+  /** 多組「來回組合」清單（去程各班 + 各自整趟總價）。只有預覽 includeOptions 時才填。 */
+  options: MultiCityOption[];
   fromCache: boolean;
   serpapiCalls: number;
+}
+
+/**
+ * 從 multi-city response 的第一段選項，挑出「去程班 + 整趟總價」清單：
+ * 偏好去程直飛、依去程班號去重（取最低）、依總價升冪、取前 limit 筆。
+ */
+function buildMultiCityOptions(all: SerpApiFlight[], limit = 8): MultiCityOption[] {
+  const direct = all.filter(f => f.price != null && (f.flights?.length ?? 0) === 1);
+  const pool = direct.length > 0 ? direct : all.filter(f => f.price != null);
+  const byFlight = new Map<string, MultiCityOption>();
+  for (const f of pool) {
+    const leg0 = f.flights?.[0];
+    // 沒班號的用「航司@價格」當 key，避免不同班被誤併
+    const key = leg0?.flight_number ?? `${leg0?.airline ?? '—'}@${f.price}`;
+    const opt: MultiCityOption = {
+      airline: leg0?.airline ?? null,
+      flightNumber: leg0?.flight_number ?? null,
+      time: leg0?.departure_airport?.time?.slice(11, 16) ?? null,  // 'YYYY-MM-DD HH:MM' → 'HH:MM'
+      price: f.price as number
+    };
+    const ex = byFlight.get(key);
+    if (!ex || opt.price < ex.price) byFlight.set(key, opt);
+  }
+  return Array.from(byFlight.values()).sort((a, b) => a.price - b.price).slice(0, limit);
 }
 
 /** 開口式 2 段 → 讀 6h 內的整程報價快取（flight_quotes 裡 return_origin/dest 有值那種）。*/
@@ -201,10 +234,15 @@ async function storeMultiCityQuote(legs: MultiCityLeg[], best: { price: number; 
  * 偏好第一段直飛（flights.length===1）— 跟全站「只直飛」一致；沒有直飛才退回全部。
  * 2 段（開口式）會走 6h 快取（讀）+ 把結果存進 flight_quotes（寫，給歷史走勢用）。
  */
-export async function searchMultiCity(legs: MultiCityLeg[]): Promise<MultiCityResult> {
-  if (legs.length === 2) {
+export async function searchMultiCity(
+  legs: MultiCityLeg[],
+  opts?: { includeOptions?: boolean }
+): Promise<MultiCityResult> {
+  // includeOptions（預覽用）要列出完整「多組組合」→ 跳過 6h 快取（快取只存最便宜那一筆、沒有清單）。
+  // 每日 cron 不帶 includeOptions → 照舊吃快取、只要最便宜，配額不變。
+  if (legs.length === 2 && !opts?.includeOptions) {
     const cached = await readMultiCityCache(legs);
-    if (cached) return { cheapestTotal: cached.price, airline: cached.airline, fromCache: true, serpapiCalls: 0 };
+    if (cached) return { cheapestTotal: cached.price, airline: cached.airline, options: [], fromCache: true, serpapiCalls: 0 };
   }
   const multi = JSON.stringify(legs.map(l => ({ departure_id: l.origin, arrival_id: l.destination, date: l.date })));
   const resp = await callSerpApi({ type: '3', multi_city_json: multi });
@@ -220,7 +258,13 @@ export async function searchMultiCity(legs: MultiCityLeg[]): Promise<MultiCityRe
   };
   const best = pick(true) ?? pick(false);
   if (legs.length === 2 && best) await storeMultiCityQuote(legs, best);
-  return { cheapestTotal: best?.price ?? null, airline: best?.airline ?? null, fromCache: false, serpapiCalls: 1 };
+  return {
+    cheapestTotal: best?.price ?? null,
+    airline: best?.airline ?? null,
+    options: opts?.includeOptions ? buildMultiCityOptions(all) : [],
+    fromCache: false,
+    serpapiCalls: 1
+  };
 }
 
 /**

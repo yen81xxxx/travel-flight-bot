@@ -72,11 +72,16 @@ async function handlePost(req: NextRequest): Promise<NextResponse> {
   // === 開口式多城市模式：一張多城市票的整程最低總價 ===
   if (body.legs) {
     try {
-      const result = await searchMultiCity(body.legs.map(l => ({ origin: l.origin, destination: l.destination, date: l.date })));
+      // includeOptions：列出多組「來回組合」給預覽挑（預覽即時抓，不吃 6h 快取）
+      const result = await searchMultiCity(
+        body.legs.map(l => ({ origin: l.origin, destination: l.destination, date: l.date })),
+        { includeOptions: true }
+      );
       return NextResponse.json({
         ok: true, multiCity: true,
         cheapestTotal: result.cheapestTotal,
         airline: result.airline,
+        options: result.options,
         serpapiCalls: result.serpapiCalls
       });
     } catch (err) {

@@ -294,4 +294,35 @@ describe('AddWatchSheet — 開口式來回（0015）', () => {
     expect(legs.textContent).toContain('去 TPE→NRT');
     expect(legs.textContent).toContain('回 NRT→TPE');
   });
+
+  it('開口式：API 回多組 options → 列出「來回組合」清單（修「只有一筆」）', async () => {
+    responses.search = {
+      ok: true, multiCity: true, cheapestTotal: 18683, airline: '中華航空',
+      options: [
+        { airline: '中華航空', flightNumber: 'CI 100', time: '08:30', price: 18683 },
+        { airline: '長榮航空', flightNumber: 'BR 198', time: '10:15', price: 19050 },
+        { airline: '星宇航空', flightNumber: 'JX 820', time: '13:00', price: 19400 }
+      ]
+    };
+    const { getByLabelText, getByRole, getByTestId, getAllByTestId, container } = render(
+      <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
+    );
+    fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
+    fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
+    fireEvent.click(getByTestId('openjaw-toggle'));
+    fireEvent.click(getByRole('button', { name: /查目前最低價/ }));
+
+    // 清單出現、有 3 組（不再只有一筆）
+    await waitFor(() => expect(getByTestId('mc-list')).toBeInTheDocument());
+    const rows = getAllByTestId('mc-row');
+    expect(rows).toHaveLength(3);
+    // 三家航司 + 各自整趟總價都在
+    expect(container.textContent).toContain('長榮航空');
+    expect(container.textContent).toContain('星宇航空');
+    expect(container.textContent).toContain('19,050');
+    expect(container.textContent).toContain('19,400');
+    // 第一列（最便宜）標「最低」
+    expect(rows[0].textContent).toContain('最低');
+    expect(rows[0].textContent).toContain('中華航空');
+  });
 });
