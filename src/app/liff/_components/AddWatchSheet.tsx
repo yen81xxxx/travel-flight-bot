@@ -21,10 +21,19 @@ import { BottomSheet } from './BottomSheet';
 import { Icon } from './Icon';
 import { TW_ORIGINS, groupJpByRegion, isTaiwanAirport } from '@/config/airports';
 
+/** 開口式查價回來的「一組來回組合」（去程那班 + 整趟總價）。對齊 serpapi MultiCityOption。 */
+interface McOption {
+  airline: string | null;
+  flightNumber: string | null;
+  time: string | null;
+  price: number;
+}
 interface PreviewResult {
   lowestPrice: number | null;
   airline: string | null;
   fromCache: boolean;
+  /** 開口式才有：多組來回組合，給使用者看（之後可挑）。一般路線為空。 */
+  mcOptions?: McOption[];
 }
 
 interface Props {
@@ -216,9 +225,10 @@ export function AddWatchSheet({
         setPreview({
           lowestPrice: data.cheapestTotal ?? null,
           airline: data.cheapestTotal != null ? `一張多城市票・${data.airline ?? '—'} 起` : null,
-          fromCache: false
+          fromCache: false,
+          mcOptions: Array.isArray(data.options) ? (data.options as McOption[]) : []
         });
-        // 開口式不釘選特定航班 → 不抽航班清單
+        // 開口式不沿用普通路線的釘選清單（pin-box）；改用下面的「來回組合」清單
         setFlightRows([]);
         return;
       }
@@ -543,6 +553,24 @@ export function AddWatchSheet({
                 <button type="button" className="pr-redo" onClick={() => setPreview(null)}>
                   重新查
                 </button>
+
+                {/* 開口式：多組「來回組合」清單（去程各班 + 整趟總價）。
+                    回應 user「為何只有一筆」— 把查回來、本來只留最便宜的其他組合也列出來。 */}
+                {openJaw && preview.mcOptions && preview.mcOptions.length > 0 && (
+                  <div className="mc-list" data-testid="mc-list">
+                    <div className="mc-head">來回組合 · {preview.mcOptions.length} 組（去程班 ＋ 整趟總價）</div>
+                    {preview.mcOptions.map((o, i) => (
+                      <div key={o.flightNumber ?? i} className={`mc-row ${i === 0 ? 'cheapest' : ''}`} data-testid="mc-row">
+                        {i === 0 && <span className="mc-tag">最低</span>}
+                        <span className="mc-air">{o.airline ?? '—'}</span>
+                        {o.time && <span className="mc-time tnum">{o.time}</span>}
+                        {o.flightNumber && <span className="mc-no tnum">{o.flightNumber}</span>}
+                        <span className="mc-price tnum">NT${o.price.toLocaleString()}</span>
+                      </div>
+                    ))}
+                    <div className="mc-foot">每組用「去程那班」當代表，回程系統自動配最便宜。目前追整程最低；之後可點選追特定組合。</div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1105,6 +1133,57 @@ export function AddWatchSheet({
           color: var(--ios-blue);
           font-size: 12px;
           cursor: pointer;
+        }
+
+        /* 開口式「來回組合」清單 */
+        .mc-list {
+          margin-top: 12px;
+          padding-top: 10px;
+          border-top: 0.5px solid var(--ios-hairline);
+        }
+        .mc-head {
+          font-size: 11px;
+          color: var(--ios-label-3);
+          letter-spacing: 0.3px;
+          margin-bottom: 6px;
+        }
+        .mc-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 7px 8px;
+          border-radius: 8px;
+          background: var(--ios-fill-3);
+          margin-bottom: 4px;
+        }
+        .mc-row.cheapest { background: rgba(48, 209, 88, 0.12); }
+        .mc-tag {
+          font-size: 9.5px;
+          font-weight: 700;
+          color: var(--ios-green);
+          border: 0.5px solid var(--ios-green);
+          border-radius: 4px;
+          padding: 0 4px;
+          flex-shrink: 0;
+        }
+        .mc-air {
+          font-size: 12.5px;
+          font-weight: 600;
+          color: var(--ios-label);
+        }
+        .mc-time { font-size: 11.5px; color: var(--ios-label-2); }
+        .mc-no { font-size: 11px; color: var(--ios-label-3); }
+        .mc-price {
+          margin-left: auto;
+          font-size: 13px;
+          font-weight: 700;
+          color: var(--ios-label);
+        }
+        .mc-foot {
+          font-size: 10.5px;
+          color: var(--ios-label-3);
+          line-height: 1.5;
+          margin-top: 6px;
         }
 
         .notify-target {
