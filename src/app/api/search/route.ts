@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { searchFlights, searchMultiCity } from '@/lib/serpapi';
+import { searchFlights, searchMultiCity, searchOpenJawPaired } from '@/lib/serpapi';
 import { analyzeFlights, formatAnalysisForLine } from '@/lib/flights';
 import { pushText } from '@/lib/line';
 import { getSupabase } from '@/lib/supabase';
@@ -28,6 +28,8 @@ const SearchBody = z.object({
   returnDate: z.string().regex(ISO_DATE).optional(),
   // 開口式多城市模式：給 2 段（去/回 不同地點）→ 走 SerpApi multi-city，回傳整程最低總價
   legs: z.array(LegSchema).length(2).optional(),
+  // paired=true：開口式改「兩段配對」（去/回各查一次單程、配成對），回傳去+回完整航班的組合清單
+  paired: z.boolean().optional(),
   sourceId: z.string().optional()
 }).superRefine((d, ctx) => {
   if (d.legs) return;  // 多城市模式：legs 由 LegSchema 驗
@@ -67,6 +69,27 @@ async function handlePost(req: NextRequest): Promise<NextResponse> {
       { ok: false, error: 'Invalid request body', details: err instanceof Error ? err.message : String(err) },
       { status: 400 }
     );
+  }
+
+  // === 開口式：兩段配對（去/回各查一次單程，配成「去+回」對，看得到兩段完整航班）===
+  if (body.legs && body.paired) {
+    try {
+      const [out, back] = body.legs;
+      const r = await searchOpenJawPaired(
+        { origin: out.origin, destination: out.destination, date: out.date },
+        { origin: back.origin, destination: back.destination, date: back.date }
+      );
+      return NextResponse.json({
+        ok: true, paired: true,
+        cheapestTotal: r.cheapestTotal,
+        combos: r.combos,
+        serpapiCalls: r.serpapiCalls
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[api/search] open-jaw paired failed:', err);
+      return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    }
   }
 
   // === 開口式多城市模式：一張多城市票的整程最低總價 ===

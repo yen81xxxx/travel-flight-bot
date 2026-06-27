@@ -21,20 +21,28 @@ import { BottomSheet } from './BottomSheet';
 import { Icon } from './Icon';
 import { TW_ORIGINS, groupJpByRegion, isTaiwanAirport } from '@/config/airports';
 
-/** 開口式查價回來的「一組來回組合」（去程那班 + 整趟總價）。對齊 serpapi MultiCityOption。 */
-interface McOption {
+/** 開口式配對裡的一段航班（對齊 serpapi OpenJawLegFlight） */
+interface OjLegFlight {
   airline: string | null;
   flightNumber: string | null;
-  time: string | null;
+  origin: string | null;
+  destination: string | null;
+  depTime: string | null;
   arrTime: string | null;
   price: number;
+}
+/** 開口式「去+回」配對組合（對齊 serpapi OpenJawPairedCombo） */
+interface OjCombo {
+  out: OjLegFlight;
+  back: OjLegFlight;
+  total: number;
 }
 interface PreviewResult {
   lowestPrice: number | null;
   airline: string | null;
   fromCache: boolean;
-  /** 開口式才有：多組來回組合，給使用者看（之後可挑）。一般路線為空。 */
-  mcOptions?: McOption[];
+  /** 開口式才有：去/回兩段配對組合（每組都有去+回完整航班）。一般路線為空。 */
+  ojCombos?: OjCombo[];
 }
 
 interface Props {
@@ -211,11 +219,12 @@ export function AddWatchSheet({
     setError(null);
     try {
       if (openJaw) {
-        // 開口式：真・多城市單一票（一次 multi-city 搜尋）→ 整程最低總價
+        // 開口式：兩段配對（去/回各查一次單程，配成「去+回」對）→ 看得到兩段完整航班
         const res = await fetch('/api/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            paired: true,
             legs: [
               { origin, destination, date: outboundDate },
               { origin: returnOrigin, destination: returnDestination, date: returnDate }
@@ -226,11 +235,11 @@ export function AddWatchSheet({
         if (!data.ok) throw new Error(data.error || '查詢失敗');
         setPreview({
           lowestPrice: data.cheapestTotal ?? null,
-          airline: data.cheapestTotal != null ? `一張多城市票・${data.airline ?? '—'} 起` : null,
+          airline: data.cheapestTotal != null ? '去＋回 兩段相加（最便宜組合）' : null,
           fromCache: false,
-          mcOptions: Array.isArray(data.options) ? (data.options as McOption[]) : []
+          ojCombos: Array.isArray(data.combos) ? (data.combos as OjCombo[]) : []
         });
-        // 開口式不沿用普通路線的釘選清單（pin-box）；改用下面的「來回組合」清單
+        // 開口式不沿用普通路線的釘選清單（pin-box）；改用下面的「去+回配對」清單
         setFlightRows([]);
         return;
       }
@@ -556,51 +565,35 @@ export function AddWatchSheet({
                   重新查
                 </button>
 
-                {/* 開口式：多組「來回組合」清單（去程各班 + 整趟總價）。
-                    回應 user「為何只有一筆」— 把查回來、本來只留最便宜的其他組合也列出來。 */}
-                {openJaw && preview.mcOptions && preview.mcOptions.length > 0 && (
-                  <div className="mc-list" data-testid="mc-list">
-                    <div className="mc-head">來回組合 · {preview.mcOptions.length} 組（點一組＝只追那班；不點＝追整程最低）</div>
-                    {/* 去 / 回 地點（整條線都一樣，列在表頭）。時間：去程每列都標，回程系統配最便宜（multi-city 第一段沒回傳回程時間） */}
-                    <div className="mc-route tnum" data-testid="mc-route">
-                      去 {origin}→{destination} · 回 {returnOrigin}→{returnDestination}
-                    </div>
-                    {preview.mcOptions.map((o, i) => {
-                      const on = !!o.flightNumber && pinnedFlights.has(o.flightNumber);
-                      const timeStr = o.time ? (o.arrTime ? `${o.time}→${o.arrTime}` : o.time) : null;
-                      return (
-                        <button
-                          key={o.flightNumber ?? i}
-                          type="button"
-                          className={`mc-row ${i === 0 ? 'cheapest' : ''} ${on ? 'on' : ''}`}
-                          data-testid="mc-row"
-                          disabled={!o.flightNumber}
-                          onClick={() => {
-                            const fn = o.flightNumber;
-                            if (!fn) return;
-                            setPinnedFlights(prev => {
-                              // 開口式單選：再點同一班 → 取消（改追整程最低）；否則只留這班
-                              if (prev.has(fn)) return new Map();
-                              const label = `${o.airline ?? '—'}${timeStr ? ` · 去 ${timeStr}` : ''}`;
-                              setMaxPriceStr(String(o.price));
-                              return new Map([[fn, { label, price: o.price }]]);
-                            });
-                          }}
-                        >
-                          <Icon name={on ? 'check' : 'plus'} size={13} stroke={2.4} />
+                {/* 開口式：去+回「兩段配對」組合，每組都列去/回完整航班（地點、起降、班號） */}
+                {openJaw && preview.ojCombos && preview.ojCombos.length > 0 && (
+                  <div className="oj-list" data-testid="oj-list">
+                    <div className="mc-head">去＋回 組合 · {preview.ojCombos.length} 組（兩段相加；目前追最便宜那組）</div>
+                    {preview.ojCombos.map((c, i) => (
+                      <div key={i} className={`oj-combo ${i === 0 ? 'cheapest' : ''}`} data-testid="oj-combo">
+                        <div className="oj-legs">
+                          <div className="oj-leg">
+                            <span className="oj-dir out">去</span>
+                            <span className="oj-air">{c.out.airline ?? '—'}</span>
+                            <span className="oj-rt tnum">{c.out.origin}→{c.out.destination}</span>
+                            <span className="oj-tm tnum">{c.out.depTime}-{c.out.arrTime}</span>
+                            <span className="oj-no tnum">{c.out.flightNumber}</span>
+                          </div>
+                          <div className="oj-leg">
+                            <span className="oj-dir back">回</span>
+                            <span className="oj-air">{c.back.airline ?? '—'}</span>
+                            <span className="oj-rt tnum">{c.back.origin}→{c.back.destination}</span>
+                            <span className="oj-tm tnum">{c.back.depTime}-{c.back.arrTime}</span>
+                            <span className="oj-no tnum">{c.back.flightNumber}</span>
+                          </div>
+                        </div>
+                        <div className="oj-side">
                           {i === 0 && <span className="mc-tag">最低</span>}
-                          <span className="mc-air">{o.airline ?? '—'}</span>
-                          {timeStr && <span className="mc-time tnum">{timeStr}</span>}
-                          {o.flightNumber && <span className="mc-no tnum">{o.flightNumber}</span>}
-                          <span className="mc-price tnum">NT${o.price.toLocaleString()}</span>
-                        </button>
-                      );
-                    })}
-                    <div className="mc-foot">
-                      {pinnedFlights.size > 0
-                        ? <>已選追蹤：<strong>{[...pinnedFlights.values()][0].label}</strong>（整趟 NT${[...pinnedFlights.values()][0].price.toLocaleString()}）</>
-                        : <>時間為<strong>去程</strong>起降；回程由系統配最便宜（時間未列）。不點＝追整程最低；點一組＝只追那班。</>}
-                    </div>
+                          <span className="oj-total tnum">NT${c.total.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="mc-foot">去 + 回 兩段相加（兩張單程票）。目前追「最便宜那組」；之後可點選追特定組合。</div>
                   </div>
                 )}
               </div>
@@ -1168,7 +1161,7 @@ export function AddWatchSheet({
         }
 
         /* 開口式「來回組合」清單 */
-        .mc-list {
+        .oj-list {
           margin-top: 12px;
           padding-top: 10px;
           border-top: 0.5px solid var(--ios-hairline);
@@ -1177,36 +1170,42 @@ export function AddWatchSheet({
           font-size: 11px;
           color: var(--ios-label-3);
           letter-spacing: 0.3px;
-          margin-bottom: 4px;
-        }
-        .mc-route {
-          font-size: 12px;
-          font-weight: 600;
-          color: var(--ios-label-2);
           margin-bottom: 8px;
-          letter-spacing: 0.2px;
         }
-        .mc-row {
+        /* 一組「去+回」配對卡 */
+        .oj-combo {
           display: flex;
           align-items: center;
           gap: 8px;
-          width: 100%;
-          padding: 8px;
-          border-radius: 8px;
-          border: 0.5px solid transparent;
+          padding: 9px 10px;
+          border-radius: 10px;
           background: var(--ios-fill-3);
-          margin-bottom: 4px;
-          color: var(--ios-label);
-          text-align: left;
-          cursor: pointer;
-          -webkit-tap-highlight-color: transparent;
+          margin-bottom: 6px;
         }
-        .mc-row:disabled { cursor: default; opacity: 0.6; }
-        .mc-row.cheapest { background: rgba(48, 209, 88, 0.12); }
-        .mc-row.on {
-          border-color: var(--ios-blue);
-          background: rgba(10, 132, 255, 0.16);
+        .oj-combo.cheapest { background: rgba(48, 209, 88, 0.12); }
+        .oj-legs { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+        .oj-leg { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .oj-dir {
+          font-size: 10px;
+          font-weight: 700;
+          border-radius: 4px;
+          padding: 1px 5px;
+          flex-shrink: 0;
         }
+        .oj-dir.out { color: var(--ios-blue); background: rgba(10, 132, 255, 0.16); }
+        .oj-dir.back { color: var(--ios-purple); background: rgba(191, 90, 242, 0.18); }
+        .oj-air { font-size: 12.5px; font-weight: 600; color: var(--ios-label); }
+        .oj-rt { font-size: 11px; color: var(--ios-label-3); letter-spacing: 0.3px; }
+        .oj-tm { font-size: 11.5px; color: var(--ios-label-2); }
+        .oj-no { font-size: 10.5px; color: var(--ios-label-3); }
+        .oj-side {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 3px;
+          flex-shrink: 0;
+        }
+        .oj-total { font-size: 14px; font-weight: 800; color: var(--ios-label); }
         .mc-tag {
           font-size: 9.5px;
           font-weight: 700;
@@ -1214,20 +1213,6 @@ export function AddWatchSheet({
           border: 0.5px solid var(--ios-green);
           border-radius: 4px;
           padding: 0 4px;
-          flex-shrink: 0;
-        }
-        .mc-air {
-          font-size: 12.5px;
-          font-weight: 600;
-          color: var(--ios-label);
-        }
-        .mc-time { font-size: 11.5px; color: var(--ios-label-2); }
-        .mc-no { font-size: 11px; color: var(--ios-label-3); }
-        .mc-price {
-          margin-left: auto;
-          font-size: 13px;
-          font-weight: 700;
-          color: var(--ios-label);
         }
         .mc-foot {
           font-size: 10.5px;

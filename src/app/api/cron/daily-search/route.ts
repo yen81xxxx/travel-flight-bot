@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchFlights, searchMultiCity, AllKeysExhaustedError } from '@/lib/serpapi';
+import { searchFlights, searchOpenJawPaired, AllKeysExhaustedError } from '@/lib/serpapi';
 import { analyzeFlights } from '@/lib/flights';
 import { buildMultiSubsItem, buildOpenJawItem, isOpenJaw, isRouteError, type RouteOutcome, type OpenJawSearchResult } from '@/lib/cron-items-mapper';
 import { getLineClient } from '@/lib/line';
@@ -224,14 +224,11 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
       return;
     }
     try {
-      // 釘了去程班（pinned_flight_numbers[0]）→ 只追那班的整趟價；否則追整程最便宜
-      const pinnedOutboundFlight = sub.pinned_flight_numbers?.[0];
-      const r = await searchMultiCity(
-        [
-          { origin: sub.origin, destination: sub.destination, date: sub.outbound_date },
-          { origin: sub.return_origin!, destination: sub.return_destination!, date: sub.return_date }
-        ],
-        pinnedOutboundFlight ? { pinnedOutboundFlight } : undefined
+      // 開口式 v2：去/回各查一次單程、配成對，追「最便宜那組」的兩段相加價（store=true 存進 flight_quotes）
+      const r = await searchOpenJawPaired(
+        { origin: sub.origin, destination: sub.destination, date: sub.outbound_date },
+        { origin: sub.return_origin!, destination: sub.return_destination!, date: sub.return_date },
+        { store: true }
       );
       totalSerpapiCalls += r.serpapiCalls;
       openJawResults.set(sub.id, { cheapestTotal: r.cheapestTotal, airline: r.airline });
