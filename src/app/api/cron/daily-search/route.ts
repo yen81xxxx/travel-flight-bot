@@ -224,10 +224,15 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
       return;
     }
     try {
-      const r = await searchMultiCity([
-        { origin: sub.origin, destination: sub.destination, date: sub.outbound_date },
-        { origin: sub.return_origin!, destination: sub.return_destination!, date: sub.return_date }
-      ]);
+      // 釘了去程班（pinned_flight_numbers[0]）→ 只追那班的整趟價；否則追整程最便宜
+      const pinnedOutboundFlight = sub.pinned_flight_numbers?.[0];
+      const r = await searchMultiCity(
+        [
+          { origin: sub.origin, destination: sub.destination, date: sub.outbound_date },
+          { origin: sub.return_origin!, destination: sub.return_destination!, date: sub.return_date }
+        ],
+        pinnedOutboundFlight ? { pinnedOutboundFlight } : undefined
+      );
       totalSerpapiCalls += r.serpapiCalls;
       openJawResults.set(sub.id, { cheapestTotal: r.cheapestTotal, airline: r.airline });
     } catch (err) {

@@ -206,6 +206,7 @@ export function AddWatchSheet({
     if (!canPreview) return;
     setPreviewing(true);
     setPreview(null);
+    setPinnedFlights(new Map());  // 每次查價重置釘選：拿新清單重挑（避免釘到上一輪、清單裡已沒有的班）
     setError(null);
     try {
       if (openJaw) {
@@ -487,7 +488,7 @@ export function AddWatchSheet({
                       jpRegions={jpRegions}
                     />
                   </div>
-                  <p className="openjaw-hint">開口式 = 一張多城市票（去 + 回兩段同一張機票），查價直接抓整程最低總價（不支援釘選特定航班）。</p>
+                  <p className="openjaw-hint">開口式 = 一張多城市票（去 + 回兩段同一張機票）。查價會列出多組來回組合，可挑一組去追，或不挑＝追整程最低。</p>
                 </>
               )}
             </div>
@@ -558,17 +559,42 @@ export function AddWatchSheet({
                     回應 user「為何只有一筆」— 把查回來、本來只留最便宜的其他組合也列出來。 */}
                 {openJaw && preview.mcOptions && preview.mcOptions.length > 0 && (
                   <div className="mc-list" data-testid="mc-list">
-                    <div className="mc-head">來回組合 · {preview.mcOptions.length} 組（去程班 ＋ 整趟總價）</div>
-                    {preview.mcOptions.map((o, i) => (
-                      <div key={o.flightNumber ?? i} className={`mc-row ${i === 0 ? 'cheapest' : ''}`} data-testid="mc-row">
-                        {i === 0 && <span className="mc-tag">最低</span>}
-                        <span className="mc-air">{o.airline ?? '—'}</span>
-                        {o.time && <span className="mc-time tnum">{o.time}</span>}
-                        {o.flightNumber && <span className="mc-no tnum">{o.flightNumber}</span>}
-                        <span className="mc-price tnum">NT${o.price.toLocaleString()}</span>
-                      </div>
-                    ))}
-                    <div className="mc-foot">每組用「去程那班」當代表，回程系統自動配最便宜。目前追整程最低；之後可點選追特定組合。</div>
+                    <div className="mc-head">來回組合 · {preview.mcOptions.length} 組（點一組＝只追那班；不點＝追整程最低）</div>
+                    {preview.mcOptions.map((o, i) => {
+                      const on = !!o.flightNumber && pinnedFlights.has(o.flightNumber);
+                      return (
+                        <button
+                          key={o.flightNumber ?? i}
+                          type="button"
+                          className={`mc-row ${i === 0 ? 'cheapest' : ''} ${on ? 'on' : ''}`}
+                          data-testid="mc-row"
+                          disabled={!o.flightNumber}
+                          onClick={() => {
+                            const fn = o.flightNumber;
+                            if (!fn) return;
+                            setPinnedFlights(prev => {
+                              // 開口式單選：再點同一班 → 取消（改追整程最低）；否則只留這班
+                              if (prev.has(fn)) return new Map();
+                              const label = o.time ? `${o.airline ?? '—'} · ${o.time}` : (o.airline ?? '—');
+                              setMaxPriceStr(String(o.price));
+                              return new Map([[fn, { label, price: o.price }]]);
+                            });
+                          }}
+                        >
+                          <Icon name={on ? 'check' : 'plus'} size={13} stroke={2.4} />
+                          {i === 0 && <span className="mc-tag">最低</span>}
+                          <span className="mc-air">{o.airline ?? '—'}</span>
+                          {o.time && <span className="mc-time tnum">{o.time}</span>}
+                          {o.flightNumber && <span className="mc-no tnum">{o.flightNumber}</span>}
+                          <span className="mc-price tnum">NT${o.price.toLocaleString()}</span>
+                        </button>
+                      );
+                    })}
+                    <div className="mc-foot">
+                      {pinnedFlights.size > 0
+                        ? <>已選追蹤：<strong>{[...pinnedFlights.values()][0].label}</strong>（整趟 NT${[...pinnedFlights.values()][0].price.toLocaleString()}）· 回程系統自動配最便宜</>
+                        : <>每組用「去程那班」當代表，回程系統自動配最便宜。不點＝追整程最低；點一組＝只追那班。</>}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1151,12 +1177,23 @@ export function AddWatchSheet({
           display: flex;
           align-items: center;
           gap: 8px;
-          padding: 7px 8px;
+          width: 100%;
+          padding: 8px;
           border-radius: 8px;
+          border: 0.5px solid transparent;
           background: var(--ios-fill-3);
           margin-bottom: 4px;
+          color: var(--ios-label);
+          text-align: left;
+          cursor: pointer;
+          -webkit-tap-highlight-color: transparent;
         }
+        .mc-row:disabled { cursor: default; opacity: 0.6; }
         .mc-row.cheapest { background: rgba(48, 209, 88, 0.12); }
+        .mc-row.on {
+          border-color: var(--ios-blue);
+          background: rgba(10, 132, 255, 0.16);
+        }
         .mc-tag {
           font-size: 9.5px;
           font-weight: 700;
