@@ -265,43 +265,42 @@ describe('AddWatchSheet — 開口式來回（0015）', () => {
     });
   });
 
-  it('開口式：預覽鈕在 → 一次 multi-city 搜尋（legs）、顯示整程單一票總價', async () => {
-    responses.search = { ok: true, multiCity: true, cheapestTotal: 18683, airline: '中華航空' };
+  const mkCombo = (outAir: string, outNo: string, backAir: string, backNo: string, total: number) => ({
+    out: { airline: outAir, flightNumber: outNo, origin: 'TPE', destination: 'NRT', depTime: '13:30', arrTime: '17:30', price: total - 13000 },
+    back: { airline: backAir, flightNumber: backNo, origin: 'HND', destination: 'TSA', depTime: '07:55', arrTime: '10:55', price: 13000 },
+    total
+  });
+
+  it('開口式：預覽 → 送 paired:true legs、顯示「去+回 兩段相加」最低總價', async () => {
+    responses.search = { ok: true, paired: true, cheapestTotal: 19791, combos: [mkCombo('泰國獅航', 'SL 394', '中華航空', 'CI 223', 19791)] };
     const { getByLabelText, getByRole, getByTestId, container } = render(
       <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
     );
     fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
     fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
-    fireEvent.click(getByTestId('openjaw-toggle'));   // 預設 returnOrigin=NRT, returnDestination=TPE
+    fireEvent.click(getByTestId('openjaw-toggle'));
     const previewBtn = getByRole('button', { name: /查目前最低價/ });
     expect(previewBtn).not.toBeDisabled();
     fireEvent.click(previewBtn);
-    // 一次 /api/search 帶 legs（去 + 回，各帶 date、無 returnDate）→ 顯示整程總價 18,683
+    // /api/search 帶 paired:true + legs（去 + 回）→ 顯示最便宜配對總價 19,791
     await waitFor(() => {
       const searchCalls = (global.fetch as unknown as jest.Mock).mock.calls.filter(c => c[0] === '/api/search');
-      expect(searchCalls.length).toBe(1);
       const body = JSON.parse(searchCalls[0][1].body);
+      expect(body.paired).toBe(true);
       expect(body.legs).toHaveLength(2);
       expect(body.legs[0]).toMatchObject({ origin: 'TPE', destination: 'NRT', date: '2026-09-01' });
-      expect(body.legs[1]).toMatchObject({ origin: 'NRT', destination: 'TPE', date: '2026-09-05' });
-      expect(container.textContent).toContain('18,683');
+      expect(container.textContent).toContain('19,791');
     });
-    // 標清這是「一張多城市票」+ 帶頭航司（不再寫會誤會的「多城市一張票（…）」）
-    expect(container.textContent).toContain('一張多城市票');
-    expect(container.textContent).toContain('中華航空');
-    // 去 + 回兩段都標出來 → 使用者不會誤會成「只有一個航班」
-    const legs = getByTestId('pr-legs');
-    expect(legs.textContent).toContain('去 TPE→NRT');
-    expect(legs.textContent).toContain('回 NRT→TPE');
+    expect(container.textContent).toContain('兩段相加');
   });
 
-  it('開口式：API 回多組 options → 列出「來回組合」清單（修「只有一筆」）', async () => {
+  it('開口式：列出多組「去+回 配對」卡，每組去/回兩段航班、地點、起降、總價都在', async () => {
     responses.search = {
-      ok: true, multiCity: true, cheapestTotal: 18683, airline: '中華航空',
-      options: [
-        { airline: '中華航空', flightNumber: 'CI 100', time: '08:30', arrTime: '12:35', price: 18683 },
-        { airline: '長榮航空', flightNumber: 'BR 198', time: '10:15', arrTime: '14:20', price: 19050 },
-        { airline: '星宇航空', flightNumber: 'JX 820', time: '13:00', arrTime: '17:05', price: 19400 }
+      ok: true, paired: true, cheapestTotal: 19791,
+      combos: [
+        mkCombo('泰國獅航', 'SL 394', '中華航空', 'CI 223', 19791),
+        mkCombo('台灣虎航', 'IT 202', '長榮航空', 'BR 189', 20334),
+        mkCombo('酷航', 'TR 874', '中華航空', 'CI 223', 20928)
       ]
     };
     const { getByLabelText, getByRole, getByTestId, getAllByTestId, container } = render(
@@ -312,83 +311,22 @@ describe('AddWatchSheet — 開口式來回（0015）', () => {
     fireEvent.click(getByTestId('openjaw-toggle'));
     fireEvent.click(getByRole('button', { name: /查目前最低價/ }));
 
-    // 清單出現、有 3 組（不再只有一筆）
-    await waitFor(() => expect(getByTestId('mc-list')).toBeInTheDocument());
-    const rows = getAllByTestId('mc-row');
-    expect(rows).toHaveLength(3);
-    // 三家航司 + 各自整趟總價都在
+    // 配對卡出現、3 組
+    await waitFor(() => expect(getByTestId('oj-list')).toBeInTheDocument());
+    const cards = getAllByTestId('oj-combo');
+    expect(cards).toHaveLength(3);
+    // 第一張（最便宜）：去 泰獅 + 回 中華，兩段地點/起降/班號/總價都在
+    const c0 = cards[0].textContent ?? '';
+    expect(c0).toContain('最低');
+    expect(c0).toContain('泰國獅航');         // 去段航司
+    expect(c0).toContain('中華航空');         // 回段航司
+    expect(c0).toContain('TPE→NRT');          // 去段地點
+    expect(c0).toContain('HND→TSA');          // 回段地點
+    expect(c0).toContain('13:30-17:30');      // 去段起降
+    expect(c0).toContain('07:55-10:55');      // 回段起降
+    expect(c0).toContain('19,791');           // 兩段相加總價
+    // 其他組的航司也在
+    expect(container.textContent).toContain('台灣虎航');
     expect(container.textContent).toContain('長榮航空');
-    expect(container.textContent).toContain('星宇航空');
-    expect(container.textContent).toContain('19,050');
-    expect(container.textContent).toContain('19,400');
-    // 第一列（最便宜）標「最低」
-    expect(rows[0].textContent).toContain('最低');
-    expect(rows[0].textContent).toContain('中華航空');
-    // 來回地點（表頭）+ 去程起降時間（每列）都顯示
-    expect(getByTestId('mc-route').textContent).toContain('去 TPE→NRT');
-    expect(getByTestId('mc-route').textContent).toContain('回 NRT→TPE');
-    expect(rows[1].textContent).toContain('10:15→14:20');
-  });
-
-  it('開口式：點一組組合 → 釘該去程班、目標價帶整趟總價、submit 送 pinnedFlightNumbers', async () => {
-    responses.search = {
-      ok: true, multiCity: true, cheapestTotal: 18683, airline: '中華航空',
-      options: [
-        { airline: '中華航空', flightNumber: 'CI 100', time: '08:30', price: 18683 },
-        { airline: '長榮航空', flightNumber: 'BR 198', time: '10:15', price: 19050 }
-      ]
-    };
-    responses.subscriptions = { ok: true, action: 'created' };
-    const { getByLabelText, getByRole, getByText, getByTestId, getAllByTestId, container } = render(
-      <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
-    );
-    fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
-    fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
-    fireEvent.click(getByTestId('openjaw-toggle'));
-    fireEvent.click(getByRole('button', { name: /查目前最低價/ }));
-    await waitFor(() => expect(getByTestId('mc-list')).toBeInTheDocument());
-
-    // 點第二組（長榮 BR 198 / 整趟 19,050）→ 該列選取、底部顯示已選
-    fireEvent.click(getAllByTestId('mc-row')[1]);
-    expect(getAllByTestId('mc-row')[1].className).toContain('on');
-    expect(container.textContent).toContain('已選追蹤');
-    expect(container.textContent).toContain('長榮航空');
-
-    // submit → 帶 pinnedFlightNumbers=['BR 198']、目標價=整趟 19050、開口式回段
-    fireEvent.click(getByText('開始追蹤'));
-    await waitFor(() => {
-      const postCall = (global.fetch as unknown as jest.Mock).mock.calls.find(c => c[0] === '/api/subscriptions');
-      expect(postCall).toBeDefined();
-      const body = JSON.parse(postCall![1].body);
-      expect(body.pinnedFlightNumbers).toEqual(['BR 198']);
-      expect(body.pinnedFlightLabels[0]).toContain('長榮航空');
-      expect(body.maxPrice).toBe(19050);
-      expect(body.returnOrigin).toBe('NRT');
-      expect(body.returnDestination).toBe('TPE');
-    });
-  });
-
-  it('開口式：再點同一組 → 取消釘選（改追整程最低）', async () => {
-    responses.search = {
-      ok: true, multiCity: true, cheapestTotal: 18683, airline: '中華航空',
-      options: [
-        { airline: '中華航空', flightNumber: 'CI 100', time: '08:30', price: 18683 },
-        { airline: '長榮航空', flightNumber: 'BR 198', time: '10:15', price: 19050 }
-      ]
-    };
-    const { getByLabelText, getByRole, getByTestId, getAllByTestId, container } = render(
-      <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
-    );
-    fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
-    fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
-    fireEvent.click(getByTestId('openjaw-toggle'));
-    fireEvent.click(getByRole('button', { name: /查目前最低價/ }));
-    await waitFor(() => expect(getByTestId('mc-list')).toBeInTheDocument());
-    const row = () => getAllByTestId('mc-row')[1];
-    fireEvent.click(row());                       // 選
-    expect(row().className).toContain('on');
-    fireEvent.click(row());                       // 再點 → 取消
-    expect(row().className).not.toContain('on');
-    expect(container.textContent).not.toContain('已選追蹤');
   });
 });

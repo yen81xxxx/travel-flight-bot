@@ -291,6 +291,100 @@ export async function searchMultiCity(
   };
 }
 
+// ============================================================
+// 開口式 v2 — 「兩段配對」：去程查一次、回程查一次（各 type=2 單程），配成對顯示。
+// 跟多城市單一票相反：看得到去+回兩段的完整航班（航司/班號/起降/地點），代價是
+// 價格 = 兩段相加（吃不到多城市合併折扣）。
+// ============================================================
+
+/** 開口式配對裡的「一段」（去 or 回）的單一航班 */
+export interface OpenJawLegFlight {
+  airline: string | null;
+  flightNumber: string | null;
+  origin: string | null;       // 該段出發機場（直飛 = 第一段 dep）
+  destination: string | null;  // 該段抵達機場
+  depTime: string | null;      // 'HH:MM'
+  arrTime: string | null;      // 'HH:MM'
+  price: number;               // 該段單程價
+}
+/** 一組「去+回」配對，total = 去段 + 回段 */
+export interface OpenJawPairedCombo {
+  out: OpenJawLegFlight;
+  back: OpenJawLegFlight;
+  total: number;
+}
+
+/** 從單程 response 抽「直飛航班」清單：依班號去重取最低、依價格升冪 */
+function extractLegFlights(resp: SerpApiFlightsResponse, limit = 8): OpenJawLegFlight[] {
+  const all = [...(resp.best_flights ?? []), ...(resp.other_flights ?? [])];
+  const direct = all.filter(f => f.price != null && (f.flights?.length ?? 0) === 1);
+  const pool = direct.length > 0 ? direct : all.filter(f => f.price != null);
+  const byFlight = new Map<string, OpenJawLegFlight>();
+  for (const f of pool) {
+    const s = f.flights?.[0];
+    const key = s?.flight_number ?? `${s?.airline ?? '—'}@${f.price}`;
+    const flight: OpenJawLegFlight = {
+      airline: s?.airline ?? null,
+      flightNumber: s?.flight_number ?? null,
+      origin: s?.departure_airport?.id ?? null,
+      destination: s?.arrival_airport?.id ?? null,
+      depTime: s?.departure_airport?.time?.slice(11, 16) ?? null,
+      arrTime: s?.arrival_airport?.time?.slice(11, 16) ?? null,
+      price: f.price as number
+    };
+    const ex = byFlight.get(key);
+    if (!ex || flight.price < ex.price) byFlight.set(key, flight);
+  }
+  return Array.from(byFlight.values()).sort((a, b) => a.price - b.price).slice(0, limit);
+}
+
+/**
+ * 開口式兩段配對搜尋：去程（out）查一次單程、回程（back）查一次單程，配成「去+回」對。
+ * 回傳依總價排序的前 N 組（cross product 取最低，去重去/回班號相同的對）。
+ */
+export async function searchOpenJawPaired(
+  out: MultiCityLeg,
+  back: MultiCityLeg,
+  opts?: { limit?: number; store?: boolean }
+): Promise<{ combos: OpenJawPairedCombo[]; cheapestTotal: number | null; airline: string | null; serpapiCalls: number }> {
+  const limit = opts?.limit ?? 8;
+  const [outResp, backResp] = await Promise.all([
+    callSerpApi({ departure_id: out.origin, arrival_id: out.destination, outbound_date: out.date, type: '2' }),
+    callSerpApi({ departure_id: back.origin, arrival_id: back.destination, outbound_date: back.date, type: '2' })
+  ]);
+  const outFlights = extractLegFlights(outResp);
+  const backFlights = extractLegFlights(backResp);
+  const combos: OpenJawPairedCombo[] = [];
+  for (const o of outFlights) {
+    for (const b of backFlights) {
+      combos.push({ out: o, back: b, total: o.price + b.price });
+    }
+  }
+  combos.sort((a, b) => a.total - b.total);
+  // 去重：同一對「去班號+回班號」只留一筆
+  const seen = new Set<string>();
+  const deduped: OpenJawPairedCombo[] = [];
+  for (const c of combos) {
+    const k = `${c.out.flightNumber ?? c.out.price}|${c.back.flightNumber ?? c.back.price}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    deduped.push(c);
+    if (deduped.length >= limit) break;
+  }
+  const cheapest = deduped[0] ?? null;
+  // store（cron 用）：把「最便宜那組」的整趟相加價存進 flight_quotes（=歷史 + 追蹤來源），
+  // 沿用開口式那一筆（return_origin/dest 有值、pinned_outbound_flight=null）。
+  if (opts?.store && cheapest) {
+    await storeMultiCityQuote([out, back], { price: cheapest.total, airline: cheapest.out.airline }, null);
+  }
+  return {
+    combos: deduped,
+    cheapestTotal: cheapest?.total ?? null,
+    airline: cheapest?.out.airline ?? null,
+    serpapiCalls: 2
+  };
+}
+
 /**
  * 從原始 SerpApi response 裡挑「最便宜的廉航直飛 outbound」用來查 return。
  * 必須直飛（flights.length === 1），確保 return list 配對的是純廉航直飛 outbound。
