@@ -299,9 +299,9 @@ describe('AddWatchSheet — 開口式來回（0015）', () => {
     responses.search = {
       ok: true, multiCity: true, cheapestTotal: 18683, airline: '中華航空',
       options: [
-        { airline: '中華航空', flightNumber: 'CI 100', time: '08:30', price: 18683 },
-        { airline: '長榮航空', flightNumber: 'BR 198', time: '10:15', price: 19050 },
-        { airline: '星宇航空', flightNumber: 'JX 820', time: '13:00', price: 19400 }
+        { airline: '中華航空', flightNumber: 'CI 100', time: '08:30', arrTime: '12:35', price: 18683 },
+        { airline: '長榮航空', flightNumber: 'BR 198', time: '10:15', arrTime: '14:20', price: 19050 },
+        { airline: '星宇航空', flightNumber: 'JX 820', time: '13:00', arrTime: '17:05', price: 19400 }
       ]
     };
     const { getByLabelText, getByRole, getByTestId, getAllByTestId, container } = render(
@@ -324,6 +324,10 @@ describe('AddWatchSheet — 開口式來回（0015）', () => {
     // 第一列（最便宜）標「最低」
     expect(rows[0].textContent).toContain('最低');
     expect(rows[0].textContent).toContain('中華航空');
+    // 來回地點（表頭）+ 去程起降時間（每列）都顯示
+    expect(getByTestId('mc-route').textContent).toContain('去 TPE→NRT');
+    expect(getByTestId('mc-route').textContent).toContain('回 NRT→TPE');
+    expect(rows[1].textContent).toContain('10:15→14:20');
   });
 
   it('開口式：點一組組合 → 釘該去程班、目標價帶整趟總價、submit 送 pinnedFlightNumbers', async () => {

@@ -26,6 +26,7 @@ interface McOption {
   airline: string | null;
   flightNumber: string | null;
   time: string | null;
+  arrTime: string | null;
   price: number;
 }
 interface PreviewResult {
@@ -560,8 +561,13 @@ export function AddWatchSheet({
                 {openJaw && preview.mcOptions && preview.mcOptions.length > 0 && (
                   <div className="mc-list" data-testid="mc-list">
                     <div className="mc-head">來回組合 · {preview.mcOptions.length} 組（點一組＝只追那班；不點＝追整程最低）</div>
+                    {/* 去 / 回 地點（整條線都一樣，列在表頭）。時間：去程每列都標，回程系統配最便宜（multi-city 第一段沒回傳回程時間） */}
+                    <div className="mc-route tnum" data-testid="mc-route">
+                      去 {origin}→{destination} · 回 {returnOrigin}→{returnDestination}
+                    </div>
                     {preview.mcOptions.map((o, i) => {
                       const on = !!o.flightNumber && pinnedFlights.has(o.flightNumber);
+                      const timeStr = o.time ? (o.arrTime ? `${o.time}→${o.arrTime}` : o.time) : null;
                       return (
                         <button
                           key={o.flightNumber ?? i}
@@ -575,7 +581,7 @@ export function AddWatchSheet({
                             setPinnedFlights(prev => {
                               // 開口式單選：再點同一班 → 取消（改追整程最低）；否則只留這班
                               if (prev.has(fn)) return new Map();
-                              const label = o.time ? `${o.airline ?? '—'} · ${o.time}` : (o.airline ?? '—');
+                              const label = `${o.airline ?? '—'}${timeStr ? ` · 去 ${timeStr}` : ''}`;
                               setMaxPriceStr(String(o.price));
                               return new Map([[fn, { label, price: o.price }]]);
                             });
@@ -584,7 +590,7 @@ export function AddWatchSheet({
                           <Icon name={on ? 'check' : 'plus'} size={13} stroke={2.4} />
                           {i === 0 && <span className="mc-tag">最低</span>}
                           <span className="mc-air">{o.airline ?? '—'}</span>
-                          {o.time && <span className="mc-time tnum">{o.time}</span>}
+                          {timeStr && <span className="mc-time tnum">{timeStr}</span>}
                           {o.flightNumber && <span className="mc-no tnum">{o.flightNumber}</span>}
                           <span className="mc-price tnum">NT${o.price.toLocaleString()}</span>
                         </button>
@@ -592,8 +598,8 @@ export function AddWatchSheet({
                     })}
                     <div className="mc-foot">
                       {pinnedFlights.size > 0
-                        ? <>已選追蹤：<strong>{[...pinnedFlights.values()][0].label}</strong>（整趟 NT${[...pinnedFlights.values()][0].price.toLocaleString()}）· 回程系統自動配最便宜</>
-                        : <>每組用「去程那班」當代表，回程系統自動配最便宜。不點＝追整程最低；點一組＝只追那班。</>}
+                        ? <>已選追蹤：<strong>{[...pinnedFlights.values()][0].label}</strong>（整趟 NT${[...pinnedFlights.values()][0].price.toLocaleString()}）</>
+                        : <>時間為<strong>去程</strong>起降；回程由系統配最便宜（時間未列）。不點＝追整程最低；點一組＝只追那班。</>}
                     </div>
                   </div>
                 )}
@@ -1171,7 +1177,14 @@ export function AddWatchSheet({
           font-size: 11px;
           color: var(--ios-label-3);
           letter-spacing: 0.3px;
-          margin-bottom: 6px;
+          margin-bottom: 4px;
+        }
+        .mc-route {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--ios-label-2);
+          margin-bottom: 8px;
+          letter-spacing: 0.2px;
         }
         .mc-row {
           display: flex;
