@@ -164,7 +164,8 @@ export interface MultiCityOption {
   airline: string | null;      // 去程帶頭航司
   flightNumber: string | null; // 去程班號（之後釘選 / 追特定組合用）
   time: string | null;         // 去程起飛 'HH:MM'
-  price: number;               // 整趟總價（含回程，Google 配最便宜的接）
+  arrTime: string | null;      // 去程抵達 'HH:MM'（顯示「16:25→20:30」用）
+  price: number;               // 整趟總價（含回程，Google 配最便宜的接；回程時間不在 multi-city 第一段回傳裡）
 }
 export interface MultiCityResult {
   /** 整個開口式行程（同一張多城市票）的最低總價；查無 → null */
@@ -192,7 +193,8 @@ function buildMultiCityOptions(all: SerpApiFlight[], limit = 8): MultiCityOption
     const opt: MultiCityOption = {
       airline: leg0?.airline ?? null,
       flightNumber: leg0?.flight_number ?? null,
-      time: leg0?.departure_airport?.time?.slice(11, 16) ?? null,  // 'YYYY-MM-DD HH:MM' → 'HH:MM'
+      time: leg0?.departure_airport?.time?.slice(11, 16) ?? null,     // 'YYYY-MM-DD HH:MM' → 'HH:MM'
+      arrTime: leg0?.arrival_airport?.time?.slice(11, 16) ?? null,
       price: f.price as number
     };
     const ex = byFlight.get(key);
