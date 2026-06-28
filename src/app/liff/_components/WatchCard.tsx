@@ -83,19 +83,32 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
     ? (w.return_date ? `${mdFmt(w.outbound_date)}–${mdFmt(w.return_date)}` : `${mdFmt(w.outbound_date)} 單程`)
     : '不限定日期';
 
+  // === 開口式「釘了組合」→ 去/回拆兩排顯示（上去程、下回程，各帶日期+航司+時間）===
+  // legs 例：['去 長榮航空 15:20', '回 長榮航空 12:15']；去掉「去/回」前綴只留航司+時間，日期另外帶。
+  const ojLegs = w.quote?.openJaw && w.pinned_flight_labels && w.pinned_flight_labels.length >= 2
+    ? w.pinned_flight_labels
+    : null;
+  const ojPinned: React.ReactNode = ojLegs ? (
+    <div className="wc-oj-pinned" data-testid="wc-oj-pinned">
+      <div className="wc-oj-row">
+        <span className="wc-oj-dir out">去</span>
+        <span className="wc-oj-date tnum">{mdFmt(w.outbound_date)}</span>
+        <span className="wc-oj-info">{ojLegs[0].replace(/^去\s*/, '')}</span>
+      </div>
+      <div className="wc-oj-row">
+        <span className="wc-oj-dir back">回</span>
+        <span className="wc-oj-date tnum">{mdFmt(w.return_date)}</span>
+        <span className="wc-oj-info">{ojLegs[1].replace(/^回\s*/, '')}</span>
+      </div>
+    </div>
+  ) : null;
+
   // === 航司 label ===
   let carrierLabel: React.ReactNode = null;
   if (w.quote) {
     if (w.quote.openJaw) {
-      // 開口式：釘了特定組合 → 顯示去/回那兩班（含時間，例「去 長榮 15:20 · 回 長榮 12:15」）；
-      // 沒釘（追最便宜）→ 標「多城市票・帶頭航司 起」。
-      const legs = w.pinned_flight_labels;
-      carrierLabel = legs && legs.length >= 2 ? (
-        <>
-          <span className="wc-ctag oj">指定</span>
-          <span className="wc-oj-legs">{legs[0]} · {legs[1]}</span>
-        </>
-      ) : (
+      // 釘了組合 → 用上面的兩排 ojPinned（carrierLabel 留空）；沒釘 → 標「多城市票・帶頭航司 起」。
+      carrierLabel = ojLegs ? null : (
         <>
           <span className="wc-ctag oj">多城市票</span>
           {w.quote.openJaw.airline ?? '—'} 起
@@ -204,6 +217,7 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
               <span className="val tnum">{ntFmt(currentBest)}</span>
             </div>
             {carrierLabel && <span className="wc-carrier">{carrierLabel}</span>}
+            {ojPinned}
           </div>
           <div className="wc-spark-wrap">
             {showDelta && (
@@ -436,11 +450,31 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
           background: rgba(10, 132, 255, 0.16);
           color: var(--ios-blue);
         }
-        .wc-oj-legs {
-          font-size: 11px;
-          line-height: 1.35;
-          word-break: break-word;
+        /* 開口式釘組合：去/回兩排（上去程、下回程） */
+        .wc-oj-pinned {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          margin-top: 5px;
         }
+        .wc-oj-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11.5px;
+          color: var(--ios-label-2);
+        }
+        .wc-oj-dir {
+          font-size: 10px;
+          font-weight: 700;
+          border-radius: 4px;
+          padding: 1px 5px;
+          flex-shrink: 0;
+        }
+        .wc-oj-dir.out { color: var(--ios-blue); background: rgba(10, 132, 255, 0.16); }
+        .wc-oj-dir.back { color: var(--ios-purple); background: rgba(191, 90, 242, 0.18); }
+        .wc-oj-date { color: var(--ios-label); font-weight: 600; }
+        .wc-oj-info { color: var(--ios-label-2); }
         .wc-spark-wrap {
           display: flex;
           flex-direction: column;
