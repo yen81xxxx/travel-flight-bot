@@ -361,6 +361,13 @@ describe('WatchCard — 開口式來回（0015）', () => {
     expect(rows[1].querySelector('.wc-leg-time')?.textContent).toBe('12:15');
     // 釘了組合就不寫含糊的「多城市票…起」
     expect(container.textContent).not.toContain('多城市票');
+    // 班次列自帶日期 → 不再另外顯示日期區間（避免兩個日期）
+    expect(container.textContent).not.toContain('1/29–2/5');
+    // 班次列排在價格列「之前」（往上移到原日期位置）
+    const legsEl = container.querySelector('.wc-legs');
+    const priceEl = container.querySelector('.wc-price-row');
+    expect(legsEl && priceEl).toBeTruthy();
+    expect(legsEl!.compareDocumentPosition(priceEl!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('來回（非開口式）+ 釘了去程班 → 顯示一排「去 + 日期 + 航司 + 時間」', () => {
@@ -398,7 +405,7 @@ describe('WatchCard — 開口式來回（0015）', () => {
         deltaPct: null, history: [], openJaw: null
       }
     };
-    const { getByTestId } = render(<WatchCard watch={w} onOpen={() => {}} />);
+    const { container, getByTestId } = render(<WatchCard watch={w} onOpen={() => {}} />);
     const block = getByTestId('wc-legs');
     const rows = block.querySelectorAll('.wc-leg');
     expect(rows).toHaveLength(1);
@@ -407,5 +414,9 @@ describe('WatchCard — 開口式來回（0015）', () => {
     expect(rows[0].textContent).toContain('1/29');
     expect(rows[0].querySelector('.wc-leg-airline')?.textContent).toBe('長榮航空');
     expect(rows[0].querySelector('.wc-leg-time')?.textContent).toBe('10:25');
+    // 單程：班次列帶日期，meta 仍保留「單程」標記（不重複顯示日期）
+    const meta = container.querySelector('.wc-meta');
+    expect(meta?.textContent).toContain('單程');
+    expect(meta?.textContent).not.toContain('1/29');
   });
 });
