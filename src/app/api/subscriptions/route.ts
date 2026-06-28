@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSupabase } from '@/lib/supabase';
 import { ALL_AIRPORTS, isTaiwanAirport, isJapanAirport, formatAirport } from '@/config/airports';
+import { searchOpenJawPaired } from '@/lib/serpapi';
 import { pushText } from '@/lib/line';
 import { validateOpenJaw } from './schema';
 import type { SourceType } from '@/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;  // 開口式建立時會即時抓一次配對價（2 次 SerpApi）— 給足時間
 
 const VALID_IATA = ALL_AIRPORTS.map(a => a.iata);
 
@@ -192,6 +194,24 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  }
+
+  // 開口式：訂閱「當下」就抓一次價存進 flight_quotes，避免新訂閱卡在「報價更新中」等隔天 cron。
+  //   普通路線的預覽查價（searchFlights）本來就會存，開口式的配對預覽不存 → 這裡補。
+  //   有釘組合 → 存那組的價；否則存最便宜那組。失敗只記 log、不擋訂閱（隔天 cron 會補）。
+  if (returnOriginValue && returnDestinationValue && body.outboundDate && body.returnDate) {
+    try {
+      const pinnedCombo = pinnedNumbersValue && pinnedNumbersValue.length >= 2
+        ? { out: pinnedNumbersValue[0], back: pinnedNumbersValue[1] }
+        : undefined;
+      await searchOpenJawPaired(
+        { origin: body.origin, destination: body.destination, date: body.outboundDate },
+        { origin: returnOriginValue, destination: returnDestinationValue, date: body.returnDate },
+        { store: true, airlines: airlineFilterValue ?? undefined, pinnedCombo }
+      );
+    } catch (e) {
+      console.warn('[subscriptions POST] open-jaw 初次報價 warm-up 失敗（隔天 cron 會補）:', e);
+    }
   }
 
   // G1: 群組訂閱 + creatorUserId 提供 → 自動把建立者加入 group_member
