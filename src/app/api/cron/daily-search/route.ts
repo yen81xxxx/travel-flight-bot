@@ -224,12 +224,15 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
       return;
     }
     try {
-      // 開口式 v2：去/回各查一次單程、配成對，追「最便宜那組」的兩段相加價（store=true 存進 flight_quotes）
-      // 有勾航司過濾 → 只配那些航司（例：只追長榮來回）
+      // 開口式 v2：去/回各查一次單程、配成對（store=true 存進 flight_quotes）
+      //   釘了特定組合（pinned_flight_numbers = [去班, 回班]）→ 只追那一組；否則追最便宜那組
+      //   有勾航司過濾 → 只配那些航司（例：只追長榮來回）
+      const pinNos = sub.pinned_flight_numbers;
+      const pinnedCombo = pinNos && pinNos.length >= 2 ? { out: pinNos[0], back: pinNos[1] } : undefined;
       const r = await searchOpenJawPaired(
         { origin: sub.origin, destination: sub.destination, date: sub.outbound_date },
         { origin: sub.return_origin!, destination: sub.return_destination!, date: sub.return_date },
-        { store: true, airlines: sub.airline_filter ?? undefined }
+        { store: true, airlines: sub.airline_filter ?? undefined, pinnedCombo }
       );
       totalSerpapiCalls += r.serpapiCalls;
       openJawResults.set(sub.id, { cheapestTotal: r.cheapestTotal, airline: r.airline });

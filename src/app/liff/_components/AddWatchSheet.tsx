@@ -567,35 +567,63 @@ export function AddWatchSheet({
                   重新查
                 </button>
 
-                {/* 開口式：去+回「兩段配對」組合，每組都列去/回完整航班（地點、起降、班號） */}
+                {/* 開口式：去+回「兩段配對」組合，每組都列去/回完整航班；點一組＝釘那組去追 */}
                 {openJaw && preview.ojCombos && preview.ojCombos.length > 0 && (
                   <div className="oj-list" data-testid="oj-list">
-                    <div className="mc-head">去＋回 組合 · {preview.ojCombos.length} 組（兩段相加；目前追最便宜那組）</div>
-                    {preview.ojCombos.map((c, i) => (
-                      <div key={i} className={`oj-combo ${i === 0 ? 'cheapest' : ''}`} data-testid="oj-combo">
-                        <div className="oj-legs">
-                          <div className="oj-leg">
-                            <span className="oj-dir out">去</span>
-                            <span className="oj-air">{c.out.airline ?? '—'}</span>
-                            <span className="oj-rt tnum">{c.out.origin}→{c.out.destination}</span>
-                            <span className="oj-tm tnum">{c.out.depTime}-{c.out.arrTime}</span>
-                            <span className="oj-no tnum">{c.out.flightNumber}</span>
+                    <div className="mc-head">去＋回 組合 · {preview.ojCombos.length} 組（點一組＝只追那組；不點＝追最便宜）</div>
+                    {preview.ojCombos.map((c, i) => {
+                      const canPin = !!(c.out.flightNumber && c.back.flightNumber);
+                      const on = canPin && pinnedFlights.has(c.out.flightNumber!) && pinnedFlights.has(c.back.flightNumber!);
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          className={`oj-combo ${i === 0 ? 'cheapest' : ''} ${on ? 'on' : ''}`}
+                          data-testid="oj-combo"
+                          disabled={!canPin}
+                          onClick={() => {
+                            if (!canPin) return;
+                            const outNo = c.out.flightNumber!, backNo = c.back.flightNumber!;
+                            setPinnedFlights(prev => {
+                              // 再點同一組 → 取消（回到追最便宜）；否則只釘這組（去班 + 回班）
+                              if (prev.has(outNo) && prev.has(backNo)) return new Map();
+                              setMaxPriceStr(String(c.total));
+                              return new Map([
+                                [outNo, { label: `去 ${c.out.airline ?? '—'} ${c.out.depTime ?? ''}`, price: c.total }],
+                                [backNo, { label: `回 ${c.back.airline ?? '—'} ${c.back.depTime ?? ''}`, price: c.total }]
+                              ]);
+                            });
+                          }}
+                        >
+                          <Icon name={on ? 'check' : 'plus'} size={14} stroke={2.3} />
+                          <div className="oj-legs">
+                            <div className="oj-leg">
+                              <span className="oj-dir out">去</span>
+                              <span className="oj-air">{c.out.airline ?? '—'}</span>
+                              <span className="oj-rt tnum">{c.out.origin}→{c.out.destination}</span>
+                              <span className="oj-tm tnum">{c.out.depTime}-{c.out.arrTime}</span>
+                              <span className="oj-no tnum">{c.out.flightNumber}</span>
+                            </div>
+                            <div className="oj-leg">
+                              <span className="oj-dir back">回</span>
+                              <span className="oj-air">{c.back.airline ?? '—'}</span>
+                              <span className="oj-rt tnum">{c.back.origin}→{c.back.destination}</span>
+                              <span className="oj-tm tnum">{c.back.depTime}-{c.back.arrTime}</span>
+                              <span className="oj-no tnum">{c.back.flightNumber}</span>
+                            </div>
                           </div>
-                          <div className="oj-leg">
-                            <span className="oj-dir back">回</span>
-                            <span className="oj-air">{c.back.airline ?? '—'}</span>
-                            <span className="oj-rt tnum">{c.back.origin}→{c.back.destination}</span>
-                            <span className="oj-tm tnum">{c.back.depTime}-{c.back.arrTime}</span>
-                            <span className="oj-no tnum">{c.back.flightNumber}</span>
+                          <div className="oj-side">
+                            {i === 0 && <span className="mc-tag">最低</span>}
+                            <span className="oj-total tnum">NT${c.total.toLocaleString()}</span>
                           </div>
-                        </div>
-                        <div className="oj-side">
-                          {i === 0 && <span className="mc-tag">最低</span>}
-                          <span className="oj-total tnum">NT${c.total.toLocaleString()}</span>
-                        </div>
-                      </div>
-                    ))}
-                    <div className="mc-foot">去 + 回 兩段相加（兩張單程票）。目前追「最便宜那組」；之後可點選追特定組合。</div>
+                        </button>
+                      );
+                    })}
+                    <div className="mc-foot">
+                      {pinnedFlights.size > 0
+                        ? <>已選追蹤這一組（NT${[...pinnedFlights.values()][0].price.toLocaleString()}）· 再點一次取消</>
+                        : <>去 + 回 兩段相加。不點＝追最便宜那組；點一組＝只盯死那一組（去班＋回班）。</>}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1179,12 +1207,23 @@ export function AddWatchSheet({
           display: flex;
           align-items: center;
           gap: 8px;
+          width: 100%;
           padding: 9px 10px;
           border-radius: 10px;
+          border: 0.5px solid transparent;
           background: var(--ios-fill-3);
           margin-bottom: 6px;
+          color: var(--ios-label);
+          text-align: left;
+          cursor: pointer;
+          -webkit-tap-highlight-color: transparent;
         }
+        .oj-combo:disabled { cursor: default; opacity: 0.6; }
         .oj-combo.cheapest { background: rgba(48, 209, 88, 0.12); }
+        .oj-combo.on {
+          border-color: var(--ios-blue);
+          background: rgba(10, 132, 255, 0.16);
+        }
         .oj-legs { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
         .oj-leg { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         .oj-dir {
