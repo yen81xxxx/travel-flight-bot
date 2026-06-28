@@ -332,10 +332,11 @@ describe('WatchCard — 開口式來回（0015）', () => {
     expect(container.textContent).toContain('—');
   });
 
-  it('quote.openJaw + 釘了組合（pinned_flight_labels）→ 顯示去/回兩班時間、標「指定」', () => {
+  it('quote.openJaw + 釘了組合 → 去/回拆兩排（各帶日期 + 航司 + 時間）', () => {
     const w: WatchItem = {
       ...baseWatch,
-      destination: 'NRT', return_origin: 'HND', return_destination: 'TSA',
+      destination: 'NRT', outbound_date: '2027-01-29', return_date: '2027-02-05',
+      return_origin: 'HND', return_destination: 'TSA',
       pinned_flight_numbers: ['BR 196', 'BR 191'],
       pinned_flight_labels: ['去 長榮航空 15:20', '回 長榮航空 12:15'],
       quote: {
@@ -343,11 +344,20 @@ describe('WatchCard — 開口式來回（0015）', () => {
         deltaPct: null, history: [], openJaw: { airline: '長榮航空' }
       }
     };
-    const { container } = render(<WatchCard watch={w} onOpen={() => {}} />);
-    // 釘了組合 → 顯示去/回兩班（含時間），標「指定」，不再寫含糊的「多城市票…起」
-    expect(container.textContent).toContain('指定');
-    expect(container.textContent).toContain('去 長榮航空 15:20');
-    expect(container.textContent).toContain('回 長榮航空 12:15');
+    const { container, getByTestId } = render(<WatchCard watch={w} onOpen={() => {}} />);
+    // 兩排區塊存在
+    const block = getByTestId('wc-oj-pinned');
+    expect(block).toBeInTheDocument();
+    const rows = block.querySelectorAll('.wc-oj-row');
+    expect(rows).toHaveLength(2);
+    // 上排去程：去 + 日期 1/29 + 航司/時間；下排回程：回 + 2/5 + ...
+    expect(rows[0].textContent).toContain('去');
+    expect(rows[0].textContent).toContain('1/29');
+    expect(rows[0].textContent).toContain('長榮航空 15:20');
+    expect(rows[1].textContent).toContain('回');
+    expect(rows[1].textContent).toContain('2/5');
+    expect(rows[1].textContent).toContain('長榮航空 12:15');
+    // 釘了組合就不寫含糊的「多城市票…起」
     expect(container.textContent).not.toContain('多城市票');
   });
 });
