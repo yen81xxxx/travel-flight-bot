@@ -331,4 +331,23 @@ describe('WatchCard — 開口式來回（0015）', () => {
     expect(container.textContent).toContain('多城市票');
     expect(container.textContent).toContain('—');
   });
+
+  it('quote.openJaw + 釘了組合（pinned_flight_labels）→ 顯示去/回兩班時間、標「指定」', () => {
+    const w: WatchItem = {
+      ...baseWatch,
+      destination: 'NRT', return_origin: 'HND', return_destination: 'TSA',
+      pinned_flight_numbers: ['BR 196', 'BR 191'],
+      pinned_flight_labels: ['去 長榮航空 15:20', '回 長榮航空 12:15'],
+      quote: {
+        currentBest: 24223, currentType: 'lcc', lcc: null, trad: null,
+        deltaPct: null, history: [], openJaw: { airline: '長榮航空' }
+      }
+    };
+    const { container } = render(<WatchCard watch={w} onOpen={() => {}} />);
+    // 釘了組合 → 顯示去/回兩班（含時間），標「指定」，不再寫含糊的「多城市票…起」
+    expect(container.textContent).toContain('指定');
+    expect(container.textContent).toContain('去 長榮航空 15:20');
+    expect(container.textContent).toContain('回 長榮航空 12:15');
+    expect(container.textContent).not.toContain('多城市票');
+  });
 });
