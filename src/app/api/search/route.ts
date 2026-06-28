@@ -30,6 +30,8 @@ const SearchBody = z.object({
   legs: z.array(LegSchema).length(2).optional(),
   // paired=true：開口式改「兩段配對」（去/回各查一次單程、配成對），回傳去+回完整航班的組合清單
   paired: z.boolean().optional(),
+  // 開口式配對的航司過濾（只配勾選的航司，例：只看長榮來回）。空 / 省略 = 不過濾
+  airlineFilter: z.array(z.string()).optional(),
   sourceId: z.string().optional()
 }).superRefine((d, ctx) => {
   if (d.legs) return;  // 多城市模式：legs 由 LegSchema 驗
@@ -77,7 +79,8 @@ async function handlePost(req: NextRequest): Promise<NextResponse> {
       const [out, back] = body.legs;
       const r = await searchOpenJawPaired(
         { origin: out.origin, destination: out.destination, date: out.date },
-        { origin: back.origin, destination: back.destination, date: back.date }
+        { origin: back.origin, destination: back.destination, date: back.date },
+        body.airlineFilter && body.airlineFilter.length > 0 ? { airlines: body.airlineFilter } : undefined
       );
       return NextResponse.json({
         ok: true, paired: true,

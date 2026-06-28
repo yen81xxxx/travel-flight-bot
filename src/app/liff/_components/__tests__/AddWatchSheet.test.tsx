@@ -329,4 +329,26 @@ describe('AddWatchSheet — 開口式來回（0015）', () => {
     expect(container.textContent).toContain('台灣虎航');
     expect(container.textContent).toContain('長榮航空');
   });
+
+  it('開口式：航司過濾 → 配對查價只送勾選的航司（只勾長榮 → 能看到長榮來回）', async () => {
+    responses.routeAirlines = { ok: true, airlines: ['長榮航空', '中華航空'] };
+    responses.search = { ok: true, paired: true, cheapestTotal: 23613, combos: [mkCombo('長榮航空', 'BR 196', '長榮航空', 'BR 189', 23613)] };
+    const { getByLabelText, getByRole, getByTestId, findByTestId } = render(
+      <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
+    );
+    fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
+    fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
+    fireEvent.click(getByTestId('openjaw-toggle'));
+    // 取消中華 → 只剩長榮
+    const china = await findByTestId('airline-中華航空');
+    fireEvent.click(china);
+    fireEvent.click(getByRole('button', { name: /查目前最低價/ }));
+    // paired 查價帶 airlineFilter=['長榮航空']（去/回兩段都只配長榮）
+    await waitFor(() => {
+      const searchCall = (global.fetch as unknown as jest.Mock).mock.calls.filter(c => c[0] === '/api/search').pop();
+      const body = JSON.parse(searchCall![1].body);
+      expect(body.paired).toBe(true);
+      expect(body.airlineFilter).toEqual(['長榮航空']);
+    });
+  });
 });
