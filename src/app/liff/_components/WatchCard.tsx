@@ -146,6 +146,22 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
     }
   }
 
+  // === meta 列片段（· 分隔，第一段不帶分隔點）===
+  // 沒釘 → 日期區間打頭；釘了 → 班次列已自帶日期，不重複顯示區間，只補「單程」標記
+  // （單程才標，去/回兩段自明）+ 天數倒數 + label。
+  const metaParts: React.ReactNode[] = [];
+  if (!pinnedLegs) {
+    metaParts.push(<span key="range" className="tnum">{dateRange}</span>);
+  } else if (!w.return_date) {
+    metaParts.push(<span key="ow">單程</span>);
+  }
+  if (days != null && days >= 0) {
+    metaParts.push(<span key="days" className="wc-count tnum">{days} 天後出發</span>);
+  }
+  if (w.label) {
+    metaParts.push(<span key="label">{w.label}</span>);
+  }
+
   return (
     <article
       className={`watch-card pressable ${w.paused ? 'is-paused' : ''} ${signal === 'hit' ? 'is-hit' : ''}`}
@@ -189,22 +205,33 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
         </div>
       </div>
 
-      {/* ---- 2. meta row ---- */}
-      <div className="wc-meta">
-        <span className="tnum">{dateRange}</span>
-        {days != null && days >= 0 && (
-          <>
-            <span className="dot" />
-            <span className="wc-count tnum">{days} 天後出發</span>
-          </>
-        )}
-        {w.label && (
-          <>
-            <span className="dot" />
-            <span>{w.label}</span>
-          </>
-        )}
-      </div>
+      {/* ---- 2. 釘選班次（取代日期列）：班次自帶日期，往上移到原日期區間位置，不再重複顯示區間 ---- */}
+      {pinnedLegs && (
+        <div className="wc-legs" data-testid="wc-legs">
+          {pinnedLegs.map((leg, i) => (
+            <div className="wc-leg" key={i}>
+              {leg.dir && (
+                <span className={`wc-leg-dir ${leg.dir === '去' ? 'out' : 'back'}`}>{leg.dir}</span>
+              )}
+              <span className="wc-leg-date tnum">{mdFmt(leg.date)}</span>
+              <span className="wc-leg-airline">{leg.airline}</span>
+              <span className="wc-leg-time tnum">{leg.time ?? ''}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ---- 3. meta row：日期區間（沒釘）/ 單程標記（釘了單程）+ 天數倒數 + label ---- */}
+      {metaParts.length > 0 && (
+        <div className="wc-meta">
+          {metaParts.map((p, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <span className="dot" />}
+              {p}
+            </React.Fragment>
+          ))}
+        </div>
+      )}
 
       {/* ---- 3. price row ----
         PR #19: quote=null（新路線冷啟動，報價還沒進來）→ 換成「報價更新中」panel，
@@ -230,22 +257,8 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
               <span className="ccy">NT$</span>
               <span className="val tnum">{ntFmt(currentBest)}</span>
             </div>
-            {pinnedLegs ? (
-              <div className="wc-legs" data-testid="wc-legs">
-                {pinnedLegs.map((leg, i) => (
-                  <div className="wc-leg" key={i}>
-                    {leg.dir && (
-                      <span className={`wc-leg-dir ${leg.dir === '去' ? 'out' : 'back'}`}>{leg.dir}</span>
-                    )}
-                    <span className="wc-leg-date tnum">{mdFmt(leg.date)}</span>
-                    <span className="wc-leg-airline">{leg.airline}</span>
-                    <span className="wc-leg-time tnum">{leg.time ?? ''}</span>
-                  </div>
-                ))}
-              </div>
-            ) : carrierLabel ? (
-              <span className="wc-carrier">{carrierLabel}</span>
-            ) : null}
+            {/* 釘了班 → 班次列已移到上方日期位置；這裡只放沒釘時的航司摘要 */}
+            {carrierLabel && <span className="wc-carrier">{carrierLabel}</span>}
           </div>
           <div className="wc-spark-wrap">
             {showDelta && (
@@ -478,14 +491,15 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
           background: rgba(10, 132, 255, 0.16);
           color: var(--ios-blue);
         }
-        /* 釘選班次（統一）：去/回/單程一律對齊網格（方向｜日期｜航司｜時間） */
+        /* 釘選班次（統一）：去/回/單程一律對齊網格（方向｜日期｜航司｜時間）
+           已上移到原日期列位置 → margin/字級比照 meta 列，當主資訊讀 */
         .wc-legs {
           display: grid;
           grid-template-columns: auto auto 1fr auto;
           column-gap: 8px;
-          row-gap: 4px;
+          row-gap: 5px;
           align-items: center;
-          margin-top: 5px;
+          margin-top: 8px;
         }
         .wc-leg {
           display: contents;
@@ -500,19 +514,19 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
         .wc-leg-dir.out { color: var(--ios-blue); background: rgba(10, 132, 255, 0.16); }
         .wc-leg-dir.back { color: var(--ios-purple); background: rgba(191, 90, 242, 0.18); }
         .wc-leg-date {
-          font-size: 11.5px;
+          font-size: 12.5px;
           font-weight: 600;
           color: var(--ios-label);
         }
         .wc-leg-airline {
-          font-size: 11.5px;
+          font-size: 12.5px;
           color: var(--ios-label-2);
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
         }
         .wc-leg-time {
-          font-size: 11.5px;
+          font-size: 12.5px;
           font-weight: 600;
           color: var(--ios-label);
           justify-self: end;
