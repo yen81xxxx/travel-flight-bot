@@ -225,10 +225,11 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
     }
     try {
       // 開口式 v2：去/回各查一次單程、配成對，追「最便宜那組」的兩段相加價（store=true 存進 flight_quotes）
+      // 有勾航司過濾 → 只配那些航司（例：只追長榮來回）
       const r = await searchOpenJawPaired(
         { origin: sub.origin, destination: sub.destination, date: sub.outbound_date },
         { origin: sub.return_origin!, destination: sub.return_destination!, date: sub.return_date },
-        { store: true }
+        { store: true, airlines: sub.airline_filter ?? undefined }
       );
       totalSerpapiCalls += r.serpapiCalls;
       openJawResults.set(sub.id, { cheapestTotal: r.cheapestTotal, airline: r.airline });

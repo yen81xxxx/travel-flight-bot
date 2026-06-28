@@ -314,11 +314,25 @@ export interface OpenJawPairedCombo {
   total: number;
 }
 
-/** 從單程 response 抽「直飛航班」清單：依班號去重取最低、依價格升冪 */
-function extractLegFlights(resp: SerpApiFlightsResponse, limit = 8): OpenJawLegFlight[] {
+/** 航司過濾比對：寬鬆比（含變體，如「捷星」vs「捷星日本航空」） */
+function airlineMatches(flightAirline: string | null | undefined, allow: string[]): boolean {
+  if (!flightAirline) return false;
+  return allow.some(a => flightAirline.includes(a) || a.includes(flightAirline));
+}
+
+/**
+ * 從單程 response 抽「直飛航班」清單：依班號去重取最低、依價格升冪。
+ * airlines（選填）：只留這些航司的航班（開口式航司過濾用，例：只看長榮）。
+ */
+function extractLegFlights(resp: SerpApiFlightsResponse, limit = 8, airlines?: string[]): OpenJawLegFlight[] {
   const all = [...(resp.best_flights ?? []), ...(resp.other_flights ?? [])];
-  const direct = all.filter(f => f.price != null && (f.flights?.length ?? 0) === 1);
-  const pool = direct.length > 0 ? direct : all.filter(f => f.price != null);
+  let direct = all.filter(f => f.price != null && (f.flights?.length ?? 0) === 1);
+  let any = all.filter(f => f.price != null);
+  if (airlines && airlines.length > 0) {
+    direct = direct.filter(f => airlineMatches(f.flights?.[0]?.airline, airlines));
+    any = any.filter(f => airlineMatches(f.flights?.[0]?.airline, airlines));
+  }
+  const pool = direct.length > 0 ? direct : any;
   const byFlight = new Map<string, OpenJawLegFlight>();
   for (const f of pool) {
     const s = f.flights?.[0];
@@ -345,15 +359,16 @@ function extractLegFlights(resp: SerpApiFlightsResponse, limit = 8): OpenJawLegF
 export async function searchOpenJawPaired(
   out: MultiCityLeg,
   back: MultiCityLeg,
-  opts?: { limit?: number; store?: boolean }
+  opts?: { limit?: number; store?: boolean; airlines?: string[] }
 ): Promise<{ combos: OpenJawPairedCombo[]; cheapestTotal: number | null; airline: string | null; serpapiCalls: number }> {
   const limit = opts?.limit ?? 8;
   const [outResp, backResp] = await Promise.all([
     callSerpApi({ departure_id: out.origin, arrival_id: out.destination, outbound_date: out.date, type: '2' }),
     callSerpApi({ departure_id: back.origin, arrival_id: back.destination, outbound_date: back.date, type: '2' })
   ]);
-  const outFlights = extractLegFlights(outResp);
-  const backFlights = extractLegFlights(backResp);
+  // 航司過濾（選填）：去/回兩段都只留勾選的航司（例：只勾長榮 → 只配長榮去+長榮回）
+  const outFlights = extractLegFlights(outResp, 8, opts?.airlines);
+  const backFlights = extractLegFlights(backResp, 8, opts?.airlines);
   const combos: OpenJawPairedCombo[] = [];
   for (const o of outFlights) {
     for (const b of backFlights) {

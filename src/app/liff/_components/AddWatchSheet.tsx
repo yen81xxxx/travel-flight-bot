@@ -228,7 +228,9 @@ export function AddWatchSheet({
             legs: [
               { origin, destination, date: outboundDate },
               { origin: returnOrigin, destination: returnDestination, date: returnDate }
-            ]
+            ],
+            // 勾選的航司有縮小範圍 → 只配那些航司（例：只勾長榮 → 長榮去+長榮回）
+            ...(narrowedAirlines ? { airlineFilter: [...selectedAirlines] } : {})
           })
         });
         const data = await res.json();
