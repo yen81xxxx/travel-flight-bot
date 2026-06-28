@@ -87,8 +87,15 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
   let carrierLabel: React.ReactNode = null;
   if (w.quote) {
     if (w.quote.openJaw) {
-      // 開口式：currentBest 是整張多城市票總價，沒廉/傳分類 → 標「多城市票・航司 起」
-      carrierLabel = (
+      // 開口式：釘了特定組合 → 顯示去/回那兩班（含時間，例「去 長榮 15:20 · 回 長榮 12:15」）；
+      // 沒釘（追最便宜）→ 標「多城市票・帶頭航司 起」。
+      const legs = w.pinned_flight_labels;
+      carrierLabel = legs && legs.length >= 2 ? (
+        <>
+          <span className="wc-ctag oj">指定</span>
+          <span className="wc-oj-legs">{legs[0]} · {legs[1]}</span>
+        </>
+      ) : (
         <>
           <span className="wc-ctag oj">多城市票</span>
           {w.quote.openJaw.airline ?? '—'} 起
@@ -428,6 +435,11 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
         .wc-ctag.oj {
           background: rgba(10, 132, 255, 0.16);
           color: var(--ios-blue);
+        }
+        .wc-oj-legs {
+          font-size: 11px;
+          line-height: 1.35;
+          word-break: break-word;
         }
         .wc-spark-wrap {
           display: flex;
