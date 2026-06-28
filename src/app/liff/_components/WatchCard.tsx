@@ -43,6 +43,38 @@ function mdFmt(s: string | null | undefined): string {
   return `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}`;
 }
 
+/** 釘選班次的一段（去 / 回 / 單程），給卡片對齊排版用 */
+export interface PinnedLeg { dir: '去' | '回' | null; date: string | null; airline: string; time: string | null; }
+
+/**
+ * 把存的 pinned_flight_label 解析成 {航司, 時間}。容兩種格式：
+ *   開口式 '去 長榮航空 15:20'（前綴去/回 + 空白分隔）
+ *   單程/來回 '長榮航空 · 10:25'（· 分隔）
+ */
+function parseLeg(label: string): { airline: string; time: string | null } {
+  const s = label.replace(/^[去回]\s*/, '').trim();
+  const m = s.match(/^(.*?)[\s·]+(\d{1,2}:\d{2})$/);
+  return m ? { airline: m[1].trim(), time: m[2] } : { airline: s, time: null };
+}
+
+/**
+ * 從 watch 算出「釘選班次」列表（統一給開口式 / 來回 / 單程用）。沒釘 → null。
+ *   開口式（openJaw + 2 標籤）→ 去(outbound_date) + 回(return_date)
+ *   來回（有 return_date）→ 釘的去程班，標「去」
+ *   單程（無 return_date）→ 該班，不標去/回
+ */
+function buildPinnedLegs(w: WatchItem): PinnedLeg[] | null {
+  const labels = w.pinned_flight_labels;
+  if (!labels || labels.length === 0) return null;
+  if (w.quote?.openJaw && labels.length >= 2) {
+    return [
+      { dir: '去', date: w.outbound_date, ...parseLeg(labels[0]) },
+      { dir: '回', date: w.return_date, ...parseLeg(labels[1]) }
+    ];
+  }
+  return labels.map(l => ({ dir: (w.return_date ? '去' : null) as '去' | null, date: w.outbound_date, ...parseLeg(l) }));
+}
+
 /** 距出發天數 — outDate 已過則回負數，caller 自己處理 */
 export function daysUntil(yyyymmdd: string | null | undefined): number | null {
   if (!yyyymmdd) return null;
@@ -83,32 +115,14 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
     ? (w.return_date ? `${mdFmt(w.outbound_date)}–${mdFmt(w.return_date)}` : `${mdFmt(w.outbound_date)} 單程`)
     : '不限定日期';
 
-  // === 開口式「釘了組合」→ 去/回拆兩排顯示（上去程、下回程，各帶日期+航司+時間）===
-  // legs 例：['去 長榮航空 15:20', '回 長榮航空 12:15']；去掉「去/回」前綴只留航司+時間，日期另外帶。
-  const ojLegs = w.quote?.openJaw && w.pinned_flight_labels && w.pinned_flight_labels.length >= 2
-    ? w.pinned_flight_labels
-    : null;
-  const ojPinned: React.ReactNode = ojLegs ? (
-    <div className="wc-oj-pinned" data-testid="wc-oj-pinned">
-      <div className="wc-oj-row">
-        <span className="wc-oj-dir out">去</span>
-        <span className="wc-oj-date tnum">{mdFmt(w.outbound_date)}</span>
-        <span className="wc-oj-info">{ojLegs[0].replace(/^去\s*/, '')}</span>
-      </div>
-      <div className="wc-oj-row">
-        <span className="wc-oj-dir back">回</span>
-        <span className="wc-oj-date tnum">{mdFmt(w.return_date)}</span>
-        <span className="wc-oj-info">{ojLegs[1].replace(/^回\s*/, '')}</span>
-      </div>
-    </div>
-  ) : null;
+  // === 釘選班次（統一排版）：有釘班的 watch 一律用對齊網格顯示去/回/單程；沒釘才走下面摘要 ===
+  const pinnedLegs = buildPinnedLegs(w);
 
-  // === 航司 label ===
+  // === 航司 label（只有「沒釘」的 watch 才用摘要：廉航 / 傳統 / 多城市票）===
   let carrierLabel: React.ReactNode = null;
-  if (w.quote) {
+  if (w.quote && !pinnedLegs) {
     if (w.quote.openJaw) {
-      // 釘了組合 → 用上面的兩排 ojPinned（carrierLabel 留空）；沒釘 → 標「多城市票・帶頭航司 起」。
-      carrierLabel = ojLegs ? null : (
+      carrierLabel = (
         <>
           <span className="wc-ctag oj">多城市票</span>
           {w.quote.openJaw.airline ?? '—'} 起
@@ -216,8 +230,22 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
               <span className="ccy">NT$</span>
               <span className="val tnum">{ntFmt(currentBest)}</span>
             </div>
-            {carrierLabel && <span className="wc-carrier">{carrierLabel}</span>}
-            {ojPinned}
+            {pinnedLegs ? (
+              <div className="wc-legs" data-testid="wc-legs">
+                {pinnedLegs.map((leg, i) => (
+                  <div className="wc-leg" key={i}>
+                    {leg.dir && (
+                      <span className={`wc-leg-dir ${leg.dir === '去' ? 'out' : 'back'}`}>{leg.dir}</span>
+                    )}
+                    <span className="wc-leg-date tnum">{mdFmt(leg.date)}</span>
+                    <span className="wc-leg-airline">{leg.airline}</span>
+                    <span className="wc-leg-time tnum">{leg.time ?? ''}</span>
+                  </div>
+                ))}
+              </div>
+            ) : carrierLabel ? (
+              <span className="wc-carrier">{carrierLabel}</span>
+            ) : null}
           </div>
           <div className="wc-spark-wrap">
             {showDelta && (
@@ -450,31 +478,45 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
           background: rgba(10, 132, 255, 0.16);
           color: var(--ios-blue);
         }
-        /* 開口式釘組合：去/回兩排（上去程、下回程） */
-        .wc-oj-pinned {
-          display: flex;
-          flex-direction: column;
-          gap: 3px;
+        /* 釘選班次（統一）：去/回/單程一律對齊網格（方向｜日期｜航司｜時間） */
+        .wc-legs {
+          display: grid;
+          grid-template-columns: auto auto 1fr auto;
+          column-gap: 8px;
+          row-gap: 4px;
+          align-items: center;
           margin-top: 5px;
         }
-        .wc-oj-row {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          font-size: 11.5px;
-          color: var(--ios-label-2);
+        .wc-leg {
+          display: contents;
         }
-        .wc-oj-dir {
+        .wc-leg-dir {
           font-size: 10px;
           font-weight: 700;
           border-radius: 4px;
           padding: 1px 5px;
-          flex-shrink: 0;
+          text-align: center;
         }
-        .wc-oj-dir.out { color: var(--ios-blue); background: rgba(10, 132, 255, 0.16); }
-        .wc-oj-dir.back { color: var(--ios-purple); background: rgba(191, 90, 242, 0.18); }
-        .wc-oj-date { color: var(--ios-label); font-weight: 600; }
-        .wc-oj-info { color: var(--ios-label-2); }
+        .wc-leg-dir.out { color: var(--ios-blue); background: rgba(10, 132, 255, 0.16); }
+        .wc-leg-dir.back { color: var(--ios-purple); background: rgba(191, 90, 242, 0.18); }
+        .wc-leg-date {
+          font-size: 11.5px;
+          font-weight: 600;
+          color: var(--ios-label);
+        }
+        .wc-leg-airline {
+          font-size: 11.5px;
+          color: var(--ios-label-2);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .wc-leg-time {
+          font-size: 11.5px;
+          font-weight: 600;
+          color: var(--ios-label);
+          justify-self: end;
+        }
         .wc-spark-wrap {
           display: flex;
           flex-direction: column;

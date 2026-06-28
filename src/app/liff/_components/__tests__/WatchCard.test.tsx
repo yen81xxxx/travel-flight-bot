@@ -345,19 +345,67 @@ describe('WatchCard — 開口式來回（0015）', () => {
       }
     };
     const { container, getByTestId } = render(<WatchCard watch={w} onOpen={() => {}} />);
-    // 兩排區塊存在
-    const block = getByTestId('wc-oj-pinned');
+    // 統一網格區塊存在
+    const block = getByTestId('wc-legs');
     expect(block).toBeInTheDocument();
-    const rows = block.querySelectorAll('.wc-oj-row');
+    const rows = block.querySelectorAll('.wc-leg');
     expect(rows).toHaveLength(2);
-    // 上排去程：去 + 日期 1/29 + 航司/時間；下排回程：回 + 2/5 + ...
-    expect(rows[0].textContent).toContain('去');
+    // 上排去程：去 + 日期 1/29 + 航司 + 時間；下排回程：回 + 2/5 + ...
+    expect(rows[0].querySelector('.wc-leg-dir.out')?.textContent).toBe('去');
     expect(rows[0].textContent).toContain('1/29');
-    expect(rows[0].textContent).toContain('長榮航空 15:20');
-    expect(rows[1].textContent).toContain('回');
+    expect(rows[0].querySelector('.wc-leg-airline')?.textContent).toBe('長榮航空');
+    expect(rows[0].querySelector('.wc-leg-time')?.textContent).toBe('15:20');
+    expect(rows[1].querySelector('.wc-leg-dir.back')?.textContent).toBe('回');
     expect(rows[1].textContent).toContain('2/5');
-    expect(rows[1].textContent).toContain('長榮航空 12:15');
+    expect(rows[1].querySelector('.wc-leg-airline')?.textContent).toBe('長榮航空');
+    expect(rows[1].querySelector('.wc-leg-time')?.textContent).toBe('12:15');
     // 釘了組合就不寫含糊的「多城市票…起」
     expect(container.textContent).not.toContain('多城市票');
+  });
+
+  it('來回（非開口式）+ 釘了去程班 → 顯示一排「去 + 日期 + 航司 + 時間」', () => {
+    const w: WatchItem = {
+      ...baseWatch,
+      outbound_date: '2027-01-29', return_date: '2027-02-05',
+      pinned_flight_numbers: ['BR 196'],
+      pinned_flight_labels: ['長榮航空 · 15:20'],
+      quote: {
+        currentBest: 21000, currentType: 'trad',
+        lcc: null, trad: { price: 21000, airline: '長榮航空' },
+        deltaPct: null, history: [], openJaw: null
+      }
+    };
+    const { getByTestId } = render(<WatchCard watch={w} onOpen={() => {}} />);
+    const block = getByTestId('wc-legs');
+    const rows = block.querySelectorAll('.wc-leg');
+    expect(rows).toHaveLength(1);
+    // 來回有 return_date → 釘的去程班標「去」
+    expect(rows[0].querySelector('.wc-leg-dir.out')?.textContent).toBe('去');
+    expect(rows[0].textContent).toContain('1/29');
+    expect(rows[0].querySelector('.wc-leg-airline')?.textContent).toBe('長榮航空');
+    expect(rows[0].querySelector('.wc-leg-time')?.textContent).toBe('15:20');
+  });
+
+  it('單程（無 return_date）+ 釘了班 → 一排不標去/回（同規則對齊）', () => {
+    const w: WatchItem = {
+      ...baseWatch,
+      outbound_date: '2027-01-29', return_date: null,
+      pinned_flight_numbers: ['BR 196'],
+      pinned_flight_labels: ['長榮航空 · 10:25'],
+      quote: {
+        currentBest: 9800, currentType: 'trad',
+        lcc: null, trad: { price: 9800, airline: '長榮航空' },
+        deltaPct: null, history: [], openJaw: null
+      }
+    };
+    const { getByTestId } = render(<WatchCard watch={w} onOpen={() => {}} />);
+    const block = getByTestId('wc-legs');
+    const rows = block.querySelectorAll('.wc-leg');
+    expect(rows).toHaveLength(1);
+    // 單程不標方向
+    expect(rows[0].querySelector('.wc-leg-dir')).toBeNull();
+    expect(rows[0].textContent).toContain('1/29');
+    expect(rows[0].querySelector('.wc-leg-airline')?.textContent).toBe('長榮航空');
+    expect(rows[0].querySelector('.wc-leg-time')?.textContent).toBe('10:25');
   });
 });
