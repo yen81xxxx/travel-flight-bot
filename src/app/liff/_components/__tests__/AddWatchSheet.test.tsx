@@ -330,6 +330,41 @@ describe('AddWatchSheet — 開口式來回（0015）', () => {
     expect(container.textContent).toContain('長榮航空');
   });
 
+  it('開口式：點一張配對卡 → 釘該組（去班+回班）、submit 送 pinnedFlightNumbers + 目標價=該組總價', async () => {
+    responses.search = {
+      ok: true, paired: true, cheapestTotal: 20441,
+      combos: [
+        mkCombo('長榮航空', 'BR 196', '長榮航空', 'BR 189', 20441),
+        mkCombo('長榮航空', 'BR 184', '長榮航空', 'BR 191', 22194)
+      ]
+    };
+    responses.subscriptions = { ok: true, action: 'created' };
+    const { getByLabelText, getByRole, getByText, getByTestId, getAllByTestId, container } = render(
+      <AddWatchSheet open={true} onClose={() => {}} userId="Uabc" groupCtxId={null} />
+    );
+    fireEvent.change(getByLabelText(/去程/) as HTMLInputElement, { target: { value: '2026-09-01' } });
+    fireEvent.change(getByLabelText(/回程/) as HTMLInputElement, { target: { value: '2026-09-05' } });
+    fireEvent.click(getByTestId('openjaw-toggle'));
+    fireEvent.click(getByRole('button', { name: /查目前最低價/ }));
+    await waitFor(() => expect(getByTestId('oj-list')).toBeInTheDocument());
+
+    // 點第二張卡（BR184 去 + BR191 回 / 22,194）→ 該卡選取、底部「已選追蹤」
+    fireEvent.click(getAllByTestId('oj-combo')[1]);
+    expect(getAllByTestId('oj-combo')[1].className).toContain('on');
+    expect(getAllByTestId('oj-combo')[0].className).not.toContain('on');
+    expect(container.textContent).toContain('已選追蹤');
+
+    // submit → pinnedFlightNumbers=['BR 184','BR 191']（去班+回班）、目標價=該組 22,194
+    fireEvent.click(getByText('開始追蹤'));
+    await waitFor(() => {
+      const postCall = (global.fetch as unknown as jest.Mock).mock.calls.find(c => c[0] === '/api/subscriptions');
+      const body = JSON.parse(postCall![1].body);
+      expect(body.pinnedFlightNumbers).toEqual(['BR 184', 'BR 191']);
+      expect(body.maxPrice).toBe(22194);
+      expect(body.returnOrigin).toBe('NRT');
+    });
+  });
+
   it('開口式：航司過濾 → 配對查價只送勾選的航司（只勾長榮 → 能看到長榮來回）', async () => {
     responses.routeAirlines = { ok: true, airlines: ['長榮航空', '中華航空'] };
     responses.search = { ok: true, paired: true, cheapestTotal: 23613, combos: [mkCombo('長榮航空', 'BR 196', '長榮航空', 'BR 189', 23613)] };

@@ -359,16 +359,17 @@ function extractLegFlights(resp: SerpApiFlightsResponse, limit = 8, airlines?: s
 export async function searchOpenJawPaired(
   out: MultiCityLeg,
   back: MultiCityLeg,
-  opts?: { limit?: number; store?: boolean; airlines?: string[] }
+  opts?: { limit?: number; store?: boolean; airlines?: string[]; pinnedCombo?: { out: string; back: string } }
 ): Promise<{ combos: OpenJawPairedCombo[]; cheapestTotal: number | null; airline: string | null; serpapiCalls: number }> {
   const limit = opts?.limit ?? 8;
   const [outResp, backResp] = await Promise.all([
     callSerpApi({ departure_id: out.origin, arrival_id: out.destination, outbound_date: out.date, type: '2' }),
     callSerpApi({ departure_id: back.origin, arrival_id: back.destination, outbound_date: back.date, type: '2' })
   ]);
-  // 航司過濾（選填）：去/回兩段都只留勾選的航司（例：只勾長榮 → 只配長榮去+長榮回）
-  const outFlights = extractLegFlights(outResp, 8, opts?.airlines);
-  const backFlights = extractLegFlights(backResp, 8, opts?.airlines);
+  // 航司過濾（選填）：去/回兩段都只留勾選的航司（例：只勾長榮 → 只配長榮去+長榮回）。
+  // 多抽一點（30）確保釘選的那班（可能不是最便宜）也找得到。
+  const outFlights = extractLegFlights(outResp, 30, opts?.airlines);
+  const backFlights = extractLegFlights(backResp, 30, opts?.airlines);
   const combos: OpenJawPairedCombo[] = [];
   for (const o of outFlights) {
     for (const b of backFlights) {
@@ -384,18 +385,23 @@ export async function searchOpenJawPaired(
     if (seen.has(k)) continue;
     seen.add(k);
     deduped.push(c);
-    if (deduped.length >= limit) break;
   }
-  const cheapest = deduped[0] ?? null;
-  // store（cron 用）：把「最便宜那組」的整趟相加價存進 flight_quotes（=歷史 + 追蹤來源），
-  // 沿用開口式那一筆（return_origin/dest 有值、pinned_outbound_flight=null）。
-  if (opts?.store && cheapest) {
-    await storeMultiCityQuote([out, back], { price: cheapest.total, airline: cheapest.out.airline }, null);
+  const displayCombos = deduped.slice(0, limit);
+
+  // 釘選某一組（pinnedCombo）→ 找去班+回班都對的那組，追那組的價（當天找不到 → null）；
+  // 否則追最便宜那組。store 時用 'GO|BACK' 當 key（跟「追最便宜」NULL 那筆區分）。
+  const pin = opts?.pinnedCombo;
+  const tracked = pin
+    ? deduped.find(c => c.out.flightNumber === pin.out && c.back.flightNumber === pin.back) ?? null
+    : (displayCombos[0] ?? null);
+  if (opts?.store && tracked) {
+    const key = pin ? `${pin.out}|${pin.back}` : null;
+    await storeMultiCityQuote([out, back], { price: tracked.total, airline: tracked.out.airline }, key);
   }
   return {
-    combos: deduped,
-    cheapestTotal: cheapest?.total ?? null,
-    airline: cheapest?.out.airline ?? null,
+    combos: displayCombos,
+    cheapestTotal: tracked?.total ?? null,
+    airline: tracked?.out.airline ?? null,
     serpapiCalls: 2
   };
 }

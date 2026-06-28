@@ -246,14 +246,16 @@ async function computeOpenJawQuoteForSub(
   const weekAgoEnd = new Date(now - 6 * ONE_DAY).toISOString();
   const historySince = new Date(now - days * ONE_DAY).toISOString();
 
-  // 釘了去程班 → 只讀那班的整趟價（pinned_outbound_flight = 班號）；否則讀「最便宜組合」那種（IS NULL）
-  const pinnedOutbound = sub.pinned_flight_numbers?.[0] ?? null;
+  // 釘了特定組合（pinned_flight_numbers = [去班, 回班]）→ 只讀那組的整趟價
+  //   （cron 用 'GO|BACK' 當 pinned_outbound_flight key 存）；否則讀「最便宜組合」那種（IS NULL）
+  const pinNos = sub.pinned_flight_numbers;
+  const pinnedKey = pinNos && pinNos.length >= 2 ? `${pinNos[0]}|${pinNos[1]}` : (pinNos?.[0] ?? null);
   const ojFilter = (q: ReturnType<typeof supabase['from']>) => {
     const base = q.eq('origin', sub.origin).eq('destination', sub.destination)
       .eq('outbound_date', sub.outbound_date).eq('return_date', sub.return_date)
       .eq('return_origin', sub.return_origin).eq('return_destination', sub.return_destination)
       .eq('stops', 0).not('price', 'is', null);
-    return pinnedOutbound ? base.eq('pinned_outbound_flight', pinnedOutbound) : base.is('pinned_outbound_flight', null);
+    return pinnedKey ? base.eq('pinned_outbound_flight', pinnedKey) : base.is('pinned_outbound_flight', null);
   };
 
   const [recentRes, weekRes, historyRes] = await Promise.all([
