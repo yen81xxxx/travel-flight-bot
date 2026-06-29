@@ -485,6 +485,24 @@ describe('buildMultiSubsItem — topAirlines（比照降價警報卡顯示前 3 
     const item = buildMultiSubsItem(makeSub(), undefined);
     expect(item.topAirlines).toBeUndefined();
   });
+
+  it('previousMins.airlines → 每家算「比昨天便宜多少」(dropVsPrev)；沒更便宜/沒料 → null', () => {
+    const route = makeRoute({
+      fanout: [makeFanout({
+        airport: 'NRT',
+        outbound: [
+          makeQuote({ airline: '酷航', price: 9000, trip_leg: 'outbound' }),
+          makeQuote({ airline: '樂桃', price: 8000, trip_leg: 'outbound' })
+        ],
+        return: [makeQuote({ airline: '酷航', price: 9000, trip_leg: 'return' })]
+      })],
+      previousMins: { lcc: null, traditional: null, airlines: { 樂桃: 8538, 酷航: 8800 } }
+    });
+    const item = buildMultiSubsItem(makeSub({ max_price: 99999 }), route);
+    const byAir = Object.fromEntries((item.topAirlines ?? []).map(t => [t.airline, t.dropVsPrev]));
+    expect(byAir['樂桃']).toBe(538);   // 8538 → 8000，便宜 538
+    expect(byAir['酷航']).toBeNull();   // 8800 → 9000，沒更便宜 → 不標
+  });
 });
 
 describe('buildOpenJawItem — 開口式來回（multi-city 一張票，0015）', () => {

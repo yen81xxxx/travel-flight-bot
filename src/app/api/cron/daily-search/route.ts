@@ -392,7 +392,7 @@ async function runDailySearch(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json({
     ok: pushedFail === 0,
     // 部署版本標記 — 改卡片版面時 bump 一下，方便從 API 回應驗證新 code 是否真的上線
-    cardVersion: 'v54-digest-airline-rows-times-2026-06-29',
+    cardVersion: 'v55-perairline-drop-button-2026-06-30',
     daily: {
       sourcesTargeted: targets.length,
       sourcesOptedOut: optedOut.size,
@@ -436,7 +436,7 @@ async function queryPreviousCategoryMins(
   destinations: string[],
   outboundDate: string,
   returnDate: string | null  // null = 單程訂閱
-): Promise<{ lcc: number | null; traditional: number | null }> {
+): Promise<{ lcc: number | null; traditional: number | null; airlines: Record<string, number> }> {
   const now = Date.now();
   const olderThan = new Date(now - 2 * 3600 * 1000).toISOString();
   const newerThan = new Date(now - 36 * 3600 * 1000).toISOString();
@@ -454,10 +454,12 @@ async function queryPreviousCategoryMins(
   query = returnDate == null ? query.is('return_date', null) : query.eq('return_date', returnDate);
   const { data, error } = await query;
 
-  if (error || !data || data.length === 0) return { lcc: null, traditional: null };
+  if (error || !data || data.length === 0) return { lcc: null, traditional: null, airlines: {} };
 
   let lccMin = Infinity;
   let tradMin = Infinity;
+  // 每家航空昨天(2-36h前)的最低 outbound 價（== pickTopAirlines 來源）→ 給卡片算「比昨天便宜多少」
+  const airlineMins: Record<string, number> = {};
   for (const q of data as { airline: string | null; price: number | null; trip_leg: string }[]) {
     if (q.price == null) continue;
     const cat = getAirlineCategory(q.airline);
@@ -465,10 +467,16 @@ async function queryPreviousCategoryMins(
     if (cat === 'full-service' && q.trip_leg === 'outbound' && q.price < tradMin) tradMin = q.price;
     // 廉航：只看 return list（== pickLccCombo 來源，return 已是精確來回總價）
     if (cat === 'lcc' && q.trip_leg === 'return' && q.price < lccMin) lccMin = q.price;
+    // 每家航空各自最低（topAirlines 用 outbound 價）
+    if (q.airline && q.trip_leg === 'outbound') {
+      const prev = airlineMins[q.airline];
+      if (prev == null || q.price < prev) airlineMins[q.airline] = q.price;
+    }
   }
 
   return {
     lcc: lccMin === Infinity ? null : lccMin,
-    traditional: tradMin === Infinity ? null : tradMin
+    traditional: tradMin === Infinity ? null : tradMin,
+    airlines: airlineMins
   };
 }

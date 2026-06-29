@@ -30,13 +30,13 @@ export const FLEX_DARK = {
  * 每列：[廉/傳 tag] 航司名 ……… NT$價格。空陣列回 null（caller fallback 回 carrier）。
  */
 /**
- * 每家航空一列：[廉/傳 tag] 航司名 出發→抵達（小字）……… 該家價格。
- * 不把多家縮成一筆（每家自己的時間 + 自己的價）。價格達標（≤ 各分類目標）轉綠。
- * targets 省略 → 不上色（全白）。沒抵達時間 → 只顯示出發；都沒有 → 不顯示時間段。
+ * 每家航空一列：[廉/傳 tag] 航司名 出發→抵達（小字）……… 該家價格 [↘NT$X]。
+ * 不把多家縮成一筆（每家自己的時間 + 自己的價）。價格不上色（全白）；
+ * 比昨天便宜 → 價格右邊接一個綠色「↘NT$跌幅」，沒便宜就不接。
+ * 沒抵達時間 → 只顯示出發；都沒有 → 不顯示時間段。
  */
 export function buildTopAirlinesBox(
-  topAirlines: { airline: string; price: number; depTime?: string | null; arrTime?: string | null }[] | undefined,
-  targets?: { lcc: number; trad: number }
+  topAirlines: { airline: string; price: number; depTime?: string | null; arrTime?: string | null; dropVsPrev?: number | null }[] | undefined
 ): object | null {
   if (!topAirlines || topAirlines.length === 0) return null;
   return {
@@ -47,8 +47,7 @@ export function buildTopAirlinesBox(
     contents: topAirlines.slice(0, 3).map(a => {
       const cat = getAirlineCategory(a.airline);
       const timeText = a.depTime ? (a.arrTime ? `${a.depTime}→${a.arrTime}` : a.depTime) : '';
-      const target = targets ? (cat === 'lcc' ? targets.lcc : targets.trad) : null;
-      const hit = target != null && a.price <= target;
+      const dropped = a.dropVsPrev != null && a.dropVsPrev > 0;
       return {
         type: 'box',
         layout: 'baseline',
@@ -69,7 +68,11 @@ export function buildTopAirlinesBox(
           ...(timeText
             ? [{ type: 'text', text: timeText, size: 'xxs', color: FLEX_DARK.soft, flex: 1, margin: 'sm', gravity: 'center' }]
             : [{ type: 'text', text: ' ', size: 'xxs', flex: 1 }]),
-          { type: 'text', text: `NT$${a.price.toLocaleString()}`, size: 'sm', weight: 'bold', color: hit ? FLEX_DARK.green : FLEX_DARK.text, align: 'end', flex: 0 }
+          { type: 'text', text: `NT$${a.price.toLocaleString()}`, size: 'sm', weight: 'bold', color: FLEX_DARK.text, align: 'end', flex: 0 },
+          // 比昨天便宜 → 綠色 ↘NT$跌幅（↘ = 五點鐘方向）
+          ...(dropped
+            ? [{ type: 'text', text: `↘NT$${a.dropVsPrev!.toLocaleString()}`, size: 'xxs', weight: 'bold', color: FLEX_DARK.green, align: 'end', flex: 0, margin: 'sm' }]
+            : [])
         ]
       };
     })
@@ -79,6 +82,27 @@ export function buildTopAirlinesBox(
 /** 顯示日期區間的小工具：來回顯示 'YYYY-MM-DD ~ YYYY-MM-DD'，單程顯示 '單程 YYYY-MM-DD' */
 function formatDateRange(outboundDate: string, returnDate: string | null | undefined): string {
   return returnDate ? `📅 ${outboundDate} ~ ${returnDate}` : `📅 單程 ${outboundDate}`;
+}
+
+/**
+ * footer 動作鈕 — 淡藍底 + 藍字（取代整塊亮藍實心；carousel 一排不吵）。
+ * LINE 沒有「半透明底 + 彩字」原生按鈕 → 用淡藍底 box 包一顆 link 鈕做出來。
+ */
+function buildActionFooter(label: string, uri: string): Record<string, unknown> {
+  return {
+    type: 'box',
+    layout: 'vertical',
+    backgroundColor: FLEX_DARK.cardBg,
+    paddingAll: '16px',
+    paddingTop: '0px',
+    contents: [{
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: '#0a84ff26',   // iOS 藍 ~15% 淡底
+      cornerRadius: '8px',
+      contents: [{ type: 'button', style: 'link', height: 'sm', color: FLEX_DARK.blue, action: { type: 'uri', label, uri } }]
+    }]
+  };
 }
 
 interface TraditionalRoundTripData {
@@ -287,7 +311,7 @@ export interface MultiSubsItem {
   vsPrevPct: number | null;
   // 前 3 便宜航空（跨機場 merge 後，去重取最低、由低到高）— 比照降價警報卡列出來，
   // 取代「只顯示一個最低價」。沒料 / undefined → buildRouteBubble 不畫這塊。
-  topAirlines?: { airline: string; price: number; depTime?: string | null; arrTime?: string | null }[];
+  topAirlines?: { airline: string; price: number; depTime?: string | null; arrTime?: string | null; dropVsPrev?: number | null }[];
   errorReason?: ItemErrorReason | null;  // 沒 cheapestPrice 時的原因（系統問題 vs 真的沒航班）
   // 廉航分類詳細（mix-and-match 組合）
   lcc?: {
@@ -500,24 +524,7 @@ function buildDigestLeadBubble(p: {
       paddingTop: '12px',
       contents: bodyContents
     },
-    footer: {
-      type: 'box',
-      layout: 'vertical',
-      backgroundColor: FLEX_DARK.cardBg,
-      paddingAll: '16px',
-      paddingTop: '0px',
-      contents: [{
-        type: 'button',
-        style: 'primary',
-        color: FLEX_DARK.blue,
-        height: 'sm',
-        action: {
-          type: 'uri',
-          label: '打開 Travl 看全部',
-          uri: subscriptionsUrlFor(p.sourceId)
-        }
-      }]
-    }
+    footer: buildActionFooter('打開 Travl 看全部', subscriptionsUrlFor(p.sourceId))
   };
 }
 
@@ -594,8 +601,7 @@ function buildRouteBubble(item: MultiSubsItem, sourceId: string): Record<string,
     // 開口式：兩段各一列 + 合計（不走下面的單一路線版面）
     pushOpenJawBody(bodyContents, item, hit);
   } else {
-  // 目標寫一次（接在日期後）；每家航空的達標各自上色，不放會誤導的單一大標題價
-  const tradTarget = item.maxPriceTraditional ?? item.maxPrice;
+  // 目標寫一次（接在日期後）；不放會誤導的單一大標題價
   bodyContents.push(
     {
       type: 'text',
@@ -611,8 +617,8 @@ function buildRouteBubble(item: MultiSubsItem, sourceId: string): Record<string,
     bodyContents.push({ type: 'text', text: item.label, size: 'xxs', color: FLEX_DARK.faint, margin: 'xs' });
   }
 
-  // 每家航空各一列（航司・出發→抵達・該家價；達標轉綠）。多家不縮成一筆、不放單一大標題價（會誤導）。
-  const topBox = buildTopAirlinesBox(item.topAirlines, { lcc: item.maxPrice, trad: tradTarget });
+  // 每家航空各一列（航司・出發→抵達・該家價・比昨天便宜→↘NT$跌幅）。多家不縮成一筆、不放單一大標題價（會誤導）。
+  const topBox = buildTopAirlinesBox(item.topAirlines);
   if (topBox) {
     bodyContents.push(topBox as Record<string, unknown>);
   } else if (item.cheapestPrice != null) {
@@ -660,24 +666,7 @@ function buildRouteBubble(item: MultiSubsItem, sourceId: string): Record<string,
       paddingAll: '16px',
       contents: bodyContents
     },
-    footer: {
-      type: 'box',
-      layout: 'vertical',
-      backgroundColor: FLEX_DARK.cardBg,
-      paddingAll: '16px',
-      paddingTop: '0px',
-      contents: [{
-        type: 'button',
-        style: 'primary',
-        color: FLEX_DARK.blue,
-        height: 'sm',
-        action: {
-          type: 'uri',
-          label: '看走勢與航班',
-          uri: subscriptionsUrlFor(sourceId)
-        }
-      }]
-    }
+    footer: buildActionFooter('看走勢與航班', subscriptionsUrlFor(sourceId))
   };
 }
 
