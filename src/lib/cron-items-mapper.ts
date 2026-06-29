@@ -84,7 +84,8 @@ export function buildMultiSubsItem(
   let bestLcc: { price: number; outboundAirline: string; returnAirline: string; airport: string; isEstimate: boolean } | null = null;
   let bestTrad: { price: number; airline: string; airport: string } | null = null;
   // 前 3 便宜航空：跨機場 merge，同航司留最低價（比照降價警報卡顯示前 3 家）
-  const airlineMin = new Map<string, number>();
+  // 每家航空跨機場(fanout)留最便宜那筆（連同出發/抵達時間，給通報卡片標）
+  const airlineMin = new Map<string, { price: number; depTime: string | null; arrTime: string | null }>();
   for (const f of route.fanout) {
     const a = analyzeFlights(f.outbound, f.return, timeFilter, sub.airline_filter);
     if (a.lccCombo && (!bestLcc || a.lccCombo.price < bestLcc.price)) {
@@ -95,11 +96,13 @@ export function buildMultiSubsItem(
     }
     for (const t of a.topAirlines) {
       const prev = airlineMin.get(t.airline);
-      if (prev == null || t.price < prev) airlineMin.set(t.airline, t.price);
+      if (prev == null || t.price < prev.price) {
+        airlineMin.set(t.airline, { price: t.price, depTime: t.depTime ?? null, arrTime: t.arrTime ?? null });
+      }
     }
   }
   const topAirlines = [...airlineMin.entries()]
-    .map(([airline, price]) => ({ airline, price }))
+    .map(([airline, v]) => ({ airline, price: v.price, depTime: v.depTime, arrTime: v.arrTime }))
     .sort((x, y) => x.price - y.price)
     .slice(0, 3);
 

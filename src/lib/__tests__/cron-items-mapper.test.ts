@@ -473,7 +473,8 @@ describe('buildMultiSubsItem — topAirlines（比照降價警報卡顯示前 3 
     });
     const item = buildMultiSubsItem(makeSub({ max_price: 99999 }), route);
     // 前 3 便宜：樂桃 8000、酷航 9000、捷星 12000（捷星跨機場取最低 12000，不是 14000）；星宇 13000 落榜
-    expect(item.topAirlines).toEqual([
+    // （topAirlines 現在另帶 depTime/arrTime，這裡只比 航司+價 的排序）
+    expect(item.topAirlines?.map(t => ({ airline: t.airline, price: t.price }))).toEqual([
       { airline: '樂桃', price: 8000 },
       { airline: '酷航', price: 9000 },
       { airline: '捷星', price: 12000 }

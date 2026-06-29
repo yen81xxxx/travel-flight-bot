@@ -88,7 +88,7 @@ describe('buildHistoryFlex（A4 深色版）', () => {
 });
 
 describe('delta 基準標示（spec honesty fix）', () => {
-  it('摘要 route bubble delta 標「較昨日」', () => {
+  it('改版後 route bubble 不再顯示「較昨日」delta（拿掉誤導大標題那塊；delta 仍用於卡片排序）', () => {
     const item: MultiSubsItem = {
       origin: 'TPE', destination: 'NRT', outboundDate: '2026-08-04', returnDate: '2026-08-08',
       maxPrice: 12000, maxPriceTraditional: null, label: null,
@@ -98,7 +98,7 @@ describe('delta 基準標示（spec honesty fix）', () => {
       traditional: null
     };
     const json = JSON.stringify(buildMultiSubsDailyFlex({ items: [item], sourceId: 'U1' }));
-    expect(json).toContain('▼ 4%');
-    expect(json).toContain('較昨日');
+    // 每家航空各自的價才是重點；單一卡級 delta 無處可放（多家各有變化）→ 拿掉
+    expect(json).not.toContain('較昨日');
   });
 });

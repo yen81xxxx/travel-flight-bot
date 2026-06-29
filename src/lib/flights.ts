@@ -26,6 +26,21 @@ export function extractDepartureHHMM(q: FlightQuote): string | null {
 }
 
 /**
+ * 從 quote.raw 取出最後一段（終點）的本地抵達時間「HH:MM」。
+ * 只存直飛 → flights[0] 即終點段；保險取 flights[last]。
+ * SerpApi 格式：'2027-01-29 16:20' → '16:20'。取不到 → null。
+ */
+export function extractArrivalHHMM(q: FlightQuote): string | null {
+  const raw = q.raw as SerpApiFlight | undefined;
+  const legs = raw?.flights;
+  const last = legs && legs.length > 0 ? legs[legs.length - 1] : undefined;
+  const time = last?.arrival_airport?.time;
+  if (typeof time !== 'string') return null;
+  const m = time.match(/\b(\d{2}:\d{2})\b/);
+  return m ? m[1] : null;
+}
+
+/**
  * 過濾起飛時間不在 [min, max] 窗口內的 quote。
  * - min 為 null → 不檢查下限
  * - max 為 null → 不檢查上限
@@ -88,7 +103,7 @@ export interface FlightAnalysis {
    * 給 LINE 警報顯示「前 3 家便宜航空」用（只顯示一家意義不大）。
    * 已套用時段 + 航司過濾（從 fOutbound 算），所以勾了航司就只在勾選的裡面挑。
    */
-  topAirlines: { airline: string; price: number }[];
+  topAirlines: { airline: string; price: number; depTime?: string | null; arrTime?: string | null }[];
   outboundCount: number;
   returnCount: number;
 }
@@ -223,16 +238,22 @@ function analyzePinnedFlights(outbound: FlightQuote[], flightNumbers: string[]):
  * 去重：同一家只留最低價那筆；最後依價格由低到高取前 N。
  * outbound[i].price = Google Flights 對「該航司同家來回」的估算總價，所以天然是來回估價。
  */
-function pickTopAirlines(outbound: FlightQuote[], n: number): { airline: string; price: number }[] {
-  const cheapestPerAirline = new Map<string, number>();
+function pickTopAirlines(outbound: FlightQuote[], n: number): { airline: string; price: number; depTime: string | null; arrTime: string | null }[] {
+  // 每家航空留「最便宜那班的整筆 quote」（不只價格）→ 才能抽出發/抵達時間給通報卡片標。
+  const cheapestPerAirline = new Map<string, FlightQuote>();
   for (const q of [...outbound].sort(byPriceAsc)) {
     if (q.price == null || !q.airline) continue;
-    if (!cheapestPerAirline.has(q.airline)) cheapestPerAirline.set(q.airline, q.price);
+    if (!cheapestPerAirline.has(q.airline)) cheapestPerAirline.set(q.airline, q);
   }
   return [...cheapestPerAirline.entries()]
-    .sort((a, b) => a[1] - b[1])
+    .sort((a, b) => (a[1].price ?? 0) - (b[1].price ?? 0))
     .slice(0, n)
-    .map(([airline, price]) => ({ airline, price }));
+    .map(([airline, q]) => ({
+      airline,
+      price: q.price as number,
+      depTime: extractDepartureHHMM(q),
+      arrTime: extractArrivalHHMM(q)
+    }));
 }
 
 /**

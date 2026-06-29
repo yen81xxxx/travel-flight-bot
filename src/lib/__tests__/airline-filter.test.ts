@@ -116,7 +116,8 @@ describe('analyzeFlights — topAirlines（LINE 警報前 3 家）', () => {
       q('酷航', 7000), q('星宇航空', 8000), q('長榮航空', 9000)
     ];
     const a = analyzeFlights(out, [], undefined, null);
-    expect(a.topAirlines).toEqual([
+    // topAirlines 現在另帶 depTime/arrTime（此處 quote 無 raw → null）；只比航司+價排序
+    expect(a.topAirlines.map(t => ({ airline: t.airline, price: t.price }))).toEqual([
       { airline: '捷星', price: 6000 },
       { airline: '酷航', price: 7000 },
       { airline: '星宇航空', price: 8000 }
@@ -131,7 +132,7 @@ describe('analyzeFlights — topAirlines（LINE 警報前 3 家）', () => {
 
   it('不足 3 家 → 有幾家給幾家', () => {
     const a = analyzeFlights([q('捷星', 6000)], [], undefined, null);
-    expect(a.topAirlines).toEqual([{ airline: '捷星', price: 6000 }]);
+    expect(a.topAirlines.map(t => ({ airline: t.airline, price: t.price }))).toEqual([{ airline: '捷星', price: 6000 }]);
   });
 });
 
