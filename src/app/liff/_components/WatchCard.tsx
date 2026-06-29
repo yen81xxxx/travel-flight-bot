@@ -492,10 +492,13 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
           color: var(--ios-blue);
         }
         /* 釘選班次（統一）：去/回/單程一律對齊網格（方向｜日期｜航司｜時間）
-           已上移到原日期列位置 → margin/字級比照 meta 列，當主資訊讀 */
+           已上移到原日期列位置 → margin/字級比照 meta 列，當主資訊讀。
+           欄位一律 auto + 整組靠左（justify-content:start）→ 時間緊跟航司，
+           不再被 1fr 撐到最右邊（航司與時間是同一筆資訊，要放一起）。 */
         .wc-legs {
           display: grid;
-          grid-template-columns: auto auto 1fr auto;
+          grid-template-columns: auto auto auto auto;
+          justify-content: start;
           column-gap: 8px;
           row-gap: 5px;
           align-items: center;
@@ -529,7 +532,6 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
           font-size: 12.5px;
           font-weight: 600;
           color: var(--ios-label);
-          justify-self: end;
         }
         .wc-spark-wrap {
           display: flex;
