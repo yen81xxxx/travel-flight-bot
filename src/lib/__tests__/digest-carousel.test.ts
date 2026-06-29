@@ -2,11 +2,12 @@
  * L2 — 每日摘要 carousel（LINE_SURFACE_SPEC §A1）
  *
  * 為什麼測這些：
- *   1. 「值得看」過濾是本次改版的核心 — 舊版傾倒全部訂閱，新版只放
- *      達標 + 明顯變動。過濾錯 = 又回到 spam（或漏掉達標的 — 更糟）
+ *   1. **每筆訂閱都要出一張卡**（user 鐵則：訂閱幾筆就全顯示，不藏沒達標/沒變動的）。
+ *      只排序（達標排前），不過濾 — 漏掉任何一筆 = 違反鐵則
  *   2. isItemHit 的 per-category 目標語意（lcc←maxPrice /
  *      trad←maxPriceTraditional??maxPrice）拿錯會虛報達標
- *   3. carousel ≤ 10 bubbles（lead + cap 9）— LINE 上限 12，超過整則被拒
+ *   3. carousel ≤ 12 bubbles（lead + cap 11）— LINE 上限 12，超過整則被拒；
+ *      被截要 fail loud（lead 標明只顯示前 N 條）
  *   4. 配額暫滿不能無聲消失（fail loud）— lead bubble 必須帶橘字
  *   5. 零 emoji（設計憲法）
  */
@@ -14,8 +15,7 @@ import {
   buildMultiSubsDailyFlex,
   isItemHit,
   bestDelta,
-  pickNoteworthy,
-  NOTEWORTHY_DELTA_PCT,
+  orderRoutesForDigest,
   type MultiSubsItem
 } from '../flex-message';
 
@@ -64,52 +64,57 @@ describe('isItemHit（per-category 目標語意）', () => {
   });
 });
 
-describe('bestDelta / pickNoteworthy', () => {
+describe('bestDelta / orderRoutesForDigest', () => {
   it('取絕對值最大的 delta（跨 item 層級 + 兩分類）', () => {
     expect(bestDelta(makeItem({ vsPrevPct: -2, lcc: { price: 1, airport: 'NRT', outboundAirline: 'a', returnAirline: 'b', vsPrevPct: 5 } }))).toBe(5);
     expect(bestDelta(makeItem())).toBeNull();
   });
 
-  it(`達標 or |Δ| ≥ ${NOTEWORTHY_DELTA_PCT}% 才入選；達標排前、再按 |Δ| 降冪`, () => {
+  it('不過濾 — 全部都留；達標排前、再按 |Δ| 降冪、安靜的排最後', () => {
     const hit = makeItem({ cheapestPrice: 11000, lcc: { price: 11000, airport: 'NRT', outboundAirline: 'a', returnAirline: 'b', vsPrevPct: null } });
     const bigMove = makeItem({ vsPrevPct: -4 });
     const smallMove = makeItem({ vsPrevPct: -1 });
     const quiet = makeItem();
-    const picked = pickNoteworthy([smallMove, bigMove, quiet, hit]);
-    expect(picked).toHaveLength(2);
-    expect(picked[0]).toBe(hit);
-    expect(picked[1]).toBe(bigMove);
+    const ordered = orderRoutesForDigest([smallMove, bigMove, quiet, hit]);
+    // 一個都不能少（鐵則：訂閱幾筆就全顯示）
+    expect(ordered).toHaveLength(4);
+    expect(ordered[0]).toBe(hit);       // 達標排第一
+    expect(ordered[1]).toBe(bigMove);   // 再來大變動
+    expect(ordered).toContain(smallMove);
+    expect(ordered).toContain(quiet);   // 安靜的也在（沒被丟掉）
   });
 });
 
 describe('buildMultiSubsDailyFlex（carousel 結構）', () => {
   type Carousel = { altText: string; contents: { type: string; contents: Record<string, unknown>[] } };
 
-  it('lead + 只放 noteworthy；安靜路線不佔 bubble', () => {
+  it('每筆訂閱都出卡（安靜的也在）— lead + 3 routes，達標排前', () => {
     const flex = buildMultiSubsDailyFlex({
       items: [
         makeItem({ cheapestPrice: 11000, lcc: { price: 11000, airport: 'NRT', outboundAirline: '酷航', returnAirline: '捷星', vsPrevPct: -6.2 } }),
-        makeItem(), // 安靜 — 不該出現
+        makeItem(), // 安靜 — 也要出卡（不再被藏）
         makeItem({ vsPrevPct: 4 })
       ],
       sourceId: 'Uabc'
     }) as Carousel;
     expect(flex.contents.type).toBe('carousel');
-    expect(flex.contents.contents).toHaveLength(3); // lead + hit + bigMove
+    expect(flex.contents.contents).toHaveLength(4); // lead + 全部 3 條
     expect(flex.altText).toBe('今日機票摘要：1 條已達標，最低 NT$11,000');
   });
 
-  it('20 條全 noteworthy → cap：1 lead + 9 routes = 10 bubbles（< LINE 上限 12）', () => {
+  it('20 條 → cap：1 lead + 11 routes = 12 bubbles（= LINE 上限）+ lead 標明被截', () => {
     const items = Array.from({ length: 20 }, (_, i) => makeItem({ vsPrevPct: 5 + i }));
     const flex = buildMultiSubsDailyFlex({ items, sourceId: 'U1' }) as Carousel;
-    expect(flex.contents.contents).toHaveLength(10);
+    expect(flex.contents.contents).toHaveLength(12);
+    // fail loud：少了 9 條要講出來
+    expect(JSON.stringify(flex)).toContain('只顯示前 11 條（共 20 條）');
   });
 
-  it('沒有任何 noteworthy → 單張 lead、文案誠實說沒變化', () => {
+  it('沒有任何達標 → 每條仍出卡、文案請往右滑看現價', () => {
     const flex = buildMultiSubsDailyFlex({ items: [makeItem(), makeItem()], sourceId: 'U1' }) as Carousel;
-    expect(flex.contents.contents).toHaveLength(1);
+    expect(flex.contents.contents).toHaveLength(3); // lead + 全部 2 條（不再縮成單張 lead）
     const json = JSON.stringify(flex);
-    expect(json).toContain('都沒有大變化');
+    expect(json).toContain('往右滑看每條現價');
     expect(flex.altText).toContain('今天沒有航線跌破目標價');
   });
 
@@ -215,8 +220,9 @@ describe('buildRouteBubble — 開口式來回（0015，multi-city 一張票）'
     expect(json).toContain('低於目標 NT$20,000（省 NT$1,317）');
   });
 
-  it('查無多城市票（總價 null）→ 非 noteworthy、不進 carousel（不顯示半截卡）', () => {
+  it('查無多城市票（總價 null）→ 仍出卡並誠實標「查無」（鐵則：訂閱就顯示，不藏）', () => {
     const flex = buildMultiSubsDailyFlex({ items: [ojItem({ cheapestPrice: null })], sourceId: 'U1' }) as { contents: { contents: unknown[] } };
-    expect(flex.contents.contents).toHaveLength(1);  // 只剩 lead bubble
+    expect(flex.contents.contents).toHaveLength(2);  // lead + 該路線（不再藏）
+    expect(JSON.stringify(flex)).toContain('此條件查無多城市票');
   });
 });

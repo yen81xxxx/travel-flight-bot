@@ -324,9 +324,6 @@ interface MultiSubsDailyFlexProps {
    （達標 or 明顯變動），cap 9 — 不再 dump 全部。
    ============================================================ */
 
-/** digest 一張 route bubble 值得看的變動門檻（%）— 跟 priceIntel reason 同級距 */
-export const NOTEWORTHY_DELTA_PCT = 3;
-
 /** 該 item 是否「達標」— 任一分類跌破各自目標（lcc←maxPrice / trad←maxPriceTraditional??maxPrice） */
 export function isItemHit(item: MultiSubsItem): boolean {
   // 開口式：合併價（兩段相加）跟單一目標比；沒有 lcc/traditional 分類
@@ -345,22 +342,28 @@ export function bestDelta(item: MultiSubsItem): number | null {
   return candidates.reduce((a, b) => (Math.abs(b) > Math.abs(a) ? b : a));
 }
 
-/** 過濾「值得看」：達標 or |delta| ≥ 門檻。達標排前面、再按 |delta| 大到小。 */
-export function pickNoteworthy(items: MultiSubsItem[]): MultiSubsItem[] {
-  return items
-    .filter(it => isItemHit(it) || Math.abs(bestDelta(it) ?? 0) >= NOTEWORTHY_DELTA_PCT)
-    .sort((a, b) => {
-      const hitDiff = Number(isItemHit(b)) - Number(isItemHit(a));
-      if (hitDiff !== 0) return hitDiff;
-      return Math.abs(bestDelta(b) ?? 0) - Math.abs(bestDelta(a) ?? 0);
-    });
+/**
+ * 排序 digest 路線卡：達標排前面、再按 |delta| 大到小。
+ * **不過濾** — 每一筆訂閱都要出一張卡（user 鐵則：訂閱幾筆就全顯示）。
+ * 排序只是為了「萬一超過 LINE carousel 上限被截，重要的先留」。
+ */
+export function orderRoutesForDigest(items: MultiSubsItem[]): MultiSubsItem[] {
+  return [...items].sort((a, b) => {
+    const hitDiff = Number(isItemHit(b)) - Number(isItemHit(a));
+    if (hitDiff !== 0) return hitDiff;
+    return Math.abs(bestDelta(b) ?? 0) - Math.abs(bestDelta(a) ?? 0);
+  });
 }
 
 export function buildMultiSubsDailyFlex(props: MultiSubsDailyFlexProps) {
   const hits = props.items.filter(isItemHit);
-  const noteworthy = pickNoteworthy(props.items);
-  // LINE carousel 上限 12 — lead 1 張 + noteworthy cap 9（留餘裕）
-  const routeBubbles = noteworthy.slice(0, 9).map(item => buildRouteBubble(item, props.sourceId));
+  // 不過濾：每一筆訂閱都出一張卡（user 鐵則：訂閱幾筆就全顯示，不藏沒達標/沒變動的）。
+  // 仍排序（達標排前），只為了萬一超過 LINE 上限被截時重要的先留。
+  const ordered = orderRoutesForDigest(props.items);
+  const MAX_ROUTE_BUBBLES = 11; // LINE carousel 硬上限 12 = lead 1 + routes 11
+  const shown = ordered.slice(0, MAX_ROUTE_BUBBLES);
+  const routeBubbles = shown.map(item => buildRouteBubble(item, props.sourceId));
+  const truncated = ordered.length - shown.length;
   const quotaExhausted = props.items.some(it => it.errorReason === 'quota-exhausted');
 
   const lowest = hits
@@ -371,7 +374,7 @@ export function buildMultiSubsDailyFlex(props: MultiSubsDailyFlexProps) {
   const lead = buildDigestLeadBubble({
     total: props.items.length,
     hitCount: hits.length,
-    noteworthyCount: noteworthy.length,
+    truncated,
     lowest,
     quotaExhausted,
     sourceId: props.sourceId,
@@ -396,21 +399,16 @@ export function buildMultiSubsDailyFlex(props: MultiSubsDailyFlexProps) {
 function buildDigestLeadBubble(p: {
   total: number;
   hitCount: number;
-  noteworthyCount: number;
+  truncated: number;
   lowest: number | null;
   quotaExhausted: boolean;
   sourceId: string;
   cachedAt: string | null;
 }): Record<string, unknown> {
-  // 總結句 — 按狀態分三種，誠實描述（沒變化就說沒變化）
-  let summary: string;
-  if (p.hitCount > 0 && p.lowest != null) {
-    summary = `你追蹤的 ${p.total} 條航線今天有 ${p.hitCount} 條跌破目標價，最低 NT$${p.lowest.toLocaleString()}。`;
-  } else if (p.noteworthyCount > 0) {
-    summary = `今天沒有航線跌破目標價，但有 ${p.noteworthyCount} 條明顯變動，往右滑看詳細。`;
-  } else {
-    summary = `你追蹤的 ${p.total} 條航線今天都沒有大變化，持續監控中。`;
-  }
+  // 總結句 — 達標就報達標數；都沒達標就請往右滑看每條現價（每條都有出卡，不藏）
+  const summary = p.hitCount > 0 && p.lowest != null
+    ? `你追蹤的 ${p.total} 條航線今天有 ${p.hitCount} 條跌破目標價，最低 NT$${p.lowest.toLocaleString()}。`
+    : `你追蹤的 ${p.total} 條航線今天都沒跌破目標價，往右滑看每條現價。`;
 
   const bodyContents: Record<string, unknown>[] = [
     {
@@ -431,6 +429,18 @@ function buildDigestLeadBubble(p: {
     },
     { type: 'text', text: summary, size: 'sm', color: FLEX_DARK.text, wrap: true, margin: 'md' }
   ];
+
+  if (p.truncated > 0) {
+    // 超過 LINE carousel 上限被截 — fail loud，明講少了幾條（別讓 user 以為全到齊）
+    bodyContents.push({
+      type: 'text',
+      text: `路線較多，只顯示前 ${p.total - p.truncated} 條（共 ${p.total} 條）。`,
+      size: 'xxs',
+      color: '#ff9f0a',
+      wrap: true,
+      margin: 'md'
+    });
+  }
 
   if (p.quotaExhausted) {
     // 部分路線配額暫滿 — 不藏（fail loud），但也不佔 route bubble 位置
