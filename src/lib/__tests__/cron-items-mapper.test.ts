@@ -508,6 +508,21 @@ describe('buildOpenJawItem — 開口式來回（multi-city 一張票，0015）'
     expect(item.openJaw?.back).toMatchObject({ origin: 'HND', destination: 'TSA', date: '2027-02-05' });
   });
 
+  it('釘了組合 → 去/回各帶 pinned 起飛時間（從 pinned_flight_labels 解析）', () => {
+    const item = buildOpenJawItem(
+      ojSub({ pinned_flight_labels: ['去 長榮航空 15:20', '回 長榮航空 12:15'] }),
+      { cheapestTotal: 24232, airline: '長榮航空' }
+    );
+    expect(item.openJaw?.out.time).toBe('15:20');
+    expect(item.openJaw?.back.time).toBe('12:15');
+  });
+
+  it('沒釘組合 → time = null（不硬塞時間）', () => {
+    const item = buildOpenJawItem(ojSub({ pinned_flight_labels: null }), { cheapestTotal: 18683, airline: '中華航空' });
+    expect(item.openJaw?.out.time).toBeNull();
+    expect(item.openJaw?.back.time).toBeNull();
+  });
+
   it('查無多城市票 → cheapestPrice null（caller 當暫無報價）', () => {
     const item = buildOpenJawItem(ojSub(), { cheapestTotal: null, airline: null });
     expect(item.cheapestPrice).toBeNull();
