@@ -21,7 +21,7 @@ export interface RouteData {
     fromCache: boolean;
     queriedAt: string;
   }>;
-  previousMins: { lcc: number | null; traditional: number | null };
+  previousMins: { lcc: number | null; traditional: number | null; airlines?: Record<string, number> };
   bestCachedAt: string | null;
   fromCacheAll: boolean;
 }
@@ -101,8 +101,14 @@ export function buildMultiSubsItem(
       }
     }
   }
+  // 每家「比昨天(2-36h前)便宜多少」(NT$)；昨天沒料或沒更便宜 → null（不標）
+  const prevAirlines = route.previousMins.airlines ?? {};
   const topAirlines = [...airlineMin.entries()]
-    .map(([airline, v]) => ({ airline, price: v.price, depTime: v.depTime, arrTime: v.arrTime }))
+    .map(([airline, v]) => {
+      const prev = prevAirlines[airline];
+      const dropVsPrev = (prev != null && prev > v.price) ? prev - v.price : null;
+      return { airline, price: v.price, depTime: v.depTime, arrTime: v.arrTime, dropVsPrev };
+    })
     .sort((x, y) => x.price - y.price)
     .slice(0, 3);
 

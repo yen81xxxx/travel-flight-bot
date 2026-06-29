@@ -138,6 +138,10 @@ describe('buildMultiSubsDailyFlex（carousel 結構）', () => {
     expect(json).not.toMatch(EMOJI_RE);
     expect(json).toContain('#1b1b1f');
     expect(json).toContain('打開 Travl 看全部');
+    // 動作鈕：淡藍底（#0a84ff26）+ link 樣式藍字（不再是整塊亮藍實心 primary）
+    expect(json).toContain('#0a84ff26');
+    expect(json).toContain('"style":"link"');
+    expect(json).not.toContain('"style":"primary"');
   });
 
   it('route bubble：達標→已達標綠 header；未達標→監控中；目標只寫一次、不再有大標題省X文案', () => {
@@ -162,8 +166,8 @@ describe('buildMultiSubsDailyFlex（carousel 結構）', () => {
         cheapestPrice: 8000,
         lcc: { price: 8000, airport: 'NRT', outboundAirline: '樂桃', returnAirline: '樂桃', vsPrevPct: null },
         topAirlines: [
-          { airline: '樂桃', price: 8000, depTime: '09:10', arrTime: '13:20' },
-          { airline: '酷航', price: 9000, depTime: '14:05', arrTime: '18:10' },
+          { airline: '樂桃', price: 8000, depTime: '09:10', arrTime: '13:20', dropVsPrev: 538 },  // 比昨天便宜 538
+          { airline: '酷航', price: 9000, depTime: '14:05', arrTime: '18:10' },                     // 沒便宜 → 不標 ↘
           { airline: '捷星', price: 10000 }  // 缺時間 → 該列只出航司+價、不爆
         ]
       })],
@@ -180,6 +184,9 @@ describe('buildMultiSubsDailyFlex（carousel 結構）', () => {
     // 出發→抵達 時間（有資料的那兩家）
     expect(json).toContain('09:10→13:20');
     expect(json).toContain('14:05→18:10');
+    // 比昨天便宜 → 綠色 ↘NT$跌幅（只標便宜的那家）
+    expect(json).toContain('↘NT$538');
+    expect((json.match(/↘NT\$/g) || []).length).toBe(1);  // 只有樂桃一家標
   });
 
   it('route bubble：沒有 topAirlines → 不畫前 3 家那塊（降級不爆）', () => {
