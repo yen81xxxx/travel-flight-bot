@@ -184,6 +184,13 @@ export function buildOpenJawItem(
   const airline = result?.airline ?? null;
   const errorReason = result?.error === 'quota-exhausted' ? 'quota-exhausted' : null;
 
+  // 釘選組合 → 從 pinned_flight_labels 抓去/回起飛時間，給通報卡片標出來。
+  // labels 形如 ['去 長榮航空 15:20', '回 長榮航空 12:15']；沒釘 → 兩個都 null。
+  // 開口式整程價就是這個釘選組合的價 → 標釘選時間跟價格一致、不會誤導。
+  const labels = sub.pinned_flight_labels;
+  const outTime = pinnedLabelTime(labels?.[0]);
+  const backTime = pinnedLabelTime(labels?.[1]);
+
   return {
     origin: sub.origin,
     destination: sub.destination,
@@ -199,9 +206,16 @@ export function buildOpenJawItem(
     vsPrevPct: null,
     errorReason,
     openJaw: {
-      out: { origin: sub.origin, destination: sub.destination, date: sub.outbound_date ?? '' },
-      back: { origin: sub.return_origin!, destination: sub.return_destination!, date: sub.return_date ?? '' },
+      out: { origin: sub.origin, destination: sub.destination, date: sub.outbound_date ?? '', time: outTime },
+      back: { origin: sub.return_origin!, destination: sub.return_destination!, date: sub.return_date ?? '', time: backTime },
       airline
     }
   };
+}
+
+/** 從釘選 label 尾端抓 'HH:MM' 起飛時間；沒有 → null。 */
+function pinnedLabelTime(label: string | undefined | null): string | null {
+  if (!label) return null;
+  const m = label.match(/(\d{1,2}:\d{2})\s*$/);
+  return m ? m[1] : null;
 }

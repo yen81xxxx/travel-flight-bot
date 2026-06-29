@@ -196,8 +196,8 @@ describe('buildRouteBubble — 開口式來回（0015，multi-city 一張票）'
     cheapestPrice: 18683, cheapestCategory: null, cheapestAirline: '中華航空', cheapestAirport: null,
     lcc: null, traditional: null, vsPrevPct: null,
     openJaw: {
-      out: { origin: 'TPE', destination: 'NRT', date: '2027-01-29' },
-      back: { origin: 'HND', destination: 'TSA', date: '2027-02-05' },
+      out: { origin: 'TPE', destination: 'NRT', date: '2027-01-29', time: '15:20' },
+      back: { origin: 'HND', destination: 'TSA', date: '2027-02-05', time: '12:15' },
       airline: '中華航空'
     },
     ...over
@@ -214,6 +214,8 @@ describe('buildRouteBubble — 開口式來回（0015，multi-city 一張票）'
     expect(json).toContain('開口式');
     expect(json).toContain('HND');                  // 回段出發
     expect(json).toContain('TSA');                  // 回段抵達
+    expect(json).toContain('1/29 15:20');           // 去程日期＋釘選時間
+    expect(json).toContain('2/5 12:15');            // 回程日期＋釘選時間
     expect(json).toContain('一張票');
     expect(json).toContain('18,683');               // 整程總價
     expect(json).toContain('多城市單一票・中華航空 起');

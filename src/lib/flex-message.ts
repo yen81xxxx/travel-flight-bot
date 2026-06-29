@@ -302,6 +302,8 @@ export interface OpenJawLeg {
   origin: string;
   destination: string;
   date: string;
+  /** 釘選班次的起飛時間 'HH:MM'（從 pinned_flight_labels 解析）；沒釘 → null */
+  time?: string | null;
 }
 
 export interface OpenJawLegs {
@@ -512,14 +514,20 @@ function buildDigestLeadBubble(p: {
  */
 function pushOpenJawBody(bodyContents: Record<string, unknown>[], item: MultiSubsItem, hit: boolean): void {
   const oj = item.openJaw!;
-  const legRow = (prefix: string, leg: OpenJawLeg): Record<string, unknown> => ({
-    type: 'box', layout: 'baseline', margin: 'md',
-    contents: [
-      { type: 'text', text: prefix, size: 'sm', weight: 'bold', color: FLEX_DARK.cyan, flex: 0 },
-      { type: 'text', text: `${formatAirport(leg.origin)} → ${formatAirport(leg.destination)}`, size: 'sm', weight: 'bold', color: FLEX_DARK.text, wrap: true, flex: 1, margin: 'md' },
-      { type: 'text', text: leg.date.slice(5).replace('-', '/'), size: 'xs', color: FLEX_DARK.faint, flex: 0 }
-    ]
-  });
+  const legRow = (prefix: string, leg: OpenJawLeg): Record<string, unknown> => {
+    // 日期（非補零 M/D，跟 LIFF 卡一致）＋釘選班次起飛時間（有釘才接，例：1/29 15:20）
+    const parts = leg.date.split('-');
+    const md = parts.length === 3 ? `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}` : leg.date;
+    const dateText = md + (leg.time ? ` ${leg.time}` : '');
+    return {
+      type: 'box', layout: 'baseline', margin: 'md',
+      contents: [
+        { type: 'text', text: prefix, size: 'sm', weight: 'bold', color: FLEX_DARK.cyan, flex: 0 },
+        { type: 'text', text: `${formatAirport(leg.origin)} → ${formatAirport(leg.destination)}`, size: 'sm', weight: 'bold', color: FLEX_DARK.text, wrap: true, flex: 1, margin: 'md' },
+        { type: 'text', text: dateText, size: 'xs', color: leg.time ? FLEX_DARK.soft : FLEX_DARK.faint, flex: 0 }
+      ]
+    };
+  };
   bodyContents.push(legRow('去', oj.out), legRow('回', oj.back));
   if (item.label) bodyContents.push({ type: 'text', text: item.label, size: 'xxs', color: FLEX_DARK.faint, margin: 'sm' });
 
