@@ -140,7 +140,7 @@ describe('buildMultiSubsDailyFlex（carousel 結構）', () => {
     expect(json).toContain('打開 Travl 看全部');
   });
 
-  it('route bubble：達標 → 已達標綠 header + 低於目標文案；未達標變動 → 監控中 + 還差', () => {
+  it('route bubble：達標→已達標綠 header；未達標→監控中；目標只寫一次、不再有大標題省X文案', () => {
     const flex = buildMultiSubsDailyFlex({
       items: [
         makeItem({ cheapestPrice: 11000, lcc: { price: 11000, airport: 'NRT', outboundAirline: '酷航', returnAirline: '捷星', vsPrevPct: null } }),
@@ -150,9 +150,10 @@ describe('buildMultiSubsDailyFlex（carousel 結構）', () => {
     });
     const json = JSON.stringify(flex);
     expect(json).toContain('已達標');
-    expect(json).toContain('低於目標 NT$12,000（省 NT$1,000）');
     expect(json).toContain('監控中');
-    expect(json).toContain('目標 NT$12,000・還差 NT$1,000');
+    expect(json).toContain('目標 NT$12,000');   // 目標寫在日期列、只寫一次
+    expect(json).not.toContain('低於目標');       // 舊的大標題「省 X」那套移除
+    expect(json).not.toContain('還差');
   });
 
   it('route bubble：比照警報卡列前 3 家航空 + 各自價（topAirlines）', () => {
@@ -161,9 +162,9 @@ describe('buildMultiSubsDailyFlex（carousel 結構）', () => {
         cheapestPrice: 8000,
         lcc: { price: 8000, airport: 'NRT', outboundAirline: '樂桃', returnAirline: '樂桃', vsPrevPct: null },
         topAirlines: [
-          { airline: '樂桃', price: 8000 },
-          { airline: '酷航', price: 9000 },
-          { airline: '捷星', price: 10000 }
+          { airline: '樂桃', price: 8000, depTime: '09:10', arrTime: '13:20' },
+          { airline: '酷航', price: 9000, depTime: '14:05', arrTime: '18:10' },
+          { airline: '捷星', price: 10000 }  // 缺時間 → 該列只出航司+價、不爆
         ]
       })],
       sourceId: 'U1'
@@ -176,6 +177,9 @@ describe('buildMultiSubsDailyFlex（carousel 結構）', () => {
     expect(json).toContain('NT$9,000');
     expect(json).toContain('捷星');
     expect(json).toContain('NT$10,000');
+    // 出發→抵達 時間（有資料的那兩家）
+    expect(json).toContain('09:10→13:20');
+    expect(json).toContain('14:05→18:10');
   });
 
   it('route bubble：沒有 topAirlines → 不畫前 3 家那塊（降級不爆）', () => {
@@ -211,7 +215,7 @@ describe('buildRouteBubble — 開口式來回（0015，multi-city 一張票）'
   it('卡片畫兩段路線 + 一張票總價 + 開口式 pill + 多城市航司 + 達標文案', () => {
     const flex = buildMultiSubsDailyFlex({ items: [ojItem()], sourceId: 'U1' });
     const json = JSON.stringify(flex);
-    expect(json).toContain('開口式');
+    expect(json).toContain('異地來回');             // 開口式 tag 改白話
     expect(json).toContain('HND');                  // 回段出發
     expect(json).toContain('TSA');                  // 回段抵達
     expect(json).toContain('1/29 15:20');           // 去程日期＋釘選時間
