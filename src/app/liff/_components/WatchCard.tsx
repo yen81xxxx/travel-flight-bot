@@ -185,7 +185,7 @@ export function WatchCard({ watch: w, onOpen }: Props): React.ReactElement {
           </span>
         </div>
         <div className="wc-tags">
-          {isOpenJaw && <span className="oj-pill" data-testid="oj-pill">開口式</span>}
+          {isOpenJaw && <span className="oj-pill" data-testid="oj-pill">異地來回</span>}
           {w.paused && (
             <span className="paused-pill">
               <Icon name="pause" size={11} stroke={2} /> 已暫停

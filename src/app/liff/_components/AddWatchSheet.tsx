@@ -477,7 +477,7 @@ export function AddWatchSheet({
                 }}
               >
                 <Icon name={openJaw ? 'checkCircle' : 'plus'} size={14} stroke={2.2} />
-                <span>回程不同地點（開口式）</span>
+                <span>回程不同地點（異地來回）</span>
               </button>
               {openJaw && (
                 <>
@@ -500,7 +500,7 @@ export function AddWatchSheet({
                       jpRegions={jpRegions}
                     />
                   </div>
-                  <p className="openjaw-hint">開口式 = 一張多城市票（去 + 回兩段同一張機票）。查價會列出多組來回組合，可挑一組去追，或不挑＝追整程最低。</p>
+                  <p className="openjaw-hint">異地來回 = 去回不同點進出的一張多城市票（去 + 回兩段同一張機票）。查價會列出多組來回組合，可挑一組去追，或不挑＝追整程最低。</p>
                 </>
               )}
             </div>
